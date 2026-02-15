@@ -20,9 +20,9 @@ RepoType: git
 Repo: https://github.com/alichherawalla/off-grid-mobile.git
 
 Builds:
-  - versionName: 0.0.46
+  - versionName: 0.0.47
     versionCode: 1771128928
-    commit: v0.0.46
+    commit: v0.0.47
     subdir: android/app
     sudo:
       - sysctl fs.inotify.max_user_watches=524288
@@ -67,5 +67,5 @@ MaintainerNotes: |
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 0.0.46
+CurrentVersion: 0.0.47
 CurrentVersionCode: 1771128928

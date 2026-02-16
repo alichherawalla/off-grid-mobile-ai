@@ -12,7 +12,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS-green.svg)](#install)
 [![Coverage](https://img.shields.io/badge/Coverage-80%25-brightgreen.svg)](#testing)
-[![Slack](https://img.shields.io/badge/Slack-Join%20Community-4A154B?logo=slack)](http://off-grid-mobile.slack.com/)
+[![Slack](https://img.shields.io/badge/Slack-Join%20Community-4A154B?logo=slack)](https://join.slack.com/t/off-grid-mobile/shared_invite/zt-3q7kj5gr6-rVzx5gl5LKPQh4mUE2CCvA)
 
 </div>
 
@@ -110,7 +110,7 @@ npm run ios
 
 ## Community
 
-Join the conversation on [**Slack**](http://off-grid-mobile.slack.com/) — ask questions, share feedback, and connect with other Off Grid users and contributors.
+Join the conversation on [**Slack**](https://join.slack.com/t/off-grid-mobile/shared_invite/zt-3q7kj5gr6-rVzx5gl5LKPQh4mUE2CCvA) — ask questions, share feedback, and connect with other Off Grid users and contributors.
 
 ---
 
@@ -133,6 +133,6 @@ Built on the shoulders of giants:
 
 *No cloud. No subscription. No data harvesting. Just AI that works anywhere.*
 
-[Join the Community on Slack](http://off-grid-mobile.slack.com/)
+[Join the Community on Slack](https://join.slack.com/t/off-grid-mobile/shared_invite/zt-3q7kj5gr6-rVzx5gl5LKPQh4mUE2CCvA)
 
 </div>

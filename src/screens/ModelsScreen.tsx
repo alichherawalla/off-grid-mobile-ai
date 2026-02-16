@@ -602,8 +602,8 @@ export const ModelsScreen: React.FC = () => {
     }
   };
 
-  // Image model download/management - uses native background download service
-  const handleDownloadImageModel = async (modelInfo: ImageModelDescriptor) => {
+  // Proceed with image model download (after any compatibility checks)
+  const proceedWithImageModelDownload = async (modelInfo: ImageModelDescriptor) => {
     // Route to HuggingFace downloader if it's a HuggingFace model
     if (modelInfo.huggingFaceRepo && modelInfo.huggingFaceFiles) {
       await handleDownloadHuggingFaceModel(modelInfo);
@@ -755,6 +755,36 @@ export const ModelsScreen: React.FC = () => {
       removeImageModelDownloading(modelInfo.id);
       clearModelProgress(modelInfo.id);
     }
+  };
+
+  // Image model download entry point — checks compatibility before proceeding
+  const handleDownloadImageModel = async (modelInfo: ImageModelDescriptor) => {
+    // Guard: warn user before downloading NPU models on non-Qualcomm devices
+    if (modelInfo.backend === 'qnn' && Platform.OS === 'android') {
+      const socInfo = await hardwareService.getSoCInfo();
+      if (!socInfo.hasNPU) {
+        setAlertState(showAlert(
+          'Incompatible Model',
+          'NPU models require a Qualcomm Snapdragon processor. ' +
+          'Your device does not have a compatible NPU and this model will not work. ' +
+          'Consider downloading a CPU model instead.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Download Anyway',
+              style: 'destructive',
+              onPress: () => {
+                setAlertState(hideAlert());
+                proceedWithImageModelDownload(modelInfo);
+              },
+            },
+          ],
+        ));
+        return;
+      }
+    }
+
+    await proceedWithImageModelDownload(modelInfo);
   };
 
   // Fallback download method using RNFS (for iOS or when native module unavailable)
@@ -1623,6 +1653,8 @@ export const ModelsScreen: React.FC = () => {
 
       {!hfModelsLoading && !hfModelsError && filteredHFModels.map((model, index) => {
         const recommended = isRecommendedModel(model);
+        const backendCompatible = !imageRec?.compatibleBackends ||
+          imageRec.compatibleBackends.includes(model.backend as any);
         return (
           <View key={model.id}>
             {recommended && (
@@ -1640,6 +1672,8 @@ export const ModelsScreen: React.FC = () => {
               }}
               isDownloading={imageModelDownloading.includes(model.id)}
               downloadProgress={imageModelProgress[model.id] || 0}
+              isCompatible={backendCompatible}
+              incompatibleReason={!backendCompatible ? 'Incompatible' : undefined}
               testID={`image-model-card-${index}`}
               onDownload={
                 !imageModelDownloading.includes(model.id)

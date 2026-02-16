@@ -28,6 +28,7 @@ interface ModelCardProps {
   downloadProgress?: number;
   isActive?: boolean;
   isCompatible?: boolean;
+  incompatibleReason?: string;
   testID?: string;
   onPress?: () => void;
   onDownload?: () => void;
@@ -45,6 +46,7 @@ export const ModelCard: React.FC<ModelCardProps> = ({
   downloadProgress = 0,
   isActive,
   isCompatible = true,
+  incompatibleReason,
   testID,
   onPress,
   onDownload,
@@ -246,7 +248,7 @@ export const ModelCard: React.FC<ModelCardProps> = ({
             )}
             {!isCompatible && (
               <View style={styles.warningBadge}>
-                <Text style={styles.warningText}>Too large</Text>
+                <Text style={styles.warningText}>{incompatibleReason || 'Too large'}</Text>
               </View>
             )}
           </View>
@@ -281,7 +283,7 @@ export const ModelCard: React.FC<ModelCardProps> = ({
           <TouchableOpacity
             style={styles.iconButton}
             onPress={onDownload}
-            disabled={!isCompatible}
+            disabled={!isCompatible && !incompatibleReason}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             testID={testID ? `${testID}-download` : undefined}
           >

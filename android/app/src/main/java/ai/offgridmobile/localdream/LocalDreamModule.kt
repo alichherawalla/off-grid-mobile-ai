@@ -949,6 +949,19 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
         promise.resolve(isQualcomm)
     }
 
+    /**
+     * Return the SoC model string (e.g. "SM8550", "SM7635") for NPU variant selection.
+     */
+    @ReactMethod
+    fun getSoCModel(promise: Promise) {
+        val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Build.SOC_MODEL
+        } else {
+            ""
+        }
+        promise.resolve(soc)
+    }
+
     @ReactMethod
     fun addListener(eventName: String) {
         // Required for RN event emitter

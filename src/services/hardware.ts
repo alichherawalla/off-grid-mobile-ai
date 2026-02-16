@@ -1,7 +1,9 @@
-import { Platform } from 'react-native';
+import { Platform, NativeModules } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 import { DeviceInfo as DeviceInfoType, ModelRecommendation, SoCInfo, SoCVendor, ImageModelRecommendation } from '../types';
 import { MODEL_RECOMMENDATIONS, RECOMMENDED_MODELS } from '../constants';
+
+const { LocalDreamModule } = NativeModules;
 
 class HardwareService {
   private cachedDeviceInfo: DeviceInfoType | null = null;
@@ -256,9 +258,7 @@ class HardwareService {
 
     let qnnVariant: SoCInfo['qnnVariant'];
     if (vendor === 'qualcomm') {
-      if (ramGB >= 12) qnnVariant = '8gen2';
-      else if (ramGB >= 8) qnnVariant = '8gen1';
-      else qnnVariant = 'min';
+      qnnVariant = await this.getQnnVariantFromSoC();
     }
 
     this.cachedSoCInfo = {
@@ -267,6 +267,53 @@ class HardwareService {
       qnnVariant,
     };
     return this.cachedSoCInfo;
+  }
+
+  /**
+   * Determine QNN variant from the actual SoC model number.
+   * Flagship chips (8 Gen 2/3/4+) use '8gen2' models,
+   * 8 Gen 1 uses '8gen1', and everything else uses 'min'.
+   */
+  private async getQnnVariantFromSoC(): Promise<'8gen2' | '8gen1' | 'min'> {
+    let socModel = '';
+    try {
+      if (LocalDreamModule?.getSoCModel) {
+        socModel = await LocalDreamModule.getSoCModel();
+      }
+    } catch {
+      // Fall through to RAM-based fallback
+    }
+
+    if (socModel) {
+      // Strip sub-variant suffixes (e.g. "SM8550-AB" → "SM8550")
+      const baseModel = socModel.split('-')[0].toUpperCase();
+
+      // Flagship chips: full 8 Gen 2, 8 Gen 3, 8 Elite
+      // These have the most capable NPU and run '8gen2' QNN models
+      const FLAGSHIP_SOCS = [
+        'SM8550', // Snapdragon 8 Gen 2
+        'SM8650', // Snapdragon 8 Gen 3
+        'SM8750', // Snapdragon 8 Elite (Gen 4)
+      ];
+
+      // High-tier: 8 Gen 1 / 8+ Gen 1
+      const GEN1_SOCS = [
+        'SM8450', // Snapdragon 8 Gen 1
+        'SM8475', // Snapdragon 8+ Gen 1
+      ];
+
+      if (FLAGSHIP_SOCS.includes(baseModel)) return '8gen2';
+      if (GEN1_SOCS.includes(baseModel)) return '8gen1';
+
+      // Everything else (SM8635 = 8s Gen 3, SM7xxx, SM6xxx, etc.) → non-flagship
+      return 'min';
+    }
+
+    // Fallback: RAM-based heuristic (only if SoC model unavailable)
+    // Conservative: never recommend flagship since we can't confirm the chip
+    const ramGB = this.getTotalMemoryGB();
+    if (ramGB >= 12) return '8gen1';
+    return 'min';
   }
 
   async getImageModelRecommendation(): Promise<ImageModelRecommendation> {
@@ -306,26 +353,25 @@ class HardwareService {
         };
       }
     } else if (socInfo.vendor === 'qualcomm') {
-      const variantLabel = socInfo.qnnVariant === '8gen2'
-        ? 'flagship' : socInfo.qnnVariant === '8gen1'
-        ? '' : 'lightweight ';
-
-      const bannerSuffix = socInfo.qnnVariant === '8gen2'
-        ? 'NPU models for fastest inference'
-        : socInfo.qnnVariant === '8gen1'
-        ? 'NPU models supported'
-        : 'lightweight NPU models recommended';
+      let bannerText: string;
+      if (socInfo.qnnVariant === '8gen2') {
+        bannerText = 'Snapdragon flagship \u2014 NPU models for fastest generation (~15s)';
+      } else if (socInfo.qnnVariant === '8gen1') {
+        bannerText = 'Snapdragon NPU supported \u2014 use NPU models for fast generation';
+      } else {
+        bannerText = 'Snapdragon NPU supported \u2014 use non-flagship NPU models for fast generation';
+      }
 
       rec = {
         recommendedBackend: 'qnn',
         qnnVariant: socInfo.qnnVariant,
-        bannerText: `Snapdragon ${variantLabel}\u2014 ${bannerSuffix}`,
+        bannerText,
         compatibleBackends: ['qnn', 'mnn'],
       };
     } else {
       rec = {
         recommendedBackend: 'mnn',
-        bannerText: 'CPU models recommended \u2014 NPU requires Snapdragon',
+        bannerText: 'CPU models available \u2014 generation takes ~2 min per image',
         compatibleBackends: ['mnn'],
       };
     }

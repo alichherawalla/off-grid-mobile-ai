@@ -3,8 +3,8 @@
   "version": "0.0.49",
   "private": true,
   "scripts": {
-    "android": "react-native run-android --mode=standardDebug",
-    "android:fdroid": "react-native run-android --mode=fdroidDebug",
+    "android": "react-native run-android --mode=standardDebug --appId ai.offgridmobile.dev",
+    "android:fdroid": "react-native run-android --mode=fdroidDebug --appId ai.offgridmobile.dev",
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start",

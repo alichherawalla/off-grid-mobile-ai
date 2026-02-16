@@ -950,6 +950,16 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
+    fun getSoCModel(promise: Promise) {
+        val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Build.SOC_MODEL
+        } else {
+            ""
+        }
+        promise.resolve(soc)
+    }
+
+    @ReactMethod
     fun addListener(eventName: String) {
         // Required for RN event emitter
     }

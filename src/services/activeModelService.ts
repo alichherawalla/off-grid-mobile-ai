@@ -316,6 +316,17 @@ class ActiveModelService {
     const model = store.downloadedImageModels.find(m => m.id === modelId);
     if (!model) throw new Error('Model not found');
 
+    // Guard: prevent loading QNN/NPU models on non-Qualcomm devices
+    if (model.backend === 'qnn') {
+      const socInfo = await hardwareService.getSoCInfo();
+      if (!socInfo.hasNPU) {
+        throw new Error(
+          'NPU models require a Qualcomm Snapdragon processor. ' +
+          'Your device does not have a compatible NPU. Please use a CPU model instead.',
+        );
+      }
+    }
+
     this.loadingState.image = true;
     this.notifyListeners();
 

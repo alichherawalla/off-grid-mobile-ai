@@ -44,6 +44,7 @@ interface ImageModelDescriptor {
   size: number;
   style: string;
   backend: 'mnn' | 'qnn' | 'coreml';
+  variant?: string;
   huggingFaceRepo?: string;
   huggingFaceFiles?: { path: string; size: number }[];
   /** Multi-file download manifest (Core ML full-precision models) */
@@ -602,8 +603,58 @@ export const ModelsScreen: React.FC = () => {
     }
   };
 
-  // Image model download/management - uses native background download service
+  // Image model download — checks compatibility before proceeding
   const handleDownloadImageModel = async (modelInfo: ImageModelDescriptor) => {
+    // Guard: warn user before downloading incompatible NPU models
+    if (modelInfo.backend === 'qnn' && Platform.OS === 'android') {
+      const socInfo = await hardwareService.getSoCInfo();
+
+      let warningMessage: string | null = null;
+
+      if (!socInfo.hasNPU) {
+        warningMessage = 'NPU models require a Qualcomm Snapdragon processor. ' +
+          'Your device does not have a compatible NPU and this model will not work. ' +
+          'Consider downloading a CPU model instead.';
+      } else if (modelInfo.variant && socInfo.qnnVariant) {
+        // Check variant compatibility
+        const deviceVariant = socInfo.qnnVariant;
+        const modelVariant = modelInfo.variant;
+        const compatible =
+          modelVariant === deviceVariant ||
+          deviceVariant === '8gen2' || // flagship runs everything
+          (deviceVariant === '8gen1' && modelVariant !== '8gen2');
+        if (!compatible) {
+          warningMessage = `This model is built for ${modelVariant === '8gen2' ? 'flagship' : modelVariant} Snapdragon chips. ` +
+            `Your device uses a ${deviceVariant === 'min' ? 'non-flagship' : deviceVariant} chip and this model will likely crash. ` +
+            `Download the non-flagship variant instead.`;
+        }
+      }
+
+      if (warningMessage) {
+        setAlertState(showAlert(
+          'Incompatible Model',
+          warningMessage,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Download Anyway',
+              style: 'destructive',
+              onPress: () => {
+                setAlertState(hideAlert());
+                proceedWithImageModelDownload(modelInfo);
+              },
+            },
+          ],
+        ));
+        return;
+      }
+    }
+
+    await proceedWithImageModelDownload(modelInfo);
+  };
+
+  // Proceed with image model download (after compatibility checks)
+  const proceedWithImageModelDownload = async (modelInfo: ImageModelDescriptor) => {
     // Route to HuggingFace downloader if it's a HuggingFace model
     if (modelInfo.huggingFaceRepo && modelInfo.huggingFaceFiles) {
       await handleDownloadHuggingFaceModel(modelInfo);
@@ -1305,6 +1356,7 @@ export const ModelsScreen: React.FC = () => {
     size: hfModel.size,
     style: guessStyle(hfModel.name),
     backend: hfModel._coreml ? 'coreml' : hfModel.backend,
+    variant: hfModel.variant,
     coremlFiles: hfModel._coremlFiles,
     repo: hfModel.repo,
   });
@@ -1623,6 +1675,21 @@ export const ModelsScreen: React.FC = () => {
 
       {!hfModelsLoading && !hfModelsError && filteredHFModels.map((model, index) => {
         const recommended = isRecommendedModel(model);
+        const backendCompatible = !imageRec?.compatibleBackends ||
+          imageRec.compatibleBackends.includes(model.backend as any);
+        // Check variant compatibility: e.g. a 'min' device can't run '8gen2' or '8gen1' models
+        const variantCompatible = !model.variant || !imageRec?.qnnVariant ||
+          model.variant === imageRec.qnnVariant ||
+          // Flagship devices can run all variants
+          (imageRec.qnnVariant === '8gen2') ||
+          // 8gen1 devices can run 8gen1 and min
+          (imageRec.qnnVariant === '8gen1' && model.variant !== '8gen2');
+        const isModelCompatible = backendCompatible && variantCompatible;
+        const incompatibleReason = !backendCompatible
+          ? 'Incompatible'
+          : !variantCompatible
+          ? 'Wrong chip variant'
+          : undefined;
         return (
           <View key={model.id}>
             {recommended && (
@@ -1640,6 +1707,8 @@ export const ModelsScreen: React.FC = () => {
               }}
               isDownloading={imageModelDownloading.includes(model.id)}
               downloadProgress={imageModelProgress[model.id] || 0}
+              isCompatible={isModelCompatible}
+              incompatibleReason={incompatibleReason}
               testID={`image-model-card-${index}`}
               onDownload={
                 !imageModelDownloading.includes(model.id)

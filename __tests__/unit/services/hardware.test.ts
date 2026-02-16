@@ -639,16 +639,16 @@ describe('HardwareService', () => {
         expect(soc.hasNPU).toBe(true);
       });
 
-      it('assigns qnnVariant 8gen2 for 12GB+ Qualcomm', async () => {
+      it('assigns qnnVariant 8gen1 for 12GB+ Qualcomm (RAM fallback when native module unavailable)', async () => {
         await setupDevice({ totalGB: 12, platform: 'android', hardware: 'qcom', model: 'Test' });
         const soc = await hardwareService.getSoCInfo();
-        expect(soc.qnnVariant).toBe('8gen2');
+        expect(soc.qnnVariant).toBe('8gen1');
       });
 
-      it('assigns qnnVariant 8gen1 for 8-12GB Qualcomm', async () => {
+      it('assigns qnnVariant min for 8GB Qualcomm (RAM fallback when native module unavailable)', async () => {
         await setupDevice({ totalGB: 8, platform: 'android', hardware: 'qcom', model: 'Test' });
         const soc = await hardwareService.getSoCInfo();
-        expect(soc.qnnVariant).toBe('8gen1');
+        expect(soc.qnnVariant).toBe('min');
       });
 
       it('assigns qnnVariant min for <8GB Qualcomm', async () => {
@@ -753,11 +753,11 @@ describe('HardwareService', () => {
     });
 
     describe('Android Qualcomm recommendations', () => {
-      it('recommends QNN for Qualcomm devices', async () => {
+      it('recommends QNN for Qualcomm devices (RAM fallback)', async () => {
         await setupDevice({ totalGB: 12, platform: 'android', hardware: 'qcom', model: 'Test' });
         const rec = await hardwareService.getImageModelRecommendation();
         expect(rec.recommendedBackend).toBe('qnn');
-        expect(rec.qnnVariant).toBe('8gen2');
+        expect(rec.qnnVariant).toBe('8gen1');
         expect(rec.compatibleBackends).toEqual(expect.arrayContaining(['qnn', 'mnn']));
       });
 

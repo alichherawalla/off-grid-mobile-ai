@@ -1,5 +1,7 @@
-import { Platform } from 'react-native';
+import { Platform, NativeModules } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
+
+const { LocalDreamModule } = NativeModules;
 import { DeviceInfo as DeviceInfoType, ModelRecommendation, SoCInfo, SoCVendor, ImageModelRecommendation } from '../types';
 import { MODEL_RECOMMENDATIONS, RECOMMENDED_MODELS } from '../constants';
 
@@ -241,7 +243,6 @@ class HardwareService {
     const hardware = await DeviceInfo.getHardware();
     const model = DeviceInfo.getModel();
     const hardwareLower = hardware.toLowerCase();
-    const ramGB = this.getTotalMemoryGB();
 
     let vendor: SoCVendor = 'unknown';
     if (hardwareLower.includes('qcom')) {
@@ -256,9 +257,8 @@ class HardwareService {
 
     let qnnVariant: SoCInfo['qnnVariant'];
     if (vendor === 'qualcomm') {
-      if (ramGB >= 12) qnnVariant = '8gen2';
-      else if (ramGB >= 8) qnnVariant = '8gen1';
-      else qnnVariant = 'min';
+      qnnVariant = await this.getQnnVariantFromSoC();
+      console.log(`[HardwareService] SoC QNN variant resolved: ${qnnVariant}`);
     }
 
     this.cachedSoCInfo = {
@@ -267,6 +267,47 @@ class HardwareService {
       qnnVariant,
     };
     return this.cachedSoCInfo;
+  }
+
+  private async getQnnVariantFromSoC(): Promise<'8gen2' | '8gen1' | 'min'> {
+    let socModel = '';
+    try {
+      if (LocalDreamModule?.getSoCModel) {
+        socModel = await LocalDreamModule.getSoCModel();
+      }
+    } catch {
+      // Fall through to RAM-based fallback
+    }
+
+    console.log(`[HardwareService] SoC model from native: "${socModel}"`);
+
+    if (socModel) {
+      const baseModel = socModel.split('-')[0].toUpperCase();
+
+      // Flagship chips: full 8 Gen 2, 8 Gen 3, 8 Elite
+      const FLAGSHIP_SOCS = [
+        'SM8550', // Snapdragon 8 Gen 2
+        'SM8650', // Snapdragon 8 Gen 3
+        'SM8750', // Snapdragon 8 Elite (Gen 4)
+      ];
+
+      // High-tier: 8 Gen 1 / 8+ Gen 1
+      const GEN1_SOCS = [
+        'SM8450', // Snapdragon 8 Gen 1
+        'SM8475', // Snapdragon 8+ Gen 1
+      ];
+
+      if (FLAGSHIP_SOCS.includes(baseModel)) return '8gen2';
+      if (GEN1_SOCS.includes(baseModel)) return '8gen1';
+
+      // Everything else (SM8635 = 8s Gen 3, SM7xxx, SM6xxx, etc.)
+      return 'min';
+    }
+
+    // Fallback: RAM-based heuristic (only if SoC model unavailable)
+    const ramGB = this.getTotalMemoryGB();
+    if (ramGB >= 12) return '8gen1';
+    return 'min';
   }
 
   async getImageModelRecommendation(): Promise<ImageModelRecommendation> {
@@ -308,13 +349,13 @@ class HardwareService {
     } else if (socInfo.vendor === 'qualcomm') {
       const variantLabel = socInfo.qnnVariant === '8gen2'
         ? 'flagship' : socInfo.qnnVariant === '8gen1'
-        ? '' : 'lightweight ';
+          ? '' : 'lightweight ';
 
       const bannerSuffix = socInfo.qnnVariant === '8gen2'
         ? 'NPU models for fastest inference'
         : socInfo.qnnVariant === '8gen1'
-        ? 'NPU models supported'
-        : 'lightweight NPU models recommended';
+          ? 'NPU models supported'
+          : 'lightweight NPU models recommended';
 
       rec = {
         recommendedBackend: 'qnn',

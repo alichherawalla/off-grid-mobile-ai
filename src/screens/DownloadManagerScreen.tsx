@@ -34,6 +34,14 @@ type DownloadItem = {
   filePath?: string;
 };
 
+function getStatusText(status: string): string {
+  if (status === 'running') return 'Downloading...';
+  if (status === 'pending') return 'Starting...';
+  if (status === 'paused') return 'Paused';
+  if (status === 'unknown') return 'Stuck - Remove & retry';
+  return status;
+}
+
 export const DownloadManagerScreen: React.FC = () => {
   const navigation = useNavigation();
   const { colors } = useTheme();
@@ -375,10 +383,7 @@ export const DownloadManagerScreen: React.FC = () => {
           <Text style={styles.quantText}>{item.quantization}</Text>
         </View>
         <Text style={styles.statusText}>
-          {item.status === 'running' ? 'Downloading...' :
-           item.status === 'pending' ? 'Starting...' :
-           item.status === 'paused' ? 'Paused' :
-           item.status === 'unknown' ? 'Stuck - Remove & retry' : item.status}
+          {getStatusText(item.status)}
         </Text>
       </View>
     </Card>

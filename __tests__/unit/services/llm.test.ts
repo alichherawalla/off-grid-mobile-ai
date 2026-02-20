@@ -251,6 +251,30 @@ describe('LLMService', () => {
       );
     });
 
+    it('falls back to platform default when flashAttn is undefined (iOS → flash attn ON)', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext();
+      mockedInitLlama.mockResolvedValue(ctx as any);
+
+      useAppStore.setState({
+        settings: {
+          ...useAppStore.getState().settings,
+          flashAttn: undefined as any,
+        },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+
+      // Test env is iOS (Platform.OS = 'ios'), so the ?? fallback evaluates to true
+      expect(initLlama).toHaveBeenCalledWith(
+        expect.objectContaining({
+          flash_attn: true,
+          cache_type_k: 'q8_0',
+          cache_type_v: 'q8_0',
+        })
+      );
+    });
+
     it('captures GPU status from context', async () => {
       mockedRNFS.exists.mockResolvedValue(true);
       const ctx = createMockLlamaContext({
@@ -1436,6 +1460,35 @@ describe('LLMService', () => {
       expect(reloadCall.flash_attn).toBe(false);
       expect(reloadCall.cache_type_k).toBe('f16');
       expect(reloadCall.cache_type_v).toBe('f16');
+    });
+
+    it('falls back to platform default in reloadWithSettings when flashAttn is undefined (iOS → ON)', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx1 = createMockLlamaContext();
+      const ctx2 = createMockLlamaContext();
+      mockedInitLlama
+        .mockResolvedValueOnce(ctx1 as any)
+        .mockResolvedValueOnce(ctx2 as any);
+
+      useAppStore.setState({
+        settings: {
+          ...useAppStore.getState().settings,
+          flashAttn: undefined as any,
+          enableGpu: false,
+        },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+      await llmService.reloadWithSettings('/models/test.gguf', {
+        nThreads: 4,
+        nBatch: 256,
+        contextLength: 2048,
+      });
+
+      // Test env is iOS → ?? fallback evaluates to true
+      const reloadCall = (initLlama as jest.Mock).mock.calls[1][0];
+      expect(reloadCall.flash_attn).toBe(true);
+      expect(reloadCall.cache_type_k).toBe('q8_0');
     });
   });
 

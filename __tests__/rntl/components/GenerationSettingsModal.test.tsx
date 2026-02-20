@@ -937,6 +937,81 @@ describe('GenerationSettingsModal', () => {
       }
     });
 
+    it('shows Android warning text and caps GPU layers to 1 when flash attention is On', () => {
+      const { Platform } = require('react-native');
+      const originalOS = Platform.OS;
+      try {
+        Object.defineProperty(Platform, 'OS', { get: () => 'android', configurable: true });
+        // flashAttn: true + android → isFlashAttnOn=true → gpuLayersMax=1 → warning shown
+        mockStoreValues.settings = { ...defaultSettings, enableGpu: true, gpuLayers: 8, flashAttn: true };
+
+        const { getByText } = render(<GenerationSettingsModal {...defaultProps} />);
+        fireEvent.press(getByText('PERFORMANCE'));
+        expect(getByText('Flash Attention limits GPU layers to 1 on Android')).toBeTruthy();
+        // gpuLayersEffective = Math.min(8, 1) = 1
+        expect(getByText('1')).toBeTruthy();
+      } finally {
+        Object.defineProperty(Platform, 'OS', { get: () => originalOS, configurable: true });
+      }
+    });
+
+    it('defaults flash attention On when flashAttn setting is undefined (iOS → platform default true)', () => {
+      // flashAttn: undefined → falls back to Platform.OS !== 'android' = true on iOS
+      mockStoreValues.settings = { ...defaultSettings, flashAttn: undefined as any };
+
+      const { getByText, getByTestId } = render(<GenerationSettingsModal {...defaultProps} />);
+      fireEvent.press(getByText('PERFORMANCE'));
+      mockUpdateSettings.mockClear();
+
+      // The Off button should be pressable (flash attn is currently ON via fallback)
+      fireEvent.press(getByTestId('flash-attn-off-button'));
+      expect(mockUpdateSettings).toHaveBeenCalledWith(expect.objectContaining({ flashAttn: false }));
+    });
+
+    it('uses default gpuLayers value of 6 when gpuLayers is undefined (covers ?? fallback)', () => {
+      // gpuLayers: undefined → falls back to 6 via ?? operator (covers ?? branch in gpuLayersEffective)
+      const { Platform } = require('react-native');
+      const originalOS = Platform.OS;
+      try {
+        Object.defineProperty(Platform, 'OS', { get: () => 'android', configurable: true });
+        mockStoreValues.settings = {
+          ...defaultSettings,
+          enableGpu: true,
+          gpuLayers: undefined as any,
+          flashAttn: false,
+        };
+
+        const { getByText } = render(<GenerationSettingsModal {...defaultProps} />);
+        fireEvent.press(getByText('PERFORMANCE'));
+        // gpuLayersEffective = Math.min(undefined ?? 6, 99) = Math.min(6, 99) = 6
+        expect(getByText('6')).toBeTruthy();
+      } finally {
+        Object.defineProperty(Platform, 'OS', { get: () => originalOS, configurable: true });
+      }
+    });
+
+    it('clamps to 1 on Android when gpuLayers is undefined (defaults to 6, which is > 1)', () => {
+      const { Platform } = require('react-native');
+      const originalOS = Platform.OS;
+      try {
+        Object.defineProperty(Platform, 'OS', { get: () => 'android', configurable: true });
+        // gpuLayers: undefined → ?? fallback to 6 → 6 > 1 → should clamp
+        mockStoreValues.settings = { ...defaultSettings, flashAttn: false, gpuLayers: undefined as any };
+
+        const { getByText, getByTestId } = render(<GenerationSettingsModal {...defaultProps} />);
+        fireEvent.press(getByText('PERFORMANCE'));
+        mockUpdateSettings.mockClear();
+
+        fireEvent.press(getByTestId('flash-attn-on-button'));
+
+        expect(mockUpdateSettings).toHaveBeenCalledWith(
+          expect.objectContaining({ flashAttn: true, gpuLayers: 1 })
+        );
+      } finally {
+        Object.defineProperty(Platform, 'OS', { get: () => originalOS, configurable: true });
+      }
+    });
+
     it('clamps gpuLayers to 1 on Android when turning flash attn On with layers > 1', () => {
       const { Platform } = require('react-native');
       const originalOS = Platform.OS;

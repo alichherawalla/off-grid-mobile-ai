@@ -537,35 +537,34 @@ describe('ModelSettingsScreen', () => {
       expect(queryByText('GPU Layers')).toBeNull();
     });
 
-    it('shows GPU Acceleration and GPU Layers slider on Android with GPU enabled', () => {
+    // Android-specific GPU tests: mock Platform.OS before each, restore after
+    describe('on Android platform', () => {
+      let originalOS: string;
       const { Platform } = require('react-native');
-      const originalOS = Platform.OS;
-      try {
+
+      beforeEach(() => {
+        originalOS = Platform.OS;
         Object.defineProperty(Platform, 'OS', { get: () => 'android', configurable: true });
+      });
+
+      afterEach(() => {
+        Object.defineProperty(Platform, 'OS', { get: () => originalOS, configurable: true });
+      });
+
+      it('shows GPU Acceleration and GPU Layers slider when GPU enabled', () => {
         useAppStore.getState().updateSettings({ enableGpu: true, gpuLayers: 6 });
         const { getByText } = renderScreen();
         expect(getByText('GPU Acceleration')).toBeTruthy();
         expect(getByText('GPU Layers')).toBeTruthy();
-      } finally {
-        Object.defineProperty(Platform, 'OS', { get: () => originalOS, configurable: true });
-      }
-    });
+      });
 
-    it('clamps gpuLayers to 1 via UI when flashAttn turned on on Android with layers > 1', () => {
-      const { Platform } = require('react-native');
-      const originalOS = Platform.OS;
-      try {
-        Object.defineProperty(Platform, 'OS', { get: () => 'android', configurable: true });
+      it('clamps gpuLayers to 1 via UI when flashAttn turned on with layers > 1', () => {
         useAppStore.getState().updateSettings({ enableGpu: true, flashAttn: false, gpuLayers: 8 });
         const { getByTestId } = renderScreen();
-
         fireEvent(getByTestId('flash-attn-switch'), 'valueChange', true);
-
         expect(useAppStore.getState().settings.flashAttn).toBe(true);
         expect(useAppStore.getState().settings.gpuLayers).toBe(1);
-      } finally {
-        Object.defineProperty(Platform, 'OS', { get: () => originalOS, configurable: true });
-      }
+      });
     });
   });
 

@@ -122,6 +122,15 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
+    packagingOptions {
+        jniLibs {
+            // Force compressed .so storage so Play Store extracts libs to nativeLibraryDir
+            // as real filesystem files. Without this, AGP's default "uncompressed native libs"
+            // stores .so files inside the APK zip — File.exists() returns false for them and
+            // exec() fails with EACCES (error=13) because you can't fork-exec from a zip entry.
+            useLegacyPackaging = true
+        }
+    }
 }
 
 dependencies {

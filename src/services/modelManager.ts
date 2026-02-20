@@ -315,6 +315,14 @@ class ModelManager {
       throw new Error('Model not found');
     }
 
+    // Validate paths are within the app's designated models directory
+    if (!model.filePath.startsWith(this.modelsDir)) {
+      throw new Error('Invalid model path: outside app directory');
+    }
+    if (model.mmProjPath && !model.mmProjPath.startsWith(this.modelsDir)) {
+      throw new Error('Invalid mmproj path: outside app directory');
+    }
+
     // Delete the main model file
     await RNFS.unlink(model.filePath);
 
@@ -1160,6 +1168,11 @@ class ModelManager {
 
     if (!model) {
       throw new Error('Image model not found');
+    }
+
+    // Validate path is within the app's designated image models directory
+    if (!model.modelPath.startsWith(this.imageModelsDir)) {
+      throw new Error('Invalid image model path: outside app directory');
     }
 
     // Delete the model directory

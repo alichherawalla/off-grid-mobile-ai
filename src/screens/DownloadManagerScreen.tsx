@@ -172,9 +172,9 @@ export const DownloadManagerScreen: React.FC = () => {
       const dlId = downloadId;
       const capturedKey = key;
       setTimeout(() => {
-        void loadActiveDownloads().then(() => {
-          if (dlId) cancelledKeysRef.current.delete(capturedKey);
-        });
+        loadActiveDownloads()
+          .then(() => { if (dlId) cancelledKeysRef.current.delete(capturedKey); })
+          .catch(err => { console.error('[DownloadManager] Failed to reload active downloads:', err); });
       }, 1000);
     } catch (error) {
       console.error('[DownloadManager] Failed to remove download:', error);

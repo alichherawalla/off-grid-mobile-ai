@@ -412,14 +412,14 @@ describe('ModelManager', () => {
   describe('deleteModel', () => {
     it('deletes file and updates storage', async () => {
       const storedModels = [
-        { id: 'model1', name: 'Model 1', filePath: '/models/m1.gguf', fileSize: 100 },
+        { id: 'model1', name: 'Model 1', filePath: '/mock/documents/models/m1.gguf', fileSize: 100 },
       ];
       mockedAsyncStorage.getItem.mockResolvedValue(JSON.stringify(storedModels));
       mockedRNFS.exists.mockResolvedValue(true);
 
       await modelManager.deleteModel('model1');
 
-      expect(RNFS.unlink).toHaveBeenCalledWith('/models/m1.gguf');
+      expect(RNFS.unlink).toHaveBeenCalledWith('/mock/documents/models/m1.gguf');
       // Storage should be updated with empty list
       expect(AsyncStorage.setItem).toHaveBeenCalledWith(
         MODELS_STORAGE_KEY,
@@ -432,9 +432,9 @@ describe('ModelManager', () => {
         {
           id: 'model1',
           name: 'Model 1',
-          filePath: '/models/m1.gguf',
+          filePath: '/mock/documents/models/m1.gguf',
           fileSize: 100,
-          mmProjPath: '/models/mmproj.gguf',
+          mmProjPath: '/mock/documents/models/mmproj.gguf',
         },
       ];
       mockedAsyncStorage.getItem.mockResolvedValue(JSON.stringify(storedModels));
@@ -442,8 +442,8 @@ describe('ModelManager', () => {
 
       await modelManager.deleteModel('model1');
 
-      expect(RNFS.unlink).toHaveBeenCalledWith('/models/m1.gguf');
-      expect(RNFS.unlink).toHaveBeenCalledWith('/models/mmproj.gguf');
+      expect(RNFS.unlink).toHaveBeenCalledWith('/mock/documents/models/m1.gguf');
+      expect(RNFS.unlink).toHaveBeenCalledWith('/mock/documents/models/mmproj.gguf');
     });
 
     it('throws when model not found', async () => {
@@ -1543,9 +1543,9 @@ describe('ModelManager', () => {
         {
           id: 'model1',
           name: 'Model 1',
-          filePath: '/models/m1.gguf',
+          filePath: '/mock/documents/models/m1.gguf',
           fileSize: 100,
-          mmProjPath: '/models/mmproj.gguf',
+          mmProjPath: '/mock/documents/models/mmproj.gguf',
         },
       ];
       mockedAsyncStorage.getItem.mockResolvedValue(JSON.stringify(storedModels));
@@ -1560,7 +1560,7 @@ describe('ModelManager', () => {
       await modelManager.deleteModel('model1');
 
       // Main file should have been unlinked
-      expect(RNFS.unlink).toHaveBeenCalledWith('/models/m1.gguf');
+      expect(RNFS.unlink).toHaveBeenCalledWith('/mock/documents/models/m1.gguf');
     });
   });
 
@@ -1970,7 +1970,7 @@ describe('ModelManager', () => {
         id: 'img-delete',
         name: 'Delete Me',
         description: 'Test',
-        modelPath: '/mock/image_models/delete-model',
+        modelPath: '/mock/documents/image_models/delete-model',
         size: 2000000000,
         downloadedAt: new Date().toISOString(),
         backend: 'mnn',
@@ -1989,7 +1989,7 @@ describe('ModelManager', () => {
         id: 'img-no-file',
         name: 'No File',
         description: 'Test',
-        modelPath: '/mock/image_models/missing',
+        modelPath: '/mock/documents/image_models/missing',
         size: 1000,
         downloadedAt: new Date().toISOString(),
         backend: 'mnn',

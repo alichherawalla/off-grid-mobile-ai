@@ -920,6 +920,74 @@ describe('GenerationSettingsModal', () => {
         expect.objectContaining({ flashAttn: true })
       );
     });
+
+    it('renders GPU layers slider with gpuLayersEffective value on Android when GPU enabled', () => {
+      const { Platform } = require('react-native');
+      const originalOS = Platform.OS;
+      try {
+        Object.defineProperty(Platform, 'OS', { get: () => 'android', configurable: true });
+        mockStoreValues.settings = { ...defaultSettings, enableGpu: true, gpuLayers: 8, flashAttn: false };
+
+        const { getByText } = render(<GenerationSettingsModal {...defaultProps} />);
+        fireEvent.press(getByText('PERFORMANCE'));
+        // GPU section renders on Android — slider with gpuLayersEffective (8) should be visible
+        expect(getByText('8')).toBeTruthy();
+      } finally {
+        Object.defineProperty(Platform, 'OS', { get: () => originalOS, configurable: true });
+      }
+    });
+
+    it('clamps gpuLayers to 1 on Android when turning flash attn On with layers > 1', () => {
+      const { Platform } = require('react-native');
+      const originalOS = Platform.OS;
+      try {
+        Object.defineProperty(Platform, 'OS', { get: () => 'android', configurable: true });
+        mockStoreValues.settings = { ...defaultSettings, flashAttn: false, gpuLayers: 8 };
+
+        const { getByText, getByTestId } = render(
+          <GenerationSettingsModal {...defaultProps} />,
+        );
+
+        fireEvent.press(getByText('PERFORMANCE'));
+        mockUpdateSettings.mockClear();
+
+        fireEvent.press(getByTestId('flash-attn-on-button'));
+
+        expect(mockUpdateSettings).toHaveBeenCalledWith(
+          expect.objectContaining({ flashAttn: true, gpuLayers: 1 })
+        );
+      } finally {
+        Object.defineProperty(Platform, 'OS', { get: () => originalOS, configurable: true });
+      }
+    });
+
+    it('does not clamp gpuLayers when turning flash attn On on Android with layers = 1', () => {
+      const { Platform } = require('react-native');
+      const originalOS = Platform.OS;
+      try {
+        Object.defineProperty(Platform, 'OS', { get: () => 'android', configurable: true });
+        mockStoreValues.settings = { ...defaultSettings, flashAttn: false, gpuLayers: 1 };
+
+        const { getByText, getByTestId } = render(
+          <GenerationSettingsModal {...defaultProps} />,
+        );
+
+        fireEvent.press(getByText('PERFORMANCE'));
+        mockUpdateSettings.mockClear();
+
+        fireEvent.press(getByTestId('flash-attn-on-button'));
+
+        // gpuLayers already 1 — no clamping needed
+        expect(mockUpdateSettings).toHaveBeenCalledWith(
+          expect.objectContaining({ flashAttn: true })
+        );
+        expect(mockUpdateSettings).not.toHaveBeenCalledWith(
+          expect.objectContaining({ gpuLayers: expect.any(Number) })
+        );
+      } finally {
+        Object.defineProperty(Platform, 'OS', { get: () => originalOS, configurable: true });
+      }
+    });
   });
 
   // ============================================================================

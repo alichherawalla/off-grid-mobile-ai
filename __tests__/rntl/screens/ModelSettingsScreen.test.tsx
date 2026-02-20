@@ -199,31 +199,6 @@ describe('ModelSettingsScreen', () => {
       expect(useAppStore.getState().settings.flashAttn).toBe(false);
     });
 
-    it('clamps gpuLayers to 1 on Android when flashAttn is turned on with layers > 1', () => {
-      // Test the clamping logic directly — the onValueChange handler checks Platform.OS
-      // and clamps gpuLayers when turning on flash attn on Android with layers > 1.
-      // We test the logic without UI because Android Switch rendering differs in test env.
-      const { Platform } = require('react-native');
-      const originalOS = Platform.OS;
-      try {
-        Object.defineProperty(Platform, 'OS', { get: () => 'android' });
-
-        useAppStore.getState().updateSettings({ enableGpu: true, flashAttn: false, gpuLayers: 8 });
-
-        // Simulate the onValueChange handler logic
-        const value = true;
-        const updates: Record<string, any> = { flashAttn: value };
-        if (value && Platform.OS === 'android' && (useAppStore.getState().settings.gpuLayers ?? 6) > 1) {
-          updates.gpuLayers = 1;
-        }
-        useAppStore.getState().updateSettings(updates);
-
-        expect(useAppStore.getState().settings.flashAttn).toBe(true);
-        expect(useAppStore.getState().settings.gpuLayers).toBe(1);
-      } finally {
-        Object.defineProperty(Platform, 'OS', { get: () => originalOS });
-      }
-    });
   });
 
   // ============================================================================
@@ -560,6 +535,37 @@ describe('ModelSettingsScreen', () => {
     it('does not show GPU Layers on iOS', () => {
       const { queryByText } = renderScreen();
       expect(queryByText('GPU Layers')).toBeNull();
+    });
+
+    it('shows GPU Acceleration and GPU Layers slider on Android with GPU enabled', () => {
+      const { Platform } = require('react-native');
+      const originalOS = Platform.OS;
+      try {
+        Object.defineProperty(Platform, 'OS', { get: () => 'android', configurable: true });
+        useAppStore.getState().updateSettings({ enableGpu: true, gpuLayers: 6 });
+        const { getByText } = renderScreen();
+        expect(getByText('GPU Acceleration')).toBeTruthy();
+        expect(getByText('GPU Layers')).toBeTruthy();
+      } finally {
+        Object.defineProperty(Platform, 'OS', { get: () => originalOS, configurable: true });
+      }
+    });
+
+    it('clamps gpuLayers to 1 via UI when flashAttn turned on on Android with layers > 1', () => {
+      const { Platform } = require('react-native');
+      const originalOS = Platform.OS;
+      try {
+        Object.defineProperty(Platform, 'OS', { get: () => 'android', configurable: true });
+        useAppStore.getState().updateSettings({ enableGpu: true, flashAttn: false, gpuLayers: 8 });
+        const { getByTestId } = renderScreen();
+
+        fireEvent(getByTestId('flash-attn-switch'), 'valueChange', true);
+
+        expect(useAppStore.getState().settings.flashAttn).toBe(true);
+        expect(useAppStore.getState().settings.gpuLayers).toBe(1);
+      } finally {
+        Object.defineProperty(Platform, 'OS', { get: () => originalOS, configurable: true });
+      }
     });
   });
 

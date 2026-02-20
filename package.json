@@ -13,6 +13,7 @@
     "test:e2e": "./scripts/run-tests.sh",
     "test:e2e:all": "./scripts/run-tests.sh",
     "test:e2e:single": "maestro test",
+    "test:ios": "cd ios && xcodebuild test -workspace OffgridMobile.xcworkspace -scheme OffgridMobile -destination 'platform=iOS Simulator,name=iPhone 16e' -only-testing:OffgridMobileTests | xcpretty",
     "postinstall": "patch-package"
   },
   "dependencies": {

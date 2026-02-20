@@ -1,0 +1,54 @@
+name: iOS Unit Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-ios:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Install CocoaPods
+        run: |
+          gem install cocoapods
+          cd ios && pod install
+
+      - name: Run iOS unit tests
+        run: |
+          xcodebuild test \
+            -workspace ios/OffgridMobile.xcworkspace \
+            -scheme OffgridMobile \
+            -destination 'platform=iOS Simulator,name=iPhone 16e' \
+            -only-testing:OffgridMobileTests \
+            | xcpretty --color && exit "${PIPESTATUS[0]}"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-results
+          path: ~/Library/Developer/Xcode/DerivedData/**/Logs/Test/*.xcresult
+          if-no-files-found: ignore

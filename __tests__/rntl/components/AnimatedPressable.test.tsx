@@ -23,6 +23,8 @@ jest.mock('../../../src/utils/haptics', () => ({
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { triggerHaptic: mockTriggerHaptic } = require('../../../src/utils/haptics');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const Reanimated = require('react-native-reanimated');
 
 describe('AnimatedPressable', () => {
   beforeEach(() => {
@@ -129,6 +131,47 @@ describe('AnimatedPressable', () => {
     );
     fireEvent(getByTestId('pressable'), 'pressIn');
     expect(mockTriggerHaptic).not.toHaveBeenCalled();
+  });
+
+  // ============================================================================
+  // Reduced Motion
+  // ============================================================================
+  it('still fires onPressIn callback when reducedMotion is true (skips animation only)', () => {
+    Reanimated.useReducedMotion.mockReturnValueOnce(true);
+    const onPressIn = jest.fn();
+    const { getByTestId } = render(
+      <AnimatedPressable onPressIn={onPressIn} testID="pressable">
+        <Text>RM</Text>
+      </AnimatedPressable>,
+    );
+    fireEvent(getByTestId('pressable'), 'pressIn');
+    expect(onPressIn).toHaveBeenCalledTimes(1);
+    // Animation (withSpring) should NOT have been called since reducedMotion=true
+    expect(Reanimated.withSpring).not.toHaveBeenCalled();
+  });
+
+  it('still fires onPressOut callback when reducedMotion is true (skips animation only)', () => {
+    Reanimated.useReducedMotion.mockReturnValueOnce(true);
+    const onPressOut = jest.fn();
+    const { getByTestId } = render(
+      <AnimatedPressable onPressOut={onPressOut} testID="pressable">
+        <Text>RM</Text>
+      </AnimatedPressable>,
+    );
+    fireEvent(getByTestId('pressable'), 'pressOut');
+    expect(onPressOut).toHaveBeenCalledTimes(1);
+    expect(Reanimated.withSpring).not.toHaveBeenCalled();
+  });
+
+  it('still triggers haptic when reducedMotion is true', () => {
+    Reanimated.useReducedMotion.mockReturnValueOnce(true);
+    const { getByTestId } = render(
+      <AnimatedPressable hapticType="impactMedium" testID="pressable">
+        <Text>RM haptic</Text>
+      </AnimatedPressable>,
+    );
+    fireEvent(getByTestId('pressable'), 'pressIn');
+    expect(mockTriggerHaptic).toHaveBeenCalledWith('impactMedium');
   });
 
   // ============================================================================

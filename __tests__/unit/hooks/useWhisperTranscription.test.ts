@@ -254,4 +254,258 @@ describe('useWhisperTranscription', () => {
 
     expect(result.current.isModelLoaded).toBe(true);
   });
+
+  // ========================================================================
+  // startRecording: already-recording branch (lines 143-147)
+  // ========================================================================
+  it('stops current recording before starting a new one when isCurrentlyTranscribing is true', async () => {
+    mockWhisperService.isModelLoaded.mockReturnValue(true);
+    // First check in startRecording returns true (triggers stop), then false for subsequent checks
+    mockWhisperService.isCurrentlyTranscribing
+      .mockReturnValueOnce(true)
+      .mockReturnValue(false);
+    mockWhisperService.stopTranscription.mockResolvedValue(undefined);
+    mockWhisperService.startRealtimeTranscription.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useWhisperTranscription());
+
+    // Start recording - it will internally call stopRecording() which has a 2500ms wait,
+    // then startRecording waits 150ms after stop completes.
+    let startPromise: Promise<void>;
+    act(() => {
+      startPromise = result.current.startRecording();
+    });
+
+    // Advance past stopRecording's TRAILING_RECORD_TIME (2500ms)
+    await act(async () => {
+      jest.advanceTimersByTime(2600);
+    });
+
+    // Advance past startRecording's 150ms debounce after stopRecording
+    await act(async () => {
+      jest.advanceTimersByTime(200);
+      await startPromise!;
+    });
+
+    // stopTranscription called as part of stopping the previous session
+    expect(mockWhisperService.stopTranscription).toHaveBeenCalled();
+    // startRealtimeTranscription called for the new session
+    expect(mockWhisperService.startRealtimeTranscription).toHaveBeenCalled();
+  });
+
+  // ========================================================================
+  // transcription callback: no text path (lines 197-200)
+  // ========================================================================
+  it('clears isTranscribing when recording finishes with no text result', async () => {
+    mockWhisperService.isModelLoaded.mockReturnValue(true);
+
+    // Simulate callback: capturing=false, no text
+    mockWhisperService.startRealtimeTranscription.mockImplementation(
+      async (callback: any) => {
+        callback({ isCapturing: false, text: null, recordingTime: 0 });
+      },
+    );
+
+    const { result } = renderHook(() => useWhisperTranscription());
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    expect(result.current.isTranscribing).toBe(false);
+    expect(result.current.partialResult).toBe('');
+    expect(result.current.finalResult).toBe('');
+  });
+
+  it('clears isTranscribing when recording finishes with empty string text', async () => {
+    mockWhisperService.isModelLoaded.mockReturnValue(true);
+
+    mockWhisperService.startRealtimeTranscription.mockImplementation(
+      async (callback: any) => {
+        callback({ isCapturing: false, text: '', recordingTime: 0 });
+      },
+    );
+
+    const { result } = renderHook(() => useWhisperTranscription());
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    expect(result.current.isTranscribing).toBe(false);
+    expect(result.current.finalResult).toBe('');
+  });
+
+  // ========================================================================
+  // clearResult: calls stopTranscription when currently transcribing (line 132-134)
+  // ========================================================================
+  it('calls stopTranscription in clearResult when isCurrentlyTranscribing is true', async () => {
+    mockWhisperService.isModelLoaded.mockReturnValue(true);
+    mockWhisperService.isCurrentlyTranscribing.mockReturnValue(true);
+    mockWhisperService.stopTranscription.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useWhisperTranscription());
+
+    act(() => {
+      result.current.clearResult();
+    });
+
+    expect(mockWhisperService.stopTranscription).toHaveBeenCalled();
+  });
+
+  it('does not call stopTranscription in clearResult when not transcribing', async () => {
+    mockWhisperService.isCurrentlyTranscribing.mockReturnValue(false);
+
+    const { result } = renderHook(() => useWhisperTranscription());
+
+    act(() => {
+      result.current.clearResult();
+    });
+
+    expect(mockWhisperService.stopTranscription).not.toHaveBeenCalled();
+  });
+
+  // ========================================================================
+  // stopRecording: cancelled during trailing capture (lines 104-108)
+  // ========================================================================
+  it('aborts stopRecording early and calls forceReset when cancelled during trailing capture', async () => {
+    mockWhisperService.isModelLoaded.mockReturnValue(true);
+    mockWhisperService.stopTranscription.mockResolvedValue(undefined);
+    mockWhisperService.startRealtimeTranscription.mockImplementation(
+      async (callback: any) => {
+        callback({ isCapturing: true, text: 'partial', recordingTime: 1 });
+      },
+    );
+
+    const { result } = renderHook(() => useWhisperTranscription());
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    // Start stopping (triggers 2500ms trailing wait)
+    let stopPromise: Promise<void>;
+    act(() => {
+      stopPromise = result.current.stopRecording();
+    });
+
+    // Cancel during the trailing wait (before 2500ms)
+    act(() => {
+      result.current.clearResult(); // sets isCancelled.current = true
+    });
+
+    // Advance past trailing time
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+      await stopPromise!;
+    });
+
+    // forceReset is called because cancelled during trailing capture
+    expect(mockWhisperService.forceReset).toHaveBeenCalled();
+    // stopTranscription should NOT be called (returned early)
+    expect(mockWhisperService.stopTranscription).not.toHaveBeenCalled();
+  });
+
+  // ========================================================================
+  // stopRecording: error path (lines 114-121)
+  // ========================================================================
+  it('calls forceReset and clears transcribing state when stopTranscription throws', async () => {
+    mockWhisperService.isModelLoaded.mockReturnValue(true);
+    mockWhisperService.stopTranscription.mockRejectedValue(new Error('Stop failed'));
+    mockWhisperService.startRealtimeTranscription.mockImplementation(
+      async (callback: any) => {
+        callback({ isCapturing: true, text: 'partial', recordingTime: 1 });
+      },
+    );
+
+    const { result } = renderHook(() => useWhisperTranscription());
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    await act(async () => {
+      const stopPromise = result.current.stopRecording();
+      jest.advanceTimersByTime(3000);
+      await stopPromise;
+    });
+
+    expect(mockWhisperService.forceReset).toHaveBeenCalled();
+    expect(result.current.isTranscribing).toBe(false);
+  });
+
+  // ========================================================================
+  // finalizeTranscription: cancelled branch inside deferred timeout (lines 68-71)
+  // When transcribingStartTime is set and remaining > 0, a deferred setTimeout
+  // is created. If cancelled before it fires, isTranscribing is cleared.
+  // ========================================================================
+  it('does not set finalResult when cancelled before deferred finalizeTranscription fires', async () => {
+    mockWhisperService.isModelLoaded.mockReturnValue(true);
+    mockWhisperService.stopTranscription.mockResolvedValue(undefined);
+
+    // Provide a callback that fires after stop (simulating real Whisper behaviour)
+    // We set transcribingStartTime via stopRecording(), then trigger the callback
+    let capturedCallback: ((result: any) => void) | null = null;
+    mockWhisperService.startRealtimeTranscription.mockImplementation(
+      async (callback: any) => {
+        capturedCallback = callback;
+        // Emit a partial result so we're "recording"
+        callback({ isCapturing: true, text: 'partial', recordingTime: 1 });
+      },
+    );
+
+    const { result } = renderHook(() => useWhisperTranscription());
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    // Begin stopping - this sets transcribingStartTime.current = Date.now()
+    let stopPromise: Promise<void>;
+    act(() => {
+      stopPromise = result.current.stopRecording();
+    });
+
+    // Fire the final callback BEFORE the 2500ms trailing wait ends
+    // transcribingStartTime was just set, so elapsed ≈ 0 → remaining ≈ 600ms
+    act(() => {
+      capturedCallback!({ isCapturing: false, text: 'hello world', recordingTime: 5 });
+    });
+
+    // Now cancel (sets isCancelled = true) while the deferred timer is pending
+    act(() => {
+      result.current.clearResult();
+    });
+
+    // Advance past trailing wait and the deferred MIN_TRANSCRIBING_TIME timer
+    await act(async () => {
+      jest.advanceTimersByTime(3200);
+      await stopPromise!;
+    });
+
+    // clearResult cleared the result; the deferred timer should NOT override it
+    expect(result.current.finalResult).toBe('');
+    expect(result.current.isTranscribing).toBe(false);
+  });
+
+  // ========================================================================
+  // auto-load: error is swallowed gracefully (lines 41-43)
+  // ========================================================================
+  it('swallows auto-load error and does not propagate', async () => {
+    mockWhisperStoreState.downloadedModelId = 'whisper-base';
+    mockWhisperStoreState.isModelLoaded = false;
+    mockWhisperService.isModelLoaded.mockReturnValue(false);
+    mockLoadModel.mockRejectedValue(new Error('Network error'));
+
+    let thrownError: unknown;
+    try {
+      const { unmount } = renderHook(() => useWhisperTranscription());
+      await act(async () => {});
+      unmount();
+    } catch (err) {
+      thrownError = err;
+    }
+
+    expect(thrownError).toBeUndefined();
+  });
 });

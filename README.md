@@ -12,7 +12,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Google Play](https://img.shields.io/badge/Google%20Play-Download-brightgreen?logo=google-play)](https://play.google.com/store/apps/details?id=ai.offgridmobile)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS-green.svg)](#install)
-[![Coverage](https://img.shields.io/badge/Coverage-80%25-brightgreen.svg)](#testing)
+[![codecov](https://codecov.io/gh/alichherawalla/off-grid-mobile/graph/badge.svg?token=CODECOV_TOKEN)](https://codecov.io/gh/alichherawalla/off-grid-mobile)
 [![Slack](https://img.shields.io/badge/Slack-Join%20Community-4A154B?logo=slack)](https://join.slack.com/t/off-grid-mobile/shared_invite/zt-3q7kj5gr6-rVzx5gl5LKPQh4mUE2CCvA)
 
 </div>

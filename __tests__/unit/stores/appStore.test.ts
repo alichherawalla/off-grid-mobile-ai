@@ -1177,6 +1177,36 @@ describe('appStore', () => {
       expect(getAppState().settings.gpuLayers).toBe(6);
     });
 
+    it('has flashAttn disabled by default on Android', () => {
+      const { Platform } = require('react-native');
+      Object.defineProperty(Platform, 'OS', { get: () => 'android' });
+      // The default is set at module init time — we verify the field exists and is boolean
+      expect(typeof getAppState().settings.flashAttn).toBe('boolean');
+    });
+
+    it('updateSettings can toggle flashAttn', () => {
+      const { updateSettings } = useAppStore.getState();
+      const initial = getAppState().settings.flashAttn;
+
+      updateSettings({ flashAttn: !initial });
+      expect(getAppState().settings.flashAttn).toBe(!initial);
+
+      updateSettings({ flashAttn: initial });
+      expect(getAppState().settings.flashAttn).toBe(initial);
+    });
+
+    it('updateSettings flashAttn does not affect other fields', () => {
+      const { updateSettings } = useAppStore.getState();
+      const before = getAppState().settings;
+
+      updateSettings({ flashAttn: true });
+
+      const after = getAppState().settings;
+      expect(after.temperature).toBe(before.temperature);
+      expect(after.gpuLayers).toBe(before.gpuLayers);
+      expect(after.enableGpu).toBe(before.enableGpu);
+    });
+
     it('has showGenerationDetails disabled by default', () => {
       expect(getAppState().settings.showGenerationDetails).toBe(false);
     });

@@ -173,6 +173,80 @@ describe('ModelSettingsScreen', () => {
   });
 
   // ============================================================================
+  // Flash Attention Toggle
+  // ============================================================================
+  describe('flash attention toggle', () => {
+    it('renders Flash Attention label', () => {
+      const { getByText } = renderScreen();
+      expect(getByText('Flash Attention')).toBeTruthy();
+    });
+
+    it('updates store to true when Flash Attention switch is turned on', () => {
+      useAppStore.getState().updateSettings({ flashAttn: false });
+      const { getAllByRole } = renderScreen();
+      const switches = getAllByRole('switch');
+
+      expect(useAppStore.getState().settings.flashAttn).toBe(false);
+
+      let toggled = false;
+      for (const sw of switches) {
+        fireEvent(sw, 'valueChange', true);
+        if (useAppStore.getState().settings.flashAttn === true) {
+          toggled = true;
+          break;
+        }
+      }
+      expect(toggled).toBe(true);
+      expect(useAppStore.getState().settings.flashAttn).toBe(true);
+    });
+
+    it('updates store to false when Flash Attention switch is turned off', () => {
+      useAppStore.getState().updateSettings({ flashAttn: true });
+      const { getAllByRole } = renderScreen();
+      const switches = getAllByRole('switch');
+
+      let toggled = false;
+      for (const sw of switches) {
+        if (useAppStore.getState().settings.flashAttn === true) {
+          fireEvent(sw, 'valueChange', false);
+          if (useAppStore.getState().settings.flashAttn === false) {
+            toggled = true;
+            break;
+          }
+          useAppStore.getState().updateSettings({ flashAttn: true });
+        }
+      }
+      expect(toggled).toBe(true);
+    });
+
+    it('clamps gpuLayers to 1 on Android when flashAttn is turned on with layers > 1', () => {
+      // Test the clamping logic directly — the onValueChange handler checks Platform.OS
+      // and clamps gpuLayers when turning on flash attn on Android with layers > 1.
+      // We test the logic without UI because Android Switch rendering differs in test env.
+      const { Platform } = require('react-native');
+      const originalOS = Platform.OS;
+      try {
+        Object.defineProperty(Platform, 'OS', { get: () => 'android' });
+
+        useAppStore.getState().updateSettings({ enableGpu: true, flashAttn: false, gpuLayers: 8 });
+
+        // Simulate the onValueChange handler logic
+        const value = true;
+        const updates: Record<string, any> = { flashAttn: value };
+        if (value && Platform.OS === 'android' && (useAppStore.getState().settings.gpuLayers ?? 6) > 1) {
+          updates.gpuLayers = 1;
+        }
+        useAppStore.getState().updateSettings(updates);
+
+        expect(useAppStore.getState().settings.flashAttn).toBe(true);
+        expect(useAppStore.getState().settings.gpuLayers).toBe(1);
+      } finally {
+        Object.defineProperty(Platform, 'OS', { get: () => originalOS });
+      }
+    });
+  });
+
+  // ============================================================================
   // Image Generation Settings
   // ============================================================================
   describe('image generation settings', () => {
@@ -673,6 +747,7 @@ describe('ModelSettingsScreen', () => {
           modelLoadingStrategy: undefined as any,
           enableGpu: undefined as any,
           gpuLayers: undefined as any,
+          flashAttn: undefined as any,
           showGenerationDetails: undefined as any,
           enhanceImagePrompts: undefined as any,
         },

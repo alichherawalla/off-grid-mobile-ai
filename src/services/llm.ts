@@ -147,6 +147,9 @@ class LLMService {
       // Update internal settings tracker
       this.currentSettings = { nThreads, nBatch, contextLength };
 
+      // Flash attention is user-configurable. On Android, enabling flash attn with n_gpu_layers > 1
+      // causes a SIGABRT in lm_ggml_backend_sched_split_graph — the user is warned in the UI.
+      const useFlashAttn = settings.flashAttn ?? (Platform.OS !== 'android');
       const baseParams = {
         model: modelPath,
         use_mlock: false,
@@ -154,9 +157,9 @@ class LLMService {
         n_threads: nThreads,
         use_mmap: true,
         vocab_only: false,
-        flash_attn: true,
-        cache_type_k: 'q8_0',
-        cache_type_v: 'q8_0',
+        flash_attn: useFlashAttn,
+        cache_type_k: useFlashAttn ? 'q8_0' : 'f16',
+        cache_type_v: useFlashAttn ? 'q8_0' : 'f16',
       };
 
       console.log(`[LLM] Loading model: ctx=${contextLength}, threads=${nThreads}, batch=${nBatch}`);
@@ -909,6 +912,7 @@ class LLMService {
       const gpuEnabled = appSettings.enableGpu !== false;
       const nGpuLayers = gpuEnabled ? (appSettings.gpuLayers ?? DEFAULT_GPU_LAYERS) : 0;
 
+      const useFlashAttnReload = appSettings.flashAttn ?? (Platform.OS !== 'android');
       const reloadParams = {
         model: modelPath,
         use_mlock: false,
@@ -917,9 +921,9 @@ class LLMService {
         n_threads: settings.nThreads,
         use_mmap: true,
         vocab_only: false,
-        flash_attn: true,
-        cache_type_k: 'q8_0',
-        cache_type_v: 'q8_0',
+        flash_attn: useFlashAttnReload,
+        cache_type_k: useFlashAttnReload ? 'q8_0' : 'f16',
+        cache_type_v: useFlashAttnReload ? 'q8_0' : 'f16',
       };
 
       // Try with GPU setting, fall back to CPU if it fails

@@ -402,30 +402,62 @@ export const ModelSettingsScreen: React.FC = () => {
                 />
               </View>
 
-              {rawSettings?.enableGpu !== false && (
-                <View style={styles.sliderSection}>
-                  <View style={styles.sliderHeader}>
-                    <Text style={styles.sliderLabel}>GPU Layers</Text>
-                    <Text style={styles.sliderValue}>{rawSettings?.gpuLayers ?? 6}</Text>
+              {rawSettings?.enableGpu !== false && (() => {
+                const flashAttn = rawSettings?.flashAttn ?? (Platform.OS !== 'android');
+                const maxGpuLayers = (Platform.OS === 'android' && flashAttn) ? 1 : 99;
+                const effectiveGpuLayers = Math.min(rawSettings?.gpuLayers ?? 6, maxGpuLayers);
+                return (
+                  <View style={styles.sliderSection}>
+                    <View style={styles.sliderHeader}>
+                      <Text style={styles.sliderLabel}>GPU Layers</Text>
+                      <Text style={styles.sliderValue}>{effectiveGpuLayers}</Text>
+                    </View>
+                    <Text style={styles.sliderDesc}>
+                      Layers offloaded to GPU. Higher = faster but may crash on low-VRAM devices.
+                    </Text>
+                    <Slider
+                      style={styles.slider}
+                      minimumValue={1}
+                      maximumValue={maxGpuLayers}
+                      step={1}
+                      value={effectiveGpuLayers}
+                      onSlidingComplete={(value) => updateSettings({ gpuLayers: value })}
+                      minimumTrackTintColor={colors.primary}
+                      maximumTrackTintColor={colors.surface}
+                      thumbTintColor={colors.primary}
+                    />
+                    {Platform.OS === 'android' && flashAttn && (
+                      <Text style={styles.warningText}>
+                        Flash Attention limits GPU layers to 1 on Android
+                      </Text>
+                    )}
                   </View>
-                  <Text style={styles.sliderDesc}>
-                    Layers offloaded to GPU. Higher = faster but may crash on low-VRAM devices.
-                  </Text>
-                  <Slider
-                    style={styles.slider}
-                    minimumValue={1}
-                    maximumValue={99}
-                    step={1}
-                    value={rawSettings?.gpuLayers ?? 6}
-                    onSlidingComplete={(value) => updateSettings({ gpuLayers: value })}
-                    minimumTrackTintColor={colors.primary}
-                    maximumTrackTintColor={colors.surface}
-                    thumbTintColor={colors.primary}
-                  />
-                </View>
-              )}
+                );
+              })()}
+
             </>
           )}
+
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleInfo}>
+              <Text style={styles.toggleLabel}>Flash Attention</Text>
+              <Text style={styles.toggleDesc}>
+                Faster inference and lower memory. On Android, enabling this limits GPU layers to 1. Requires model reload.
+              </Text>
+            </View>
+            <Switch
+              value={rawSettings?.flashAttn ?? (Platform.OS !== 'android')}
+              onValueChange={(value) => {
+                const updates: Parameters<typeof updateSettings>[0] = { flashAttn: value };
+                if (value && Platform.OS === 'android' && (rawSettings?.gpuLayers ?? 6) > 1) {
+                  updates.gpuLayers = 1;
+                }
+                updateSettings(updates);
+              }}
+              trackColor={{ false: colors.surfaceLight, true: colors.primary + '80' }}
+              thumbColor={(rawSettings?.flashAttn ?? (Platform.OS !== 'android')) ? colors.primary : colors.textMuted}
+            />
+          </View>
 
           <View style={styles.toggleRow}>
             <View style={styles.toggleInfo}>
@@ -575,6 +607,12 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
     ...TYPOGRAPHY.bodySmall,
     color: colors.textMuted,
     marginBottom: SPACING.sm,
+    lineHeight: 18,
+  },
+  warningText: {
+    ...TYPOGRAPHY.bodySmall,
+    color: colors.warning,
+    marginTop: SPACING.xs,
     lineHeight: 18,
   },
   slider: {

@@ -85,6 +85,7 @@ const defaultSettings = {
   nBatch: 256,
   enableGpu: false,
   gpuLayers: 6,
+  flashAttn: false,
   modelLoadingStrategy: 'memory',
   showGenerationDetails: false,
   classifierModelId: null,
@@ -874,19 +875,95 @@ describe('GenerationSettingsModal', () => {
   // ============================================================================
 
   // ============================================================================
+  // Flash Attention toggle
+  // ============================================================================
+  describe('flash attention toggle', () => {
+    it('renders Flash Attention label inside PERFORMANCE section', () => {
+      const { getByText } = render(
+        <GenerationSettingsModal {...defaultProps} />,
+      );
+
+      fireEvent.press(getByText('PERFORMANCE'));
+      expect(getByText('Flash Attention')).toBeTruthy();
+    });
+
+    it('calls updateSettings with flashAttn: false when Off is pressed', () => {
+      mockStoreValues.settings = { ...defaultSettings, flashAttn: true };
+
+      const { getByText, getAllByText } = render(
+        <GenerationSettingsModal {...defaultProps} />,
+      );
+
+      fireEvent.press(getByText('PERFORMANCE'));
+      mockUpdateSettings.mockClear();
+
+      // There may be multiple Off buttons; find the one that sets flashAttn
+      const offButtons = getAllByText('Off');
+      for (const btn of offButtons) {
+        fireEvent.press(btn);
+        if (mockUpdateSettings.mock.calls.some((args: any[]) => 'flashAttn' in args[0])) {
+          break;
+        }
+        mockUpdateSettings.mockClear();
+      }
+
+      expect(mockUpdateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ flashAttn: false })
+      );
+    });
+
+    it('calls updateSettings with flashAttn: true when On is pressed', () => {
+      mockStoreValues.settings = { ...defaultSettings, flashAttn: false };
+
+      const { getByText, getAllByText } = render(
+        <GenerationSettingsModal {...defaultProps} />,
+      );
+
+      fireEvent.press(getByText('PERFORMANCE'));
+      mockUpdateSettings.mockClear();
+
+      const onButtons = getAllByText('On');
+      for (const btn of onButtons) {
+        fireEvent.press(btn);
+        if (mockUpdateSettings.mock.calls.some((args: any[]) => 'flashAttn' in args[0])) {
+          break;
+        }
+        mockUpdateSettings.mockClear();
+      }
+
+      expect(mockUpdateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ flashAttn: true })
+      );
+    });
+  });
+
+  // ============================================================================
   // Show generation details off
   // ============================================================================
   it('calls updateSettings to disable show generation details', () => {
     mockStoreValues.settings = { ...defaultSettings, showGenerationDetails: true };
 
-    const { getByText } = render(
+    const { getByText, getAllByText } = render(
       <GenerationSettingsModal {...defaultProps} />,
     );
 
     fireEvent.press(getByText('PERFORMANCE'));
+    mockUpdateSettings.mockClear();
 
-    // Press "Off" button for show generation details
-    fireEvent.press(getByText('Off'));
+    // There may be multiple Off buttons (GPU, Flash Attention, Show Details).
+    // Find the one that sets showGenerationDetails.
+    const offButtons = getAllByText('Off');
+    for (const btn of offButtons) {
+      fireEvent.press(btn);
+      if (
+        mockUpdateSettings.mock.calls.some(
+          (args: any[]) => 'showGenerationDetails' in args[0],
+        )
+      ) {
+        break;
+      }
+      mockUpdateSettings.mockClear();
+    }
 
     expect(mockUpdateSettings).toHaveBeenCalledWith({ showGenerationDetails: false });
   });

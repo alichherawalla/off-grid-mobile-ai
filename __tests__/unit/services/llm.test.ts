@@ -205,6 +205,52 @@ describe('LLMService', () => {
       );
     });
 
+    it('uses flashAttn=true from store and sets q8_0 KV cache', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext();
+      mockedInitLlama.mockResolvedValue(ctx as any);
+
+      useAppStore.setState({
+        settings: {
+          ...useAppStore.getState().settings,
+          flashAttn: true,
+        },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+
+      expect(initLlama).toHaveBeenCalledWith(
+        expect.objectContaining({
+          flash_attn: true,
+          cache_type_k: 'q8_0',
+          cache_type_v: 'q8_0',
+        })
+      );
+    });
+
+    it('uses flashAttn=false from store and sets f16 KV cache', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext();
+      mockedInitLlama.mockResolvedValue(ctx as any);
+
+      useAppStore.setState({
+        settings: {
+          ...useAppStore.getState().settings,
+          flashAttn: false,
+        },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+
+      expect(initLlama).toHaveBeenCalledWith(
+        expect.objectContaining({
+          flash_attn: false,
+          cache_type_k: 'f16',
+          cache_type_v: 'f16',
+        })
+      );
+    });
+
     it('captures GPU status from context', async () => {
       mockedRNFS.exists.mockResolvedValue(true);
       const ctx = createMockLlamaContext({
@@ -1330,6 +1376,66 @@ describe('LLMService', () => {
 
       await llmService.loadModel('/models/test.gguf');
       expect(llmService.isModelLoaded()).toBe(true);
+    });
+  });
+
+  describe('reloadWithSettings flash attention', () => {
+    it('passes flashAttn=true from store to reloadWithSettings', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx1 = createMockLlamaContext();
+      const ctx2 = createMockLlamaContext();
+      mockedInitLlama
+        .mockResolvedValueOnce(ctx1 as any)
+        .mockResolvedValueOnce(ctx2 as any);
+
+      useAppStore.setState({
+        settings: {
+          ...useAppStore.getState().settings,
+          flashAttn: true,
+          enableGpu: false,
+        },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+      await llmService.reloadWithSettings('/models/test.gguf', {
+        nThreads: 4,
+        nBatch: 256,
+        contextLength: 2048,
+      });
+
+      const reloadCall = (initLlama as jest.Mock).mock.calls[1][0];
+      expect(reloadCall.flash_attn).toBe(true);
+      expect(reloadCall.cache_type_k).toBe('q8_0');
+      expect(reloadCall.cache_type_v).toBe('q8_0');
+    });
+
+    it('passes flashAttn=false from store to reloadWithSettings', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx1 = createMockLlamaContext();
+      const ctx2 = createMockLlamaContext();
+      mockedInitLlama
+        .mockResolvedValueOnce(ctx1 as any)
+        .mockResolvedValueOnce(ctx2 as any);
+
+      useAppStore.setState({
+        settings: {
+          ...useAppStore.getState().settings,
+          flashAttn: false,
+          enableGpu: false,
+        },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+      await llmService.reloadWithSettings('/models/test.gguf', {
+        nThreads: 4,
+        nBatch: 256,
+        contextLength: 2048,
+      });
+
+      const reloadCall = (initLlama as jest.Mock).mock.calls[1][0];
+      expect(reloadCall.flash_attn).toBe(false);
+      expect(reloadCall.cache_type_k).toBe('f16');
+      expect(reloadCall.cache_type_v).toBe('f16');
     });
   });
 

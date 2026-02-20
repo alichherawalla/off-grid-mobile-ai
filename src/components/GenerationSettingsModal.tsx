@@ -736,30 +736,90 @@ export const GenerationSettingsModal: React.FC<GenerationSettingsModalProps> = (
             </View>
 
             {/* GPU Layers Slider - inline when GPU is enabled */}
-            {settings.enableGpu && (
-              <View style={styles.gpuLayersInline}>
-                <View style={styles.settingHeader}>
-                  <Text style={styles.settingLabel}>GPU Layers</Text>
-                  <Text style={styles.settingValue}>{settings.gpuLayers ?? 6}</Text>
+            {settings.enableGpu && (() => {
+              const flashAttn = settings.flashAttn ?? (Platform.OS !== 'android');
+              const maxGpuLayers = (Platform.OS === 'android' && flashAttn) ? 1 : 99;
+              const effectiveGpuLayers = Math.min(settings.gpuLayers ?? 6, maxGpuLayers);
+              return (
+                <View style={styles.gpuLayersInline}>
+                  <View style={styles.settingHeader}>
+                    <Text style={styles.settingLabel}>GPU Layers</Text>
+                    <Text style={styles.settingValue}>{effectiveGpuLayers}</Text>
+                  </View>
+                  <Text style={styles.settingDescription}>
+                    Layers offloaded to GPU. Higher = faster but may crash on low-VRAM devices. Requires model reload.
+                  </Text>
+                  <Slider
+                    style={styles.slider}
+                    minimumValue={1}
+                    maximumValue={maxGpuLayers}
+                    step={1}
+                    value={effectiveGpuLayers}
+                    onSlidingComplete={(value: number) => updateSettings({ gpuLayers: value })}
+                    minimumTrackTintColor={colors.primary}
+                    maximumTrackTintColor={colors.surfaceLight}
+                    thumbTintColor={colors.primary}
+                  />
+                  {Platform.OS === 'android' && flashAttn && (
+                    <Text style={styles.settingWarning}>
+                      Flash Attention limits GPU layers to 1 on Android
+                    </Text>
+                  )}
                 </View>
-                <Text style={styles.settingDescription}>
-                  Layers offloaded to GPU. Higher = faster but may crash on low-VRAM devices. Requires model reload.
-                </Text>
-                <Slider
-                  style={styles.slider}
-                  minimumValue={1}
-                  maximumValue={99}
-                  step={1}
-                  value={settings.gpuLayers ?? 6}
-                  onSlidingComplete={(value: number) => updateSettings({ gpuLayers: value })}
-                  minimumTrackTintColor={colors.primary}
-                  maximumTrackTintColor={colors.surfaceLight}
-                  thumbTintColor={colors.primary}
-                />
-              </View>
-            )}
+              );
+            })()}
           </View>
         )}
+
+        {/* Flash Attention Toggle */}
+        <View style={styles.modeToggleContainer}>
+          <View style={styles.modeToggleInfo}>
+            <Text style={styles.modeToggleLabel}>Flash Attention</Text>
+            <Text style={styles.modeToggleDesc}>
+              Faster inference and lower memory. On Android, enabling this limits GPU layers to 1. Requires model reload.
+            </Text>
+          </View>
+          <View style={styles.modeToggleButtons}>
+            <TouchableOpacity
+              style={[
+                styles.modeButton,
+                !(settings.flashAttn ?? (Platform.OS !== 'android')) && styles.modeButtonActive,
+              ]}
+              onPress={() => updateSettings({ flashAttn: false })}
+            >
+              <Text
+                style={[
+                  styles.modeButtonText,
+                  !(settings.flashAttn ?? (Platform.OS !== 'android')) && styles.modeButtonTextActive,
+                ]}
+              >
+                Off
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.modeButton,
+                (settings.flashAttn ?? (Platform.OS !== 'android')) && styles.modeButtonActive,
+              ]}
+              onPress={() => {
+                const updates: Parameters<typeof updateSettings>[0] = { flashAttn: true };
+                if (Platform.OS === 'android' && (settings.gpuLayers ?? 6) > 1) {
+                  updates.gpuLayers = 1;
+                }
+                updateSettings(updates);
+              }}
+            >
+              <Text
+                style={[
+                  styles.modeButtonText,
+                  (settings.flashAttn ?? (Platform.OS !== 'android')) && styles.modeButtonTextActive,
+                ]}
+              >
+                On
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         <View style={styles.modeToggleContainer}>
           <View style={styles.modeToggleInfo}>
@@ -946,6 +1006,12 @@ const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
     ...TYPOGRAPHY.bodySmall,
     color: colors.textSecondary,
     marginBottom: SPACING.md,
+    lineHeight: 18,
+  },
+  settingWarning: {
+    ...TYPOGRAPHY.bodySmall,
+    color: colors.warning,
+    marginTop: SPACING.xs,
     lineHeight: 18,
   },
   slider: {

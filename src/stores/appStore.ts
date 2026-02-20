@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { DeviceInfo, DownloadedModel, ModelRecommendation, ONNXImageModel, ImageGenerationMode, AutoDetectMethod, ModelLoadingStrategy, GeneratedImage } from '../types';
 
 interface AppState {
@@ -89,6 +90,8 @@ interface AppState {
     enableGpu: boolean;
     // Number of model layers offloaded to GPU (higher = more GPU usage, 0 = CPU only)
     gpuLayers: number;
+    // Flash attention: faster but incompatible with Android Hexagon/OpenCL multi-layer GPU offload
+    flashAttn: boolean;
     // Show generation details (GPU, model, tok/s, steps, etc.) in chat messages
     showGenerationDetails: boolean;
   };
@@ -238,6 +241,8 @@ export const useAppStore = create<AppState>()(
         enableGpu: false,
         // Number of model layers to offload to GPU (iOS Metal can handle more; Android OpenCL needs conservative values)
         gpuLayers: 6,
+        // Disabled by default on Android — crashes with n_gpu_layers > 1 on OpenCL backend
+        flashAttn: Platform.OS !== 'android',
         // Show generation details in chat messages (GPU, model, tok/s, etc.)
         showGenerationDetails: false,
       },

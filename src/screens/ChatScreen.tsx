@@ -787,8 +787,8 @@ export const ChatScreen: React.FC = () => {
         generationService.stopGeneration().catch(() => { }),
         llmService.stopGeneration().catch(() => { }),
       ]);
-    } catch (_e) {
-      // Ignore errors - generation may have already finished
+    } catch (error_) {
+      console.error('Error stopping generation:', error_);
     }
 
     // Stop image generation if in progress
@@ -994,7 +994,7 @@ export const ChatScreen: React.FC = () => {
       }
 
       // Generate filename with timestamp
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const timestamp = new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-');
       const fileName = `generated_${timestamp}.png`;
       const destPath = `${picturesDir}/${fileName}`;
 

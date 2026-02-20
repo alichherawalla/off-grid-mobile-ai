@@ -83,8 +83,8 @@ android {
         applicationId "ai.offgridmobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1771585509
-        versionName "0.0.53"
+        versionCode 1771614584
+        versionName "0.0.54"
     }
     signingConfigs {
         debug {
@@ -122,7 +122,7 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
-    packagingOptions {
+    packaging {
         jniLibs {
             // Force compressed .so storage so Play Store extracts libs to nativeLibraryDir
             // as real filesystem files. Without this, AGP's default "uncompressed native libs"

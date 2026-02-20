@@ -722,10 +722,10 @@ export const ChatScreen: React.FC = () => {
       || APP_CONFIG.defaultSystemPrompt;
 
     // Find the last user message to create context version with document content
-    const lastUserMsg = conversationMessages[conversationMessages.length - 1];
-    const userMessageForContext: Message = lastUserMsg?.role === 'user'
+    const lastUserMsg = conversationMessages.at(-1);
+    const userMessageForContext = (lastUserMsg?.role === 'user'
       ? { ...lastUserMsg, content: messageText }
-      : lastUserMsg;
+      : lastUserMsg) as Message;
 
     const messagesForContext: Message[] = [
       {

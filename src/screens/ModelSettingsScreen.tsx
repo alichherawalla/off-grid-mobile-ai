@@ -27,6 +27,11 @@ export const ModelSettingsScreen: React.FC = () => {
 
   const systemPrompt = rawSettings?.systemPrompt ?? 'You are a helpful AI assistant.';
 
+  // Flash attention derived values — computed once to avoid repetition in JSX
+  const isFlashAttnOn = rawSettings?.flashAttn ?? (Platform.OS !== 'android');
+  const gpuLayersMax = (Platform.OS === 'android' && isFlashAttnOn) ? 1 : 99;
+  const gpuLayersEffective = Math.min(rawSettings?.gpuLayers ?? 6, gpuLayersMax);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
@@ -402,38 +407,33 @@ export const ModelSettingsScreen: React.FC = () => {
                 />
               </View>
 
-              {rawSettings?.enableGpu !== false && (() => {
-                const flashAttn = rawSettings?.flashAttn ?? (Platform.OS !== 'android');
-                const maxGpuLayers = (Platform.OS === 'android' && flashAttn) ? 1 : 99;
-                const effectiveGpuLayers = Math.min(rawSettings?.gpuLayers ?? 6, maxGpuLayers);
-                return (
-                  <View style={styles.sliderSection}>
-                    <View style={styles.sliderHeader}>
-                      <Text style={styles.sliderLabel}>GPU Layers</Text>
-                      <Text style={styles.sliderValue}>{effectiveGpuLayers}</Text>
-                    </View>
-                    <Text style={styles.sliderDesc}>
-                      Layers offloaded to GPU. Higher = faster but may crash on low-VRAM devices.
-                    </Text>
-                    <Slider
-                      style={styles.slider}
-                      minimumValue={1}
-                      maximumValue={maxGpuLayers}
-                      step={1}
-                      value={effectiveGpuLayers}
-                      onSlidingComplete={(value) => updateSettings({ gpuLayers: value })}
-                      minimumTrackTintColor={colors.primary}
-                      maximumTrackTintColor={colors.surface}
-                      thumbTintColor={colors.primary}
-                    />
-                    {Platform.OS === 'android' && flashAttn && (
-                      <Text style={styles.warningText}>
-                        Flash Attention limits GPU layers to 1 on Android
-                      </Text>
-                    )}
+              {rawSettings?.enableGpu !== false && (
+                <View style={styles.sliderSection}>
+                  <View style={styles.sliderHeader}>
+                    <Text style={styles.sliderLabel}>GPU Layers</Text>
+                    <Text style={styles.sliderValue}>{gpuLayersEffective}</Text>
                   </View>
-                );
-              })()}
+                  <Text style={styles.sliderDesc}>
+                    Layers offloaded to GPU. Higher = faster but may crash on low-VRAM devices.
+                  </Text>
+                  <Slider
+                    style={styles.slider}
+                    minimumValue={1}
+                    maximumValue={gpuLayersMax}
+                    step={1}
+                    value={gpuLayersEffective}
+                    onSlidingComplete={(value) => updateSettings({ gpuLayers: value })}
+                    minimumTrackTintColor={colors.primary}
+                    maximumTrackTintColor={colors.surface}
+                    thumbTintColor={colors.primary}
+                  />
+                  {Platform.OS === 'android' && isFlashAttnOn && (
+                    <Text style={styles.warningText}>
+                      Flash Attention limits GPU layers to 1 on Android
+                    </Text>
+                  )}
+                </View>
+              )}
 
             </>
           )}
@@ -446,7 +446,8 @@ export const ModelSettingsScreen: React.FC = () => {
               </Text>
             </View>
             <Switch
-              value={rawSettings?.flashAttn ?? (Platform.OS !== 'android')}
+              testID="flash-attn-switch"
+              value={isFlashAttnOn}
               onValueChange={(value) => {
                 const updates: Parameters<typeof updateSettings>[0] = { flashAttn: value };
                 if (value && Platform.OS === 'android' && (rawSettings?.gpuLayers ?? 6) > 1) {
@@ -455,7 +456,7 @@ export const ModelSettingsScreen: React.FC = () => {
                 updateSettings(updates);
               }}
               trackColor={{ false: colors.surfaceLight, true: colors.primary + '80' }}
-              thumbColor={(rawSettings?.flashAttn ?? (Platform.OS !== 'android')) ? colors.primary : colors.textMuted}
+              thumbColor={isFlashAttnOn ? colors.primary : colors.textMuted}
             />
           </View>
 

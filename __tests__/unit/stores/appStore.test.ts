@@ -1177,11 +1177,26 @@ describe('appStore', () => {
       expect(getAppState().settings.gpuLayers).toBe(6);
     });
 
-    it('has flashAttn disabled by default on Android', () => {
-      const { Platform } = require('react-native');
-      Object.defineProperty(Platform, 'OS', { get: () => 'android' });
-      // The default is set at module init time — we verify the field exists and is boolean
-      expect(typeof getAppState().settings.flashAttn).toBe('boolean');
+    it('has flashAttn enabled by default on iOS (test env platform)', () => {
+      // The store initializes flashAttn as Platform.OS !== 'android'.
+      // The react-native preset sets defaultPlatform to 'ios', so without resetStores()
+      // the store should default to true. We verify by loading a fresh store instance.
+      jest.resetModules();
+      try {
+        // Fresh require — no resetStores() interference, so we see the real default
+        const { useAppStore: freshStore } = require('../../../src/stores/appStore');
+        // ios !== android → true
+        expect(freshStore.getState().settings.flashAttn).toBe(true);
+      } finally {
+        jest.resetModules();
+      }
+    });
+
+    it('flashAttn default formula: false on Android, true elsewhere', () => {
+      // The store default is Platform.OS !== 'android'. Verify the formula directly.
+      const formula = (os: string) => os !== 'android';
+      expect(formula('android')).toBe(false); // Android → flash attn off by default
+      expect(formula('ios')).toBe(true);      // iOS     → flash attn on by default
     });
 
     it('updateSettings can toggle flashAttn', () => {

@@ -890,22 +890,14 @@ describe('GenerationSettingsModal', () => {
     it('calls updateSettings with flashAttn: false when Off is pressed', () => {
       mockStoreValues.settings = { ...defaultSettings, flashAttn: true };
 
-      const { getByText, getAllByText } = render(
+      const { getByText, getByTestId } = render(
         <GenerationSettingsModal {...defaultProps} />,
       );
 
       fireEvent.press(getByText('PERFORMANCE'));
       mockUpdateSettings.mockClear();
 
-      // There may be multiple Off buttons; find the one that sets flashAttn
-      const offButtons = getAllByText('Off');
-      for (const btn of offButtons) {
-        fireEvent.press(btn);
-        if (mockUpdateSettings.mock.calls.some((args: any[]) => 'flashAttn' in args[0])) {
-          break;
-        }
-        mockUpdateSettings.mockClear();
-      }
+      fireEvent.press(getByTestId('flash-attn-off-button'));
 
       expect(mockUpdateSettings).toHaveBeenCalledWith(
         expect.objectContaining({ flashAttn: false })
@@ -915,21 +907,14 @@ describe('GenerationSettingsModal', () => {
     it('calls updateSettings with flashAttn: true when On is pressed', () => {
       mockStoreValues.settings = { ...defaultSettings, flashAttn: false };
 
-      const { getByText, getAllByText } = render(
+      const { getByText, getByTestId } = render(
         <GenerationSettingsModal {...defaultProps} />,
       );
 
       fireEvent.press(getByText('PERFORMANCE'));
       mockUpdateSettings.mockClear();
 
-      const onButtons = getAllByText('On');
-      for (const btn of onButtons) {
-        fireEvent.press(btn);
-        if (mockUpdateSettings.mock.calls.some((args: any[]) => 'flashAttn' in args[0])) {
-          break;
-        }
-        mockUpdateSettings.mockClear();
-      }
+      fireEvent.press(getByTestId('flash-attn-on-button'));
 
       expect(mockUpdateSettings).toHaveBeenCalledWith(
         expect.objectContaining({ flashAttn: true })
@@ -941,7 +926,15 @@ describe('GenerationSettingsModal', () => {
   // Show generation details off
   // ============================================================================
   it('calls updateSettings to disable show generation details', () => {
-    mockStoreValues.settings = { ...defaultSettings, showGenerationDetails: true };
+    // When showGenerationDetails is ON and flash attn is also ON, both have an
+    // "Off" button in the Performance section. Start with flash attn OFF so the
+    // only "Off" button that matches { showGenerationDetails: false } is the one
+    // we want, avoiding ambiguity.
+    mockStoreValues.settings = {
+      ...defaultSettings,
+      showGenerationDetails: true,
+      flashAttn: true, // flash attn already on → its Off button calls updateSettings({flashAttn:false})
+    };
 
     const { getByText, getAllByText } = render(
       <GenerationSettingsModal {...defaultProps} />,
@@ -950,8 +943,7 @@ describe('GenerationSettingsModal', () => {
     fireEvent.press(getByText('PERFORMANCE'));
     mockUpdateSettings.mockClear();
 
-    // There may be multiple Off buttons (GPU, Flash Attention, Show Details).
-    // Find the one that sets showGenerationDetails.
+    // Find and press the Off button that sets showGenerationDetails
     const offButtons = getAllByText('Off');
     for (const btn of offButtons) {
       fireEvent.press(btn);

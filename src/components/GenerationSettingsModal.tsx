@@ -161,6 +161,11 @@ export const GenerationSettingsModal: React.FC<GenerationSettingsModalProps> = (
     updateSettings(DEFAULT_SETTINGS);
   };
 
+  // Flash attention derived values — computed once to avoid repetition in JSX
+  const isFlashAttnOn = settings.flashAttn ?? (Platform.OS !== 'android');
+  const gpuLayersMax = (Platform.OS === 'android' && isFlashAttnOn) ? 1 : 99;
+  const gpuLayersEffective = Math.min(settings.gpuLayers ?? 6, gpuLayersMax);
+
   return (
     <AppSheet
       visible={visible}
@@ -736,38 +741,33 @@ export const GenerationSettingsModal: React.FC<GenerationSettingsModalProps> = (
             </View>
 
             {/* GPU Layers Slider - inline when GPU is enabled */}
-            {settings.enableGpu && (() => {
-              const flashAttn = settings.flashAttn ?? (Platform.OS !== 'android');
-              const maxGpuLayers = (Platform.OS === 'android' && flashAttn) ? 1 : 99;
-              const effectiveGpuLayers = Math.min(settings.gpuLayers ?? 6, maxGpuLayers);
-              return (
-                <View style={styles.gpuLayersInline}>
-                  <View style={styles.settingHeader}>
-                    <Text style={styles.settingLabel}>GPU Layers</Text>
-                    <Text style={styles.settingValue}>{effectiveGpuLayers}</Text>
-                  </View>
-                  <Text style={styles.settingDescription}>
-                    Layers offloaded to GPU. Higher = faster but may crash on low-VRAM devices. Requires model reload.
-                  </Text>
-                  <Slider
-                    style={styles.slider}
-                    minimumValue={1}
-                    maximumValue={maxGpuLayers}
-                    step={1}
-                    value={effectiveGpuLayers}
-                    onSlidingComplete={(value: number) => updateSettings({ gpuLayers: value })}
-                    minimumTrackTintColor={colors.primary}
-                    maximumTrackTintColor={colors.surfaceLight}
-                    thumbTintColor={colors.primary}
-                  />
-                  {Platform.OS === 'android' && flashAttn && (
-                    <Text style={styles.settingWarning}>
-                      Flash Attention limits GPU layers to 1 on Android
-                    </Text>
-                  )}
+            {settings.enableGpu && (
+              <View style={styles.gpuLayersInline}>
+                <View style={styles.settingHeader}>
+                  <Text style={styles.settingLabel}>GPU Layers</Text>
+                  <Text style={styles.settingValue}>{gpuLayersEffective}</Text>
                 </View>
-              );
-            })()}
+                <Text style={styles.settingDescription}>
+                  Layers offloaded to GPU. Higher = faster but may crash on low-VRAM devices. Requires model reload.
+                </Text>
+                <Slider
+                  style={styles.slider}
+                  minimumValue={1}
+                  maximumValue={gpuLayersMax}
+                  step={1}
+                  value={gpuLayersEffective}
+                  onSlidingComplete={(value: number) => updateSettings({ gpuLayers: value })}
+                  minimumTrackTintColor={colors.primary}
+                  maximumTrackTintColor={colors.surfaceLight}
+                  thumbTintColor={colors.primary}
+                />
+                {Platform.OS === 'android' && isFlashAttnOn && (
+                  <Text style={styles.settingWarning}>
+                    Flash Attention limits GPU layers to 1 on Android
+                  </Text>
+                )}
+              </View>
+            )}
           </View>
         )}
 
@@ -781,25 +781,27 @@ export const GenerationSettingsModal: React.FC<GenerationSettingsModalProps> = (
           </View>
           <View style={styles.modeToggleButtons}>
             <TouchableOpacity
+              testID="flash-attn-off-button"
               style={[
                 styles.modeButton,
-                !(settings.flashAttn ?? (Platform.OS !== 'android')) && styles.modeButtonActive,
+                !isFlashAttnOn && styles.modeButtonActive,
               ]}
               onPress={() => updateSettings({ flashAttn: false })}
             >
               <Text
                 style={[
                   styles.modeButtonText,
-                  !(settings.flashAttn ?? (Platform.OS !== 'android')) && styles.modeButtonTextActive,
+                  !isFlashAttnOn && styles.modeButtonTextActive,
                 ]}
               >
                 Off
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
+              testID="flash-attn-on-button"
               style={[
                 styles.modeButton,
-                (settings.flashAttn ?? (Platform.OS !== 'android')) && styles.modeButtonActive,
+                isFlashAttnOn && styles.modeButtonActive,
               ]}
               onPress={() => {
                 const updates: Parameters<typeof updateSettings>[0] = { flashAttn: true };
@@ -812,7 +814,7 @@ export const GenerationSettingsModal: React.FC<GenerationSettingsModalProps> = (
               <Text
                 style={[
                   styles.modeButtonText,
-                  (settings.flashAttn ?? (Platform.OS !== 'android')) && styles.modeButtonTextActive,
+                  isFlashAttnOn && styles.modeButtonTextActive,
                 ]}
               >
                 On

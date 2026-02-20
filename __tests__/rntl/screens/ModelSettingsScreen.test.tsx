@@ -183,40 +183,20 @@ describe('ModelSettingsScreen', () => {
 
     it('updates store to true when Flash Attention switch is turned on', () => {
       useAppStore.getState().updateSettings({ flashAttn: false });
-      const { getAllByRole } = renderScreen();
-      const switches = getAllByRole('switch');
+      const { getByTestId } = renderScreen();
 
-      expect(useAppStore.getState().settings.flashAttn).toBe(false);
+      fireEvent(getByTestId('flash-attn-switch'), 'valueChange', true);
 
-      let toggled = false;
-      for (const sw of switches) {
-        fireEvent(sw, 'valueChange', true);
-        if (useAppStore.getState().settings.flashAttn === true) {
-          toggled = true;
-          break;
-        }
-      }
-      expect(toggled).toBe(true);
       expect(useAppStore.getState().settings.flashAttn).toBe(true);
     });
 
     it('updates store to false when Flash Attention switch is turned off', () => {
       useAppStore.getState().updateSettings({ flashAttn: true });
-      const { getAllByRole } = renderScreen();
-      const switches = getAllByRole('switch');
+      const { getByTestId } = renderScreen();
 
-      let toggled = false;
-      for (const sw of switches) {
-        if (useAppStore.getState().settings.flashAttn === true) {
-          fireEvent(sw, 'valueChange', false);
-          if (useAppStore.getState().settings.flashAttn === false) {
-            toggled = true;
-            break;
-          }
-          useAppStore.getState().updateSettings({ flashAttn: true });
-        }
-      }
-      expect(toggled).toBe(true);
+      fireEvent(getByTestId('flash-attn-switch'), 'valueChange', false);
+
+      expect(useAppStore.getState().settings.flashAttn).toBe(false);
     });
 
     it('clamps gpuLayers to 1 on Android when flashAttn is turned on with layers > 1', () => {

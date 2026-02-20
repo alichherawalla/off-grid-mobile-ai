@@ -83,8 +83,8 @@ android {
         applicationId "ai.offgridmobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1771585509
-        versionName "0.0.53"
+        versionCode 1771618489
+        versionName "0.0.55"
     }
     signingConfigs {
         debug {
@@ -120,6 +120,15 @@ android {
             signingConfig signingConfigs.release.storeFile ? signingConfigs.release : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+    packaging {
+        jniLibs {
+            // Force compressed .so storage so Play Store extracts libs to nativeLibraryDir
+            // as real filesystem files. Without this, AGP's default "uncompressed native libs"
+            // stores .so files inside the APK zip — File.exists() returns false for them and
+            // exec() fails with EACCES (error=13) because you can't fork-exec from a zip entry.
+            useLegacyPackaging = true
         }
     }
 }

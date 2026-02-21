@@ -1287,6 +1287,63 @@ describe('DownloadManagerScreen', () => {
     expect(queryByText('Unknown')).toBeNull();
   });
 
+  // ===== getStatusText HELPER TESTS =====
+
+  it('shows "Downloading..." for background download with status "running"', async () => {
+    mockBackgroundDownloadService.isAvailable.mockReturnValue(true);
+    mockModelManager.getActiveBackgroundDownloads.mockResolvedValue([
+      { downloadId: 11, status: 'running', bytesDownloaded: 100, title: 'run.gguf' },
+    ]);
+    const state = createDefaultState({
+      activeBackgroundDownloads: {
+        11: { modelId: 'a/m', fileName: 'run.gguf', author: 'a', quantization: 'Q4', totalBytes: 1000 },
+      },
+    });
+    mockUseAppStore.mockImplementation((selector?: any) => selector ? selector(state) : state);
+
+    const result = render(<DownloadManagerScreen />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    expect(result.getByText('Downloading...')).toBeTruthy();
+  });
+
+  it('shows "Starting..." for background download with status "pending"', async () => {
+    mockBackgroundDownloadService.isAvailable.mockReturnValue(true);
+    mockModelManager.getActiveBackgroundDownloads.mockResolvedValue([
+      { downloadId: 12, status: 'pending', bytesDownloaded: 0, title: 'pend.gguf' },
+    ]);
+    const state = createDefaultState({
+      activeBackgroundDownloads: {
+        12: { modelId: 'a/m', fileName: 'pend.gguf', author: 'a', quantization: 'Q4', totalBytes: 1000 },
+      },
+    });
+    mockUseAppStore.mockImplementation((selector?: any) => selector ? selector(state) : state);
+
+    const result = render(<DownloadManagerScreen />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    expect(result.getByText('Starting...')).toBeTruthy();
+  });
+
+  it('shows "Paused" for background download with status "paused"', async () => {
+    mockBackgroundDownloadService.isAvailable.mockReturnValue(true);
+    mockModelManager.getActiveBackgroundDownloads.mockResolvedValue([
+      { downloadId: 13, status: 'paused', bytesDownloaded: 400, title: 'paus.gguf' },
+    ]);
+    const state = createDefaultState({
+      activeBackgroundDownloads: {
+        13: { modelId: 'a/m', fileName: 'paus.gguf', author: 'a', quantization: 'Q4', totalBytes: 1000 },
+      },
+    });
+    mockUseAppStore.mockImplementation((selector?: any) => selector ? selector(state) : state);
+
+    const result = render(<DownloadManagerScreen />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    expect(result.getByText('Paused')).toBeTruthy();
+  });
+
+
   it('remove download with downloadId cancels background download', async () => {
     const setBackgroundDownload = jest.fn();
     const setDownloadProgress = jest.fn();

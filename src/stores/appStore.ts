@@ -61,7 +61,6 @@ interface AppState {
     totalBytes: number;
   } | null) => void;
   clearBackgroundDownloads: () => void;
-
   // Settings
   settings: {
     systemPrompt: string;
@@ -96,15 +95,12 @@ interface AppState {
     showGenerationDetails: boolean;
   };
   updateSettings: (settings: Partial<AppState['settings']>) => void;
-
-  // Image models (ONNX-based)
   downloadedImageModels: ONNXImageModel[];
   activeImageModelId: string | null;
   setDownloadedImageModels: (models: ONNXImageModel[]) => void;
   addDownloadedImageModel: (model: ONNXImageModel) => void;
   removeDownloadedImageModel: (modelId: string) => void;
   setActiveImageModelId: (modelId: string | null) => void;
-
   // Image model download tracking (global so cancel works across screens)
   imageModelDownloading: string[];
   imageModelDownloadIds: Record<string, number>;
@@ -112,7 +108,6 @@ interface AppState {
   removeImageModelDownloading: (modelId: string) => void;
   clearImageModelDownloading: () => void;
   setImageModelDownloadId: (modelId: string, downloadId: number | null) => void;
-
   // Image generation state
   isGeneratingImage: boolean;
   imageGenerationProgress: { step: number; totalSteps: number } | null;
@@ -122,7 +117,6 @@ interface AppState {
   setImageGenerationProgress: (progress: { step: number; totalSteps: number } | null) => void;
   setImageGenerationStatus: (status: string | null) => void;
   setImagePreviewPath: (path: string | null) => void;
-
   // Gallery - persisted metadata of all generated images
   generatedImages: GeneratedImage[];
   addGeneratedImage: (image: GeneratedImage) => void;
@@ -148,7 +142,6 @@ export const useAppStore = create<AppState>()(
       modelRecommendation: null,
       setDeviceInfo: (info) => set({ deviceInfo: info }),
       setModelRecommendation: (rec) => set({ modelRecommendation: rec }),
-
       // Downloaded models
       downloadedModels: [],
       setDownloadedModels: (models) => set({ downloadedModels: models }),
@@ -161,15 +154,12 @@ export const useAppStore = create<AppState>()(
           downloadedModels: state.downloadedModels.filter((m) => m.id !== modelId),
           activeModelId: state.activeModelId === modelId ? null : state.activeModelId,
         })),
-
       // Active model
       activeModelId: null,
       setActiveModelId: (modelId) => set({ activeModelId: modelId }),
-
       // Loading states
       isLoadingModel: false,
       setIsLoadingModel: (loading) => set({ isLoadingModel: loading }),
-
       // Download progress
       downloadProgress: {},
       setDownloadProgress: (modelId, progress) =>
@@ -185,7 +175,6 @@ export const useAppStore = create<AppState>()(
             },
           };
         }),
-
       // Background downloads (Android)
       activeBackgroundDownloads: {},
       setBackgroundDownload: (downloadId, info) =>
@@ -203,7 +192,6 @@ export const useAppStore = create<AppState>()(
         }),
       clearBackgroundDownloads: () =>
         set({ activeBackgroundDownloads: {} }),
-
       // Settings
       settings: {
         systemPrompt: 'You are a helpful AI assistant running locally on the user\'s device. Be concise and helpful.',
@@ -212,38 +200,24 @@ export const useAppStore = create<AppState>()(
         topP: 0.9,
         repeatPenalty: 1.1,
         contextLength: 2048,
-        // Performance - higher threads = faster on multi-core devices
         nThreads: 6,
         nBatch: 256,
-        // Image generation - 'auto' uses LLM to classify intent
         imageGenerationMode: 'auto',
-        // Auto-detection method: 'pattern' (fast regex only) or 'llm' (use model for uncertain cases)
+        // 'pattern' = fast regex only, 'llm' = use model for uncertain cases
         autoDetectMethod: 'pattern',
-        // Model to use for LLM-based classification (null = use current model)
         classifierModelId: null as string | null,
-        // Image generation steps (more = better quality but slower)
-        // For SD1.5 models: 20 steps is a good default with DPM scheduler
+        // More steps = better quality but slower; 20 is a good default for SD1.5
         imageSteps: 20,
-        // Guidance scale for image generation
-        // For SD1.5 models: 7.5 is the standard default
         imageGuidanceScale: 7.5,
-        // CPU threads for image generation (applies on next image model load)
         imageThreads: 4,
-        // Image generation resolution (width and height in pixels, must be divisible by 8)
-        // SD1.5 models are trained at 512x512
+        // SD1.5 models are trained at 512x512; must be divisible by 8
         imageWidth: 512,
         imageHeight: 512,
-        // Use text LLM to enhance image prompts (disabled by default for speed)
         enhanceImagePrompts: false,
-        // Model loading strategy: 'performance' = keep loaded, 'memory' = load on demand
         modelLoadingStrategy: 'performance' as ModelLoadingStrategy,
-        // GPU acceleration for text inference (try GPU offloading when available)
         enableGpu: false,
-        // Number of model layers to offload to GPU (iOS Metal can handle more; Android OpenCL needs conservative values)
         gpuLayers: 6,
-        // Disabled by default on Android — crashes with n_gpu_layers > 1 on OpenCL backend
         flashAttn: Platform.OS !== 'android',
-        // Show generation details in chat messages (GPU, model, tok/s, etc.)
         showGenerationDetails: false,
       },
       updateSettings: (newSettings) =>
@@ -265,7 +239,6 @@ export const useAppStore = create<AppState>()(
           activeImageModelId: state.activeImageModelId === modelId ? null : state.activeImageModelId,
         })),
       setActiveImageModelId: (modelId) => set({ activeImageModelId: modelId }),
-
       // Image model download tracking
       imageModelDownloading: [],
       imageModelDownloadIds: {},
@@ -293,7 +266,6 @@ export const useAppStore = create<AppState>()(
             imageModelDownloadIds: { ...state.imageModelDownloadIds, [modelId]: downloadId },
           };
         }),
-
       // Image generation state
       isGeneratingImage: false,
       imageGenerationProgress: null,
@@ -303,7 +275,6 @@ export const useAppStore = create<AppState>()(
       setImageGenerationProgress: (progress) => set({ imageGenerationProgress: progress }),
       setImageGenerationStatus: (status) => set({ imageGenerationStatus: status }),
       setImagePreviewPath: (path) => set({ imagePreviewPath: path }),
-
       // Gallery
       generatedImages: [],
       addGeneratedImage: (image) =>

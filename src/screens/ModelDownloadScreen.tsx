@@ -20,7 +20,6 @@ import { RootStackParamList } from '../navigation/types';
 type ModelDownloadScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'ModelDownload'>;
 };
-
 export const ModelDownloadScreen: React.FC<ModelDownloadScreenProps> = ({
   navigation,
 }) => {
@@ -266,7 +265,6 @@ export const ModelDownloadScreen: React.FC<ModelDownloadScreenProps> = ({
     </SafeAreaView>
   );
 };
-
 const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
   container: {
     flex: 1,

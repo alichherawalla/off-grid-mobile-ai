@@ -16,8 +16,6 @@ const DiffusionModule = Platform.select({
 
 type ProgressCallback = (progress: ImageGenerationProgress) => void;
 type PreviewCallback = (preview: { previewPath: string; step: number; totalSteps: number }) => void;
-type CompleteCallback = (image: GeneratedImage) => void;
-type ErrorCallback = (error: Error) => void;
 
 /**
  * LocalDream-based image generator service.
@@ -93,12 +91,26 @@ class LocalDreamGeneratorService {
     return result;
   }
 
+  private subscribeToProgress(onProgress?: ProgressCallback, onPreview?: PreviewCallback): any {
+    return this.getEmitter().addListener(
+      'LocalDreamProgress',
+      (event: { step: number; totalSteps: number; progress: number; previewPath?: string }) => {
+        onProgress?.({
+          step: event.step,
+          totalSteps: event.totalSteps,
+          progress: event.progress,
+        });
+        if (event.previewPath && onPreview) {
+          onPreview({ previewPath: event.previewPath, step: event.step, totalSteps: event.totalSteps });
+        }
+      },
+    );
+  }
+
   async generateImage(
     params: ImageGenerationParams & { previewInterval?: number },
     onProgress?: ProgressCallback,
     onPreview?: PreviewCallback,
-    onComplete?: CompleteCallback,
-    onError?: ErrorCallback
   ): Promise<GeneratedImage> {
     if (!this.isAvailable()) {
       throw new Error('LocalDream image generation is not available on this platform');
@@ -109,28 +121,7 @@ class LocalDreamGeneratorService {
     }
 
     this.generating = true;
-
-    // Subscribe to native progress events (includes both progress and preview data)
-    let progressSubscription: any = null;
-    progressSubscription = this.getEmitter().addListener(
-      'LocalDreamProgress',
-      (event: { step: number; totalSteps: number; progress: number; previewPath?: string }) => {
-        onProgress?.({
-          step: event.step,
-          totalSteps: event.totalSteps,
-          progress: event.progress,
-        });
-
-        // Forward preview image if present
-        if (event.previewPath && onPreview) {
-          onPreview({
-            previewPath: event.previewPath,
-            step: event.step,
-            totalSteps: event.totalSteps,
-          });
-        }
-      }
-    );
+    const progressSubscription = this.subscribeToProgress(onProgress, onPreview);
 
     try {
       // Call native generateImage — handles HTTP POST, SSE parsing, and PNG saving
@@ -145,7 +136,7 @@ class LocalDreamGeneratorService {
         previewInterval: params.previewInterval ?? 2,
       });
 
-      const generatedImage: GeneratedImage = {
+      return {
         id: result.id,
         prompt: params.prompt,
         negativePrompt: params.negativePrompt,
@@ -157,13 +148,6 @@ class LocalDreamGeneratorService {
         modelId: '',
         createdAt: Date.now().toString(),
       };
-
-      onComplete?.(generatedImage);
-      return generatedImage;
-    } catch (e: any) {
-      const error = e instanceof Error ? e : new Error(String(e));
-      onError?.(error);
-      throw error;
     } finally {
       this.generating = false;
       progressSubscription?.remove();

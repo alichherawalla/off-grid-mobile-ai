@@ -207,11 +207,10 @@ describe('ModelManager', () => {
       // Mock getDownloadedModels for addDownloadedModel
       mockedAsyncStorage.getItem.mockResolvedValue('[]');
 
-      const onComplete = jest.fn();
-      await modelManager.downloadModel('test-author/test-model', file, undefined, onComplete);
+      const model = await modelManager.downloadModel('test-author/test-model', file);
 
       expect(RNFS.downloadFile).not.toHaveBeenCalled();
-      expect(onComplete).toHaveBeenCalled();
+      expect(model).toBeDefined();
     });
 
     it('downloads via RNFS when file does not exist', async () => {
@@ -340,11 +339,10 @@ describe('ModelManager', () => {
         } as any);
       mockedAsyncStorage.getItem.mockResolvedValue('[]');
 
-      const onComplete = jest.fn();
       // Should not throw - mmproj failure is not fatal
-      await modelManager.downloadModel('test-author/test-model', visionFile, undefined, onComplete);
+      const model = await modelManager.downloadModel('test-author/test-model', visionFile);
 
-      expect(onComplete).toHaveBeenCalled();
+      expect(model).toBeDefined();
     });
 
     it('calls onComplete with model when done', async () => {
@@ -360,15 +358,12 @@ describe('ModelManager', () => {
       } as any);
       mockedAsyncStorage.getItem.mockResolvedValue('[]');
 
-      const onComplete = jest.fn();
-      await modelManager.downloadModel('test-author/test-model', file, undefined, onComplete);
+      const model = await modelManager.downloadModel('test-author/test-model', file);
 
-      expect(onComplete).toHaveBeenCalledWith(
-        expect.objectContaining({
-          fileName: 'test-model-q4.gguf',
-          quantization: 'Q4_K_M',
-        })
-      );
+      expect(model).toMatchObject({
+        fileName: 'test-model-q4.gguf',
+        quantization: 'Q4_K_M',
+      });
     });
   });
 
@@ -639,7 +634,8 @@ describe('ModelManager', () => {
       mockedAsyncStorage.getItem.mockResolvedValue('[]');
 
       const onComplete = jest.fn();
-      const result = await modelManager.downloadModelBackground('test/model', file, undefined, onComplete);
+      const result = await modelManager.downloadModelBackground('test/model', file);
+      modelManager.watchDownload(result.downloadId, onComplete);
 
       expect(result.status).toBe('completed');
       expect(onComplete).toHaveBeenCalled();
@@ -670,7 +666,7 @@ describe('ModelManager', () => {
       expect(result.downloadId).toBe(42);
     });
 
-    it('sets up progress/complete/error listeners', async () => {
+    it('sets up progress listener during start and complete/error via watchDownload', async () => {
       mockedBackgroundDownloadService.isAvailable.mockReturnValue(true);
       mockedRNFS.exists
         .mockResolvedValueOnce(true)
@@ -688,7 +684,8 @@ describe('ModelManager', () => {
         startedAt: Date.now(),
       } as any);
 
-      await modelManager.downloadModelBackground('test/model', file);
+      const info = await modelManager.downloadModelBackground('test/model', file);
+      modelManager.watchDownload(info.downloadId, jest.fn(), jest.fn());
 
       expect(mockedBackgroundDownloadService.onProgress).toHaveBeenCalledWith(42, expect.any(Function));
       expect(mockedBackgroundDownloadService.onComplete).toHaveBeenCalledWith(42, expect.any(Function));
@@ -1442,13 +1439,9 @@ describe('ModelManager', () => {
       ];
       mockedAsyncStorage.getItem.mockResolvedValue(JSON.stringify(storedModels));
       mockedRNFS.exists.mockResolvedValue(true);
+      mockedRNFS.stat.mockResolvedValue({ size: 300000000 } as any);
 
-      await modelManager.saveModelWithMmproj(
-        'model1',
-        '/models/mmproj.gguf',
-        'mmproj.gguf',
-        300000000
-      );
+      await modelManager.saveModelWithMmproj('model1', '/models/mmproj.gguf');
 
       const savedCall = mockedAsyncStorage.setItem.mock.calls.find(
         (call) => call[0] === MODELS_STORAGE_KEY
@@ -1459,14 +1452,15 @@ describe('ModelManager', () => {
       expect(savedModels[0].isVisionModel).toBe(true);
     });
 
-    it('handles string mmProjFileSize', async () => {
+    it('derives mmProjFileSize from RNFS.stat', async () => {
       const storedModels = [
         { id: 'model1', name: 'Test', filePath: '/models/m1.gguf', fileName: 'm1.gguf', fileSize: 1000 },
       ];
       mockedAsyncStorage.getItem.mockResolvedValue(JSON.stringify(storedModels));
       mockedRNFS.exists.mockResolvedValue(true);
+      mockedRNFS.stat.mockResolvedValue({ size: 300000000 } as any);
 
-      await modelManager.saveModelWithMmproj('model1', '/models/mmproj.gguf', 'mmproj.gguf', '300000000' as any);
+      await modelManager.saveModelWithMmproj('model1', '/models/mmproj.gguf');
 
       const savedCall = mockedAsyncStorage.setItem.mock.calls.find(
         (call) => call[0] === MODELS_STORAGE_KEY
@@ -1797,7 +1791,8 @@ describe('ModelManager', () => {
       });
 
       const onComplete = jest.fn();
-      await modelManager.downloadModelBackground('test/model', visionFile, undefined, onComplete);
+      const info = await modelManager.downloadModelBackground('test/model', visionFile);
+      modelManager.watchDownload(info.downloadId, onComplete);
 
       // Simulate the complete event
       if (completeCallback) {
@@ -1845,7 +1840,8 @@ describe('ModelManager', () => {
       });
 
       const onError = jest.fn();
-      await modelManager.downloadModelBackground('test/model', file, undefined, undefined, onError);
+      const info = await modelManager.downloadModelBackground('test/model', file);
+      modelManager.watchDownload(info.downloadId, undefined, onError);
 
       // Simulate the error event
       if (errorCallback) {
@@ -1855,8 +1851,8 @@ describe('ModelManager', () => {
     });
   });
 
-  describe('downloadModel onError callback', () => {
-    it('calls onError when download fails', async () => {
+  describe('downloadModel error handling', () => {
+    it('throws when download fails', async () => {
       const file = createModelFile({
         name: 'error-model.gguf',
         size: 4000000000,
@@ -1875,14 +1871,9 @@ describe('ModelManager', () => {
         promise: Promise.reject(new Error('Network failure')),
       } as any);
 
-      const onError = jest.fn();
-
       await expect(
-        modelManager.downloadModel('test/model', file, undefined, undefined, onError)
-      ).rejects.toThrow();
-
-      // onError should have been called
-      expect(onError).toHaveBeenCalled();
+        modelManager.downloadModel('test/model', file),
+      ).rejects.toThrow('Network failure');
     });
   });
 

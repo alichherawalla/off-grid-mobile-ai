@@ -457,7 +457,7 @@ export const ModelSettingsScreen: React.FC = () => {
                 }
                 updateSettings(updates);
               }}
-              trackColor={{ false: colors.surfaceLight, true: colors.primary + '80' }}
+              trackColor={{ false: colors.surfaceLight, true: `${colors.primary  }80` }}
               thumbColor={isFlashAttnOn ? colors.primary : colors.textMuted}
             />
           </View>

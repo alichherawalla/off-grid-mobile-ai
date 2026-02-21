@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Message, Conversation, MediaAttachment, GenerationMeta } from '../types';
+import { Message, Conversation, GenerationMeta } from '../types';
 import { stripControlTokens } from '../utils/messageContent';
 
 interface ChatState {
@@ -23,8 +23,9 @@ interface ChatState {
   setConversationProject: (conversationId: string, projectId: string | null) => void;
 
   // Messages
-  addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'>, attachments?: MediaAttachment[], generationTimeMs?: number, generationMeta?: GenerationMeta) => Message;
-  updateMessage: (conversationId: string, messageId: string, content: string, isThinking?: boolean) => void;
+  addMessage: (conversationId: string, message: Omit<Message, 'id' | 'timestamp'>) => Message;
+  updateMessageContent: (conversationId: string, messageId: string, content: string) => void;
+  updateMessageThinking: (conversationId: string, messageId: string, isThinking: boolean) => void;
   deleteMessage: (conversationId: string, messageId: string) => void;
   deleteMessagesAfter: (conversationId: string, messageId: string) => void;
 
@@ -108,14 +109,11 @@ export const useChatStore = create<ChatState>()(
         }));
       },
 
-      addMessage: (conversationId, messageData, attachments, generationTimeMs, generationMeta) => {
+      addMessage: (conversationId, messageData) => {
         const message: Message = {
           id: generateId(),
           ...messageData,
           timestamp: Date.now(),
-          attachments: attachments,
-          generationTimeMs: generationTimeMs,
-          generationMeta: generationMeta,
         };
 
         set((state) => ({
@@ -137,16 +135,30 @@ export const useChatStore = create<ChatState>()(
         return message;
       },
 
-      updateMessage: (conversationId, messageId, content, isThinking) => {
+      updateMessageContent: (conversationId, messageId, content) => {
         set((state) => ({
           conversations: state.conversations.map((conv) =>
             conv.id === conversationId
               ? {
                   ...conv,
                   messages: conv.messages.map((msg) =>
-                    msg.id === messageId
-                      ? { ...msg, content, ...(isThinking !== undefined && { isThinking }) }
-                      : msg
+                    msg.id === messageId ? { ...msg, content } : msg
+                  ),
+                  updatedAt: new Date().toISOString(),
+                }
+              : conv
+          ),
+        }));
+      },
+
+      updateMessageThinking: (conversationId, messageId, isThinking) => {
+        set((state) => ({
+          conversations: state.conversations.map((conv) =>
+            conv.id === conversationId
+              ? {
+                  ...conv,
+                  messages: conv.messages.map((msg) =>
+                    msg.id === messageId ? { ...msg, isThinking } : msg
                   ),
                   updatedAt: new Date().toISOString(),
                 }
@@ -221,7 +233,9 @@ export const useChatStore = create<ChatState>()(
           addMessage(conversationId, {
             role: 'assistant',
             content: sanitizedMessage,
-          }, undefined, generationTimeMs, generationMeta);
+            generationTimeMs,
+            generationMeta,
+          });
         }
         set({
           streamingMessage: '',

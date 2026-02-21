@@ -154,7 +154,7 @@ export const ChatScreen: React.FC = () => {
     conversations,
     createConversation,
     addMessage,
-    updateMessage,
+    updateMessageContent,
     deleteMessagesAfter,
     streamingMessage,
     streamingForConversationId,
@@ -183,8 +183,8 @@ export const ChatScreen: React.FC = () => {
       {
         role: 'user',
         content: item.text,
+        attachments: item.attachments,
       },
-      item.attachments
     );
     await startGenerationRef.current(item.conversationId, item.messageText);
   }, []);
@@ -704,8 +704,8 @@ export const ChatScreen: React.FC = () => {
       {
         role: 'user',
         content: text,
+        attachments,
       },
-      attachments
     );
 
     // Proceed with generation
@@ -932,7 +932,7 @@ export const ChatScreen: React.FC = () => {
     if (!activeConversationId || !activeModel) return;
 
     // Update the message content
-    updateMessage(activeConversationId, message.id, newContent);
+    updateMessageContent(activeConversationId, message.id, newContent);
 
     // Delete all messages after this one
     deleteMessagesAfter(activeConversationId, message.id);

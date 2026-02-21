@@ -27,11 +27,17 @@ type BackgroundDownloadMetadataCallback = (
   } | null
 ) => void;
 
+type BackgroundDownloadContext =
+  | { modelId: string; file: ModelFile; localPath: string; mmProjLocalPath: string | null; removeProgressListener: () => void }
+  | { model: DownloadedModel; error: null }
+  | { model: null; error: Error };
+
 class ModelManager {
   private modelsDir: string;
   private imageModelsDir: string;
   private downloadJobs: Map<string, { jobId: number; cancel: () => void }> = new Map();
   private backgroundDownloadMetadataCallback: BackgroundDownloadMetadataCallback | null = null;
+  private backgroundDownloadContext: Map<number, BackgroundDownloadContext> = new Map();
 
   constructor() {
     this.modelsDir = `${RNFS.DocumentDirectoryPath}/${APP_CONFIG.modelStorageDir}`;
@@ -135,9 +141,7 @@ class ModelManager {
     modelId: string,
     file: ModelFile,
     onProgress?: DownloadProgressCallback,
-    onComplete?: DownloadCompleteCallback,
-    onError?: DownloadErrorCallback
-  ): Promise<void> {
+  ): Promise<DownloadedModel> {
     const downloadKey = `${modelId}/${file.name}`;
 
     // Check if already downloading
@@ -169,15 +173,7 @@ class ModelManager {
 
       if (mainExists && mmProjExists) {
         // All files already downloaded, just add to list
-        const model = await this.addDownloadedModel(
-          modelId,
-          file,
-          localPath,
-          mmProjLocalPath || undefined,
-          file.mmProjFile
-        );
-        onComplete?.(model);
-        return;
+        return this.addDownloadedModel(modelId, file, localPath, mmProjLocalPath || undefined);
       }
 
       // Download main model file if needed
@@ -278,17 +274,9 @@ class ModelManager {
       const mmProjFileExists = mmProjLocalPath ? await RNFS.exists(mmProjLocalPath) : false;
       const finalMmProjPath = mmProjLocalPath && mmProjFileExists ? mmProjLocalPath : undefined;
 
-      const model = await this.addDownloadedModel(
-        modelId,
-        file,
-        localPath,
-        finalMmProjPath,
-        finalMmProjPath ? file.mmProjFile : undefined
-      );
-      onComplete?.(model);
+      return this.addDownloadedModel(modelId, file, localPath, finalMmProjPath);
     } catch (error) {
       this.downloadJobs.delete(downloadKey);
-      onError?.(error as Error);
       throw error;
     }
   }
@@ -474,8 +462,6 @@ class ModelManager {
     modelId: string,
     file: ModelFile,
     onProgress?: DownloadProgressCallback,
-    onComplete?: DownloadCompleteCallback,
-    onError?: DownloadErrorCallback
   ): Promise<BackgroundDownloadInfo> {
     if (!this.isBackgroundDownloadSupported()) {
       throw new Error('Background downloads not supported on this platform');
@@ -495,15 +481,8 @@ class ModelManager {
     const mmProjExists = mmProjLocalPath ? await RNFS.exists(mmProjLocalPath) : true;
 
     if (mainExists && mmProjExists) {
-      const model = await this.addDownloadedModel(
-        modelId,
-        file,
-        localPath,
-        mmProjLocalPath || undefined,
-        file.mmProjFile
-      );
-      onComplete?.(model);
-      return {
+      const model = await this.addDownloadedModel(modelId, file, localPath, mmProjLocalPath || undefined);
+      const completedInfo: BackgroundDownloadInfo = {
         downloadId: -1,
         fileName: file.name,
         modelId,
@@ -513,6 +492,8 @@ class ModelManager {
         startedAt: Date.now(),
         completedAt: Date.now(),
       };
+      this.backgroundDownloadContext.set(-1, { model, error: null });
+      return completedInfo;
     }
 
     // Calculate combined total for progress tracking
@@ -575,13 +556,12 @@ class ModelManager {
       mmProjLocalPath: mmProjLocalPath,
     });
 
-    // Set up event listeners - report combined progress
+    // Set up progress listener - reports combined progress
     const removeProgressListener = backgroundDownloadService.onProgress(
       downloadInfo.downloadId,
       (event) => {
         const combinedDownloaded = mmProjDownloaded + event.bytesDownloaded;
         const progressPercent = combinedTotalBytes > 0 ? (combinedDownloaded / combinedTotalBytes * 100).toFixed(1) : 0;
-        // Log at 95%+ to avoid spam
         if (Number(progressPercent) >= 95) {
           console.log(`[ModelManager] Download progress: ${progressPercent}%, status: ${event.status}, bytes: ${combinedDownloaded}/${combinedTotalBytes}`);
         }
@@ -593,71 +573,87 @@ class ModelManager {
           progress: combinedTotalBytes > 0 ? combinedDownloaded / combinedTotalBytes : 0,
         };
         onProgress?.(progress);
-      }
+      },
     );
 
-    const removeCompleteListener = backgroundDownloadService.onComplete(
-      downloadInfo.downloadId,
-      async (event) => {
-        console.log('[ModelManager] DownloadComplete event received:', event.downloadId, event.fileName);
-        removeProgressListener();
-        removeCompleteListener();
-        removeErrorListener();
-
-        try {
-          console.log('[ModelManager] Moving completed download to:', localPath);
-          // Move file to models directory
-          const finalPath = await backgroundDownloadService.moveCompletedDownload(
-            event.downloadId,
-            localPath
-          );
-          console.log('[ModelManager] File moved to:', finalPath);
-
-          // Check if mmproj was downloaded
-          const mmProjFileExists = mmProjLocalPath ? await RNFS.exists(mmProjLocalPath) : false;
-          const finalMmProjPath = mmProjLocalPath && mmProjFileExists ? mmProjLocalPath : undefined;
-
-          console.log('[ModelManager] Background download complete, mmProjPath:', finalMmProjPath || 'NONE');
-
-          // Add to downloaded models list with mmproj info
-          const model = await this.addDownloadedModel(
-            modelId,
-            file,
-            finalPath,
-            finalMmProjPath,
-            finalMmProjPath ? file.mmProjFile : undefined
-          );
-
-          // Clear metadata
-          this.backgroundDownloadMetadataCallback?.(event.downloadId, null);
-
-          onComplete?.(model);
-        } catch (error) {
-          console.error('Error finalizing background download:', error);
-          onError?.(error as Error);
-        }
-      }
-    );
-
-    const removeErrorListener = backgroundDownloadService.onError(
-      downloadInfo.downloadId,
-      (event) => {
-        console.log('[ModelManager] DownloadError event received:', event.downloadId, event.reason);
-        removeProgressListener();
-        removeCompleteListener();
-        removeErrorListener();
-
-        // Clear metadata
-        this.backgroundDownloadMetadataCallback?.(event.downloadId, null);
-
-        onError?.(new Error(event.reason || 'Download failed'));
-      }
-    );
+    // Store context for watchDownload to use when finalization is needed
+    this.backgroundDownloadContext.set(downloadInfo.downloadId, {
+      modelId,
+      file,
+      localPath,
+      mmProjLocalPath,
+      removeProgressListener,
+    });
 
     // Start polling after listeners are attached
     backgroundDownloadService.startProgressPolling();
 
     return downloadInfo;
+  }
+
+  /**
+   * Watch a background download for completion or error.
+   * Call this after downloadModelBackground to receive the result.
+   */
+  watchDownload(
+    downloadId: number,
+    onComplete?: DownloadCompleteCallback,
+    onError?: DownloadErrorCallback,
+  ): void {
+    const ctx = this.backgroundDownloadContext.get(downloadId);
+
+    // Already completed synchronously (files existed)
+    if (downloadId === -1 && ctx && 'model' in ctx) {
+      if (ctx.model) onComplete?.(ctx.model);
+      else if (ctx.error) onError?.(ctx.error);
+      this.backgroundDownloadContext.delete(downloadId);
+      return;
+    }
+
+    if (!ctx || !('file' in ctx)) return;
+    const { modelId, file, localPath, mmProjLocalPath, removeProgressListener } = ctx;
+
+    const removeCompleteListener = backgroundDownloadService.onComplete(
+      downloadId,
+      async (event) => {
+        console.log('[ModelManager] DownloadComplete event received:', event.downloadId, event.fileName);
+        removeProgressListener();
+        removeCompleteListener();
+        removeErrorListener();
+        this.backgroundDownloadContext.delete(downloadId);
+
+        try {
+          console.log('[ModelManager] Moving completed download to:', localPath);
+          const finalPath = await backgroundDownloadService.moveCompletedDownload(event.downloadId, localPath);
+          console.log('[ModelManager] File moved to:', finalPath);
+
+          const mmProjFileExists = mmProjLocalPath ? await RNFS.exists(mmProjLocalPath) : false;
+          const finalMmProjPath = mmProjLocalPath && mmProjFileExists ? mmProjLocalPath : undefined;
+
+          console.log('[ModelManager] Background download complete, mmProjPath:', finalMmProjPath || 'NONE');
+
+          const model = await this.addDownloadedModel(modelId, file, finalPath, finalMmProjPath);
+          this.backgroundDownloadMetadataCallback?.(event.downloadId, null);
+          onComplete?.(model);
+        } catch (error) {
+          console.error('Error finalizing background download:', error);
+          onError?.(error as Error);
+        }
+      },
+    );
+
+    const removeErrorListener = backgroundDownloadService.onError(
+      downloadId,
+      (event) => {
+        console.log('[ModelManager] DownloadError event received:', event.downloadId, event.reason);
+        removeProgressListener();
+        removeCompleteListener();
+        removeErrorListener();
+        this.backgroundDownloadContext.delete(downloadId);
+        this.backgroundDownloadMetadataCallback?.(event.downloadId, null);
+        onError?.(new Error(event.reason || 'Download failed'));
+      },
+    );
   }
 
   /**
@@ -811,18 +807,18 @@ class ModelManager {
   private async addDownloadedModel(
     modelId: string,
     file: ModelFile,
-    localPath: string,
+    resolvedLocalPath: string,
     mmProjPath?: string,
-    mmProjFile?: { name: string; size: number }
   ): Promise<DownloadedModel> {
-    const stat = await RNFS.stat(localPath);
+    const stat = await RNFS.stat(resolvedLocalPath);
     const author = modelId.split('/')[0] || 'Unknown';
+    const mmProjFile = file.mmProjFile;
 
     const model: DownloadedModel = {
       id: `${modelId}/${file.name}`,
       name: modelId.split('/').pop() || modelId,
       author,
-      filePath: localPath,
+      filePath: resolvedLocalPath,
       fileName: file.name,
       fileSize: typeof stat.size === 'string' ? parseInt(stat.size, 10) : stat.size,
       quantization: file.quantization,
@@ -831,8 +827,8 @@ class ModelManager {
       // Vision model support
       isVisionModel: !!mmProjPath,
       mmProjPath,
-      mmProjFileName: mmProjFile?.name,
-      mmProjFileSize: mmProjFile?.size,
+      mmProjFileName: mmProjPath ? mmProjFile?.name : undefined,
+      mmProjFileSize: mmProjPath ? mmProjFile?.size : undefined,
     };
 
     const models = await this.getDownloadedModels();
@@ -857,17 +853,15 @@ class ModelManager {
    * Update a model's mmproj info and persist to storage.
    * Called when activeModelService discovers an mmproj file at runtime.
    */
-  async saveModelWithMmproj(modelId: string, mmProjPath: string, mmProjFileName: string, mmProjFileSize: number | string): Promise<void> {
+  async saveModelWithMmproj(modelId: string, mmProjPath: string): Promise<void> {
+    const mmProjFileName = mmProjPath.split('/').pop() || mmProjPath;
+    const stat = await RNFS.stat(mmProjPath);
+    const mmProjFileSize = typeof stat.size === 'string' ? parseInt(stat.size, 10) : stat.size;
+
     const models = await this.getDownloadedModels();
     const updatedModels = models.map(m => {
       if (m.id === modelId) {
-        return {
-          ...m,
-          mmProjPath,
-          mmProjFileName,
-          mmProjFileSize: typeof mmProjFileSize === 'string' ? parseInt(mmProjFileSize, 10) : mmProjFileSize,
-          isVisionModel: true,
-        };
+        return { ...m, mmProjPath, mmProjFileName, mmProjFileSize, isVisionModel: true };
       }
       return m;
     });
@@ -995,10 +989,6 @@ class ModelManager {
     }
 
     try {
-      // Get file size
-      const stat = await RNFS.stat(resolvedSource);
-      const totalBytes = typeof stat.size === 'string' ? parseInt(stat.size, 10) : stat.size;
-
       // Check destination doesn't already exist
       const destPath = `${this.modelsDir}/${fileName}`;
       const destExists = await RNFS.exists(destPath);
@@ -1007,15 +997,18 @@ class ModelManager {
       }
 
       // Copy file with progress
-      await this.copyFileWithProgress(resolvedSource, destPath, totalBytes, onProgress
-        ? (fraction) => onProgress({ fraction, fileName })
-        : undefined
+      await this.copyFileWithProgress(
+        resolvedSource,
+        destPath,
+        onProgress ? (fraction) => onProgress({ fraction, fileName }) : undefined,
       );
 
       // Parse model name and quantization from filename
       const quantMatch = fileName.match(/[_-](Q\d+[_\w]*|f16|f32)/i);
       const quantization = quantMatch ? quantMatch[1].toUpperCase() : 'Unknown';
       const modelName = fileName.replace(/\.gguf$/i, '').replace(/[_-]Q\d+.*/i, '');
+      const destStat = await RNFS.stat(destPath);
+      const fileSize = typeof destStat.size === 'string' ? parseInt(destStat.size, 10) : destStat.size;
 
       // Build DownloadedModel
       const model: DownloadedModel = {
@@ -1024,7 +1017,7 @@ class ModelManager {
         author: 'Local Import',
         filePath: destPath,
         fileName,
-        fileSize: totalBytes,
+        fileSize,
         quantization,
         downloadedAt: new Date().toISOString(),
         credibility: {
@@ -1060,9 +1053,10 @@ class ModelManager {
   private async copyFileWithProgress(
     source: string,
     dest: string,
-    totalBytes: number,
-    onProgress?: (fraction: number) => void
+    onProgress?: (fraction: number) => void,
   ): Promise<void> {
+    const sourceStat = await RNFS.stat(source);
+    const totalBytes = typeof sourceStat.size === 'string' ? parseInt(sourceStat.size, 10) : sourceStat.size;
     let polling = true;
 
     // Start polling for progress

@@ -196,7 +196,7 @@ class ActiveModelService {
                 setDownloadedModels(updatedModels);
 
                 // Also persist to storage so it's remembered
-                await modelManager.saveModelWithMmproj(modelId, mmProjFile.path, mmProjFile.name, mmProjFile.size);
+                await modelManager.saveModelWithMmproj(modelId, mmProjFile.path);
               } else {
                 console.log('[ActiveModelService] No mmproj file found - vision will not work!');
               }
@@ -563,23 +563,6 @@ class ActiveModelService {
     return totalGB;
   }
 
-  /** Build the user-facing message for a critical (over-budget) memory check */
-  private buildCriticalMemoryMessage(
-    modelName: string,
-    requiredStr: string,
-    totalStr: string,
-    budgetStr: string,
-    currentlyLoadedMemoryGB: number,
-  ): string {
-    if (currentlyLoadedMemoryGB > 0) {
-      return `Cannot load ${modelName} (~${requiredStr} GB) while other models are loaded. ` +
-        `Total would be ~${totalStr} GB, exceeding your device's ~${budgetStr} GB safe limit (60% of RAM). ` +
-        `Unload the other model first, or choose a smaller model.`;
-    }
-    return `${modelName} requires ~${requiredStr} GB which exceeds your device's ~${budgetStr} GB safe limit (60% of RAM). ` +
-      `This model is too large for your device. Choose a smaller model.`;
-  }
-
   /**
    * Check if there's enough memory to load a model
    * Uses a dynamic memory budget (60% of device RAM) since system "available" memory is misleading
@@ -635,7 +618,12 @@ class ActiveModelService {
     if (totalRequiredMemoryGB > memoryBudgetGB) {
       severity = 'critical';
       canLoad = false;
-      message = this.buildCriticalMemoryMessage(modelName, requiredStr, totalStr, budgetStr, currentlyLoadedMemoryGB);
+      message = currentlyLoadedMemoryGB > 0
+        ? `Cannot load ${modelName} (~${requiredStr} GB) while other models are loaded. ` +
+          `Total would be ~${totalStr} GB, exceeding your device's ~${budgetStr} GB safe limit (60% of RAM). ` +
+          `Unload the other model first, or choose a smaller model.`
+        : `${modelName} requires ~${requiredStr} GB which exceeds your device's ~${budgetStr} GB safe limit (60% of RAM). ` +
+          `This model is too large for your device. Choose a smaller model.`;
     } else if (totalRequiredMemoryGB > warningThresholdGB) {
       severity = 'warning';
       canLoad = true;

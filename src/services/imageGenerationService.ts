@@ -265,12 +265,12 @@ class ImageGenerationService {
 
             // If enhancement worked, show it as a collapsible block
             if (enhancedPrompt && enhancedPrompt !== params.prompt) {
-              chatStore.updateMessage(
+              chatStore.updateMessageContent(
                 params.conversationId,
                 tempMessageId,
                 `<think>__LABEL:Enhanced prompt__\n${enhancedPrompt}</think>`,
-                false  // Clear the isThinking flag so it renders as a collapsible block
               );
+              chatStore.updateMessageThinking(params.conversationId, tempMessageId, false);
             } else {
               console.warn('[ImageGen] Enhancement produced no change, deleting thinking message');
               chatStore.deleteMessage(params.conversationId, tempMessageId);
@@ -441,16 +441,16 @@ class ImageGenerationService {
             {
               role: 'assistant',
               content: messageContent,
-            },
-            [{
-              id: result.id,
-              type: 'image',
-              uri: `file://${result.imagePath}`,
-              width: result.width,
-              height: result.height,
-            }],
-            genTime,
-            imageMeta
+              attachments: [{
+                id: result.id,
+                type: 'image',
+                uri: `file://${result.imagePath}`,
+                width: result.width,
+                height: result.height,
+              }],
+              generationTimeMs: genTime,
+              generationMeta: imageMeta,
+            }
           );
         }
 

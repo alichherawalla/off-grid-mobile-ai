@@ -144,12 +144,14 @@ export const ModelDownloadScreen: React.FC<ModelDownloadScreenProps> = ({
 
     try {
       if (modelManager.isBackgroundDownloadSupported()) {
-        await modelManager.downloadModelBackground(modelId, file, onProgress, onComplete, onError);
+        const info = await modelManager.downloadModelBackground(modelId, file, onProgress);
+        modelManager.watchDownload(info.downloadId, onComplete, onError);
       } else {
-        await modelManager.downloadModel(modelId, file, onProgress, onComplete, onError);
+        const model = await modelManager.downloadModel(modelId, file, onProgress);
+        onComplete(model);
       }
     } catch (error) {
-      setAlertState(showAlert('Download Failed', (error as Error).message));
+      onError(error as Error);
     }
   };
 

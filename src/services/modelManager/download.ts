@@ -37,23 +37,7 @@ export async function performBackgroundDownload(opts: PerformBackgroundDownloadO
   const mmProjLocalPath = file.mmProjFile ? `${modelsDir}/${file.mmProjFile.name}` : null;
 
   const mainExists = await RNFS.exists(localPath);
-  let mmProjExists = mmProjLocalPath ? await RNFS.exists(mmProjLocalPath) : true;
-
-  // If mmproj exists but is smaller than expected, it's a partial file — delete and re-download
-  if (mmProjExists && mmProjLocalPath && file.mmProjFile?.size) {
-    try {
-      const stat = await RNFS.stat(mmProjLocalPath);
-      const actualSize = typeof stat.size === 'string' ? parseInt(stat.size, 10) : stat.size;
-      if (actualSize < file.mmProjFile.size) {
-        logger.warn(`[ModelManager] mmproj partial (${actualSize}/${file.mmProjFile.size}), re-downloading`);
-        await RNFS.unlink(mmProjLocalPath).catch(() => {});
-        mmProjExists = false;
-      }
-    } catch {
-      await RNFS.unlink(mmProjLocalPath).catch(() => {});
-      mmProjExists = false;
-    }
-  }
+  const mmProjExists = await checkMmProjExists(mmProjLocalPath, file.mmProjFile?.size);
 
   if (mainExists && mmProjExists) {
     return handleAlreadyDownloaded({ modelId, file, localPath, mmProjLocalPath, backgroundDownloadContext });
@@ -61,48 +45,80 @@ export async function performBackgroundDownload(opts: PerformBackgroundDownloadO
 
   const mmProjSize = file.mmProjFile?.size || 0;
   const combinedTotalBytes = file.size + mmProjSize;
-  let mmProjDownloaded = mmProjExists ? mmProjSize : 0;
+  const mmProjDownloaded = await ensureMmProj({
+    file, modelId, mmProjLocalPath, mmProjExists, combinedTotalBytes, onProgress,
+  });
 
-  if (file.mmProjFile && mmProjLocalPath && !mmProjExists) {
-    const maxRetries = 2;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        if (attempt > 0) {
-          logger.log(`[ModelManager] mmproj download retry ${attempt}/${maxRetries}`);
-        }
-        await backgroundDownloadService.downloadFileTo({
-          params: {
-            url: file.mmProjFile.downloadUrl,
-            fileName: file.mmProjFile.name,
+  return startBgDownload({ modelId, file, localPath, mmProjLocalPath, combinedTotalBytes, mmProjDownloaded, modelsDir, backgroundDownloadContext, backgroundDownloadMetadataCallback, onProgress });
+}
+
+async function checkMmProjExists(path: string | null, expectedSize?: number): Promise<boolean> {
+  if (!path) return true;
+  const exists = await RNFS.exists(path);
+  if (!exists || !expectedSize) return exists;
+  try {
+    const stat = await RNFS.stat(path);
+    const actualSize = typeof stat.size === 'string' ? parseInt(stat.size, 10) : stat.size;
+    if (actualSize < expectedSize) {
+      logger.warn(`[ModelManager] mmproj partial (${actualSize}/${expectedSize}), re-downloading`);
+      await RNFS.unlink(path).catch(() => {});
+      return false;
+    }
+    return true;
+  } catch {
+    await RNFS.unlink(path).catch(() => {});
+    return false;
+  }
+}
+
+interface EnsureMmProjOpts {
+  file: ModelFile;
+  modelId: string;
+  mmProjLocalPath: string | null;
+  mmProjExists: boolean;
+  combinedTotalBytes: number;
+  onProgress?: DownloadProgressCallback;
+}
+
+async function ensureMmProj(opts: EnsureMmProjOpts): Promise<number> {
+  const { file, modelId, mmProjLocalPath, mmProjExists, combinedTotalBytes, onProgress } = opts;
+  const mmProjSize = file.mmProjFile?.size || 0;
+  if (!file.mmProjFile || !mmProjLocalPath || mmProjExists) return mmProjExists ? mmProjSize : 0;
+
+  const maxRetries = 2;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) logger.log(`[ModelManager] mmproj download retry ${attempt}/${maxRetries}`);
+      await backgroundDownloadService.downloadFileTo({
+        params: {
+          url: file.mmProjFile.downloadUrl,
+          fileName: file.mmProjFile.name,
+          modelId,
+          totalBytes: file.mmProjFile.size,
+        },
+        destPath: mmProjLocalPath,
+        onProgress: (bytesDownloaded) => {
+          onProgress?.({
             modelId,
-            totalBytes: file.mmProjFile.size,
-          },
-          destPath: mmProjLocalPath,
-          onProgress: (bytesDownloaded) => {
-            onProgress?.({
-              modelId,
-              fileName: `${file.mmProjFile!.name} (vision)`,
-              bytesDownloaded,
-              totalBytes: combinedTotalBytes,
-              progress: combinedTotalBytes > 0 ? bytesDownloaded / combinedTotalBytes : 0,
-            });
-          },
-          silent: true,
-        });
-        mmProjDownloaded = file.mmProjFile.size;
-        break;
-      } catch (e) {
-        if (attempt < maxRetries) {
-          logger.warn(`[ModelManager] mmproj download attempt ${attempt + 1} failed, retrying:`, e);
-          await RNFS.unlink(mmProjLocalPath).catch(() => {});
-        } else {
-          logger.warn('[ModelManager] mmproj download failed after retries, vision will not be available:', e);
-        }
+            fileName: `${file.mmProjFile!.name} (vision)`,
+            bytesDownloaded,
+            totalBytes: combinedTotalBytes,
+            progress: combinedTotalBytes > 0 ? bytesDownloaded / combinedTotalBytes : 0,
+          });
+        },
+        silent: true,
+      });
+      return file.mmProjFile.size;
+    } catch (e) {
+      if (attempt < maxRetries) {
+        logger.warn(`[ModelManager] mmproj download attempt ${attempt + 1} failed, retrying:`, e);
+        await RNFS.unlink(mmProjLocalPath).catch(() => {});
+      } else {
+        logger.warn('[ModelManager] mmproj download failed after retries, vision will not be available:', e);
       }
     }
   }
-
-  return startBgDownload({ modelId, file, localPath, mmProjLocalPath, combinedTotalBytes, mmProjDownloaded, modelsDir, backgroundDownloadContext, backgroundDownloadMetadataCallback, onProgress });
+  return 0;
 }
 
 interface AlreadyDownloadedOpts {

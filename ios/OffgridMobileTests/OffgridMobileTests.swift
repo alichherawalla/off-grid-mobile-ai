@@ -394,8 +394,9 @@ final class DownloadManagerModuleTests: XCTestCase {
 
   override func setUp() {
     super.setUp()
-    // Clear any persisted download state so tests start clean
+    // Clear persisted download state keys so tests start clean.
     UserDefaults.standard.removeObject(forKey: "ai.offgridmobile.activeDownloads")
+    UserDefaults.standard.removeObject(forKey: "ai.offgridmobile.downloadmanager.state.v1")
     module = DownloadManagerModule()
   }
 

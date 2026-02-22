@@ -1,18 +1,67 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Platform } from 'react-native';
+import RNFS from 'react-native-fs';
+import { unzip } from 'react-native-zip-archive';
 import { AlertState } from '../../components/CustomAlert';
 import { useAppStore } from '../../stores';
 import { modelManager, hardwareService, backgroundDownloadService } from '../../services';
 import { fetchAvailableModels, HFImageModel, guessStyle } from '../../services/huggingFaceModelBrowser';
 import { fetchAvailableCoreMLModels } from '../../services/coreMLModelBrowser';
-import { ImageModelRecommendation } from '../../types';
+import { resolveCoreMLModelDir, downloadCoreMLTokenizerFiles } from '../../utils/coreMLModelUtils';
+import { ImageModelRecommendation, ONNXImageModel, PersistedDownloadInfo } from '../../types';
 import { BackendFilter, ImageFilterDimension, ImageModelDescriptor } from './types';
 import { matchesSdVersionFilter } from './utils';
 import {
   ImageDownloadDeps,
   handleDownloadImageModel as downloadImageModel,
+  wireDownloadListeners,
+  registerAndNotify,
+  cleanupDownloadState,
 } from './imageDownloadActions';
 import logger from '../../utils/logger';
+
+/** Process a completed image download (zip or multifile) using persisted metadata. */
+async function handleCompletedImageDownload(opts: {
+  metadata: PersistedDownloadInfo;
+  modelId: string;
+  modelDir: string;
+  imageModelsDir: string;
+  downloadId: number;
+  deps: ImageDownloadDeps;
+}): Promise<void> {
+  const { metadata, modelId, modelDir, imageModelsDir, downloadId, deps } = opts;
+
+  if (metadata.imageDownloadType === 'zip') {
+    const zipPath = `${imageModelsDir}/${metadata.fileName}`;
+    if (!(await RNFS.exists(imageModelsDir))) await RNFS.mkdir(imageModelsDir);
+    await backgroundDownloadService.moveCompletedDownload(downloadId, zipPath);
+    deps.updateModelProgress(modelId, 0.92);
+    if (!(await RNFS.exists(modelDir))) await RNFS.mkdir(modelDir);
+    await unzip(zipPath, modelDir);
+    const resolvedModelDir = metadata.imageModelBackend === 'coreml'
+      ? await resolveCoreMLModelDir(modelDir) : modelDir;
+    deps.updateModelProgress(modelId, 0.95);
+    await RNFS.unlink(zipPath).catch(() => {});
+    const imageModel: ONNXImageModel = {
+      id: modelId, name: metadata.imageModelName!, description: metadata.imageModelDescription!,
+      modelPath: resolvedModelDir, downloadedAt: new Date().toISOString(),
+      size: metadata.imageModelSize!, style: metadata.imageModelStyle,
+      backend: metadata.imageModelBackend as ONNXImageModel['backend'],
+    };
+    await registerAndNotify(deps, { imageModel, modelName: metadata.imageModelName!, downloadId });
+  } else if (metadata.imageDownloadType === 'multifile') {
+    if (metadata.imageModelBackend === 'coreml' && metadata.imageModelRepo) {
+      await downloadCoreMLTokenizerFiles(modelDir, metadata.imageModelRepo);
+    }
+    const imageModel: ONNXImageModel = {
+      id: modelId, name: metadata.imageModelName!, description: metadata.imageModelDescription!,
+      modelPath: modelDir, downloadedAt: new Date().toISOString(),
+      size: metadata.imageModelSize!, style: metadata.imageModelStyle,
+      backend: metadata.imageModelBackend as ONNXImageModel['backend'],
+    };
+    await registerAndNotify(deps, { imageModel, modelName: metadata.imageModelName!, downloadId });
+  }
+}
 
 export function useImageModels(setAlertState: (s: AlertState) => void) {
   const [availableHFModels, setAvailableHFModels] = useState<HFImageModel[]>([]);
@@ -79,19 +128,66 @@ export function useImageModels(setAlertState: (s: AlertState) => void) {
     if (!backgroundDownloadService.isAvailable()) return;
     try {
       const activeDownloads = await modelManager.getActiveBackgroundDownloads();
-      const imageDownloads = activeDownloads.filter(d =>
-        d.modelId.startsWith('image:') && ['running', 'pending', 'paused'].includes(d.status)
-      );
+      const imageDownloads = activeDownloads.filter(d => d.modelId.startsWith('image:'));
       const activeNativeIds = new Set(imageDownloads.map(d => d.modelId.replace('image:', '')));
       for (const modelId of imageModelDownloading) {
         if (!activeNativeIds.has(modelId)) removeImageModelDownloading(modelId);
       }
+
+      const persistedDownloads = useAppStore.getState().activeBackgroundDownloads;
+      const deps = makeDeps();
+      let hasActiveDownloads = false;
+
       for (const download of imageDownloads) {
         const modelId = download.modelId.replace('image:', '');
-        addImageModelDownloading(modelId);
-        setImageModelDownloadId(modelId, download.downloadId);
-        updateModelProgress(modelId, download.totalBytes > 0 ? download.bytesDownloaded / download.totalBytes : 0);
+        const metadata = persistedDownloads[download.downloadId];
+
+        // Skip downloads without persisted image metadata (can't restore without it)
+        if (!metadata?.imageDownloadType) {
+          // Still show as downloading for UI, but can't wire completion
+          if (['running', 'pending', 'paused'].includes(download.status)) {
+            addImageModelDownloading(modelId);
+            setImageModelDownloadId(modelId, download.downloadId);
+            updateModelProgress(modelId, download.totalBytes > 0 ? download.bytesDownloaded / download.totalBytes : 0);
+          }
+          continue;
+        }
+
+        const imageModelsDir = modelManager.getImageModelsDirectory();
+        const modelDir = `${imageModelsDir}/${modelId}`;
+
+        if (download.status === 'completed') {
+          // Download completed while app was dead — run completion handler now
+          addImageModelDownloading(modelId);
+          updateModelProgress(modelId, 0.9);
+          try {
+            await handleCompletedImageDownload({
+              metadata, modelId, modelDir, imageModelsDir, downloadId: download.downloadId, deps,
+            });
+          } catch (e: any) {
+            logger.warn('[ModelsScreen] Failed to process completed image download:', e);
+            cleanupDownloadState(deps, modelId, download.downloadId);
+          }
+        } else if (['running', 'pending', 'paused'].includes(download.status)) {
+          // Still in progress — wire listeners
+          addImageModelDownloading(modelId);
+          setImageModelDownloadId(modelId, download.downloadId);
+          updateModelProgress(modelId, download.totalBytes > 0 ? download.bytesDownloaded / download.totalBytes : 0);
+          hasActiveDownloads = true;
+
+          wireDownloadListeners(
+            { downloadId: download.downloadId, modelId, deps },
+            () => handleCompletedImageDownload({
+              metadata, modelId, modelDir, imageModelsDir, downloadId: download.downloadId, deps,
+            }),
+          ).setProgressUnsub(backgroundDownloadService.onProgress(download.downloadId, (ev) => {
+            const scale = metadata.imageDownloadType === 'zip' ? 0.9 : 0.95;
+            deps.updateModelProgress(modelId, ev.totalBytes > 0 ? (ev.bytesDownloaded / ev.totalBytes) * scale : 0);
+          }));
+        }
       }
+
+      if (hasActiveDownloads) backgroundDownloadService.startProgressPolling();
     } catch (e) { logger.warn('[ModelsScreen] Failed to restore image downloads:', e); }
   };
 

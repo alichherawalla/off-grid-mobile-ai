@@ -66,6 +66,14 @@ export interface PersistedDownloadInfo {
   totalBytes: number;
   mmProjFileName?: string;
   mmProjLocalPath?: string | null;
+  // Image model metadata (for restoring downloads after app kill)
+  imageModelName?: string;
+  imageModelDescription?: string;
+  imageModelSize?: number;
+  imageModelStyle?: string;
+  imageModelBackend?: string;
+  imageModelRepo?: string;
+  imageDownloadType?: 'zip' | 'multifile';
 }
 
 export interface DownloadProgress {
@@ -257,14 +265,10 @@ export interface ImageGenerationState {
   prompt?: string;
 }
 
-// Image generation mode
 export type ImageGenerationMode = 'auto' | 'manual';
-// Auto-detection method for image requests
 export type AutoDetectMethod = 'pattern' | 'llm';
-// Model loading strategy
 export type ModelLoadingStrategy = 'performance' | 'memory';
-// Image mode state for chat input
-// 'auto' = smart detect, 'force' = always generate image, 'disabled' = never generate image
+/** 'auto' = smart detect, 'force' = always generate image, 'disabled' = never */
 export type ImageModeState = 'auto' | 'force' | 'disabled';
 
 export interface GeneratedImage {
@@ -308,7 +312,6 @@ export interface Project {
   updatedAt: string;
 }
 
-// Background download types
 export type BackgroundDownloadStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'unknown';
 export interface BackgroundDownloadInfo {
   downloadId: number;
@@ -324,7 +327,6 @@ export interface BackgroundDownloadInfo {
   failureReason?: string;
 }
 
-// Debug info for context inspection
 export interface DebugInfo {
   systemPrompt: string;
   originalMessageCount: number;
@@ -336,7 +338,6 @@ export interface DebugInfo {
   contextUsagePercent: number;
 }
 
-// App state types
 export type AppScreen =
   | 'onboarding'
   | 'home'

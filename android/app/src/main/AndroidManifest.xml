@@ -17,6 +17,9 @@
     <!-- For download notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- For silent companion file downloads (e.g. mmproj for vision models) -->
+    <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
+
     <application
       android:name=".MainApplication"
       android:label="@string/app_name"

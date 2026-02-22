@@ -12,14 +12,14 @@ import { ONNXImageModel } from '../../types';
 import { ImageModelDescriptor } from './types';
 
 /** Remove downloading indicator and clear progress for a model. */
-function cleanupDownloadState(deps: ImageDownloadDeps, modelId: string, downloadId?: number) {
+export function cleanupDownloadState(deps: ImageDownloadDeps, modelId: string, downloadId?: number) {
   deps.removeImageModelDownloading(modelId);
   deps.clearModelProgress(modelId);
   if (downloadId != null) deps.setBackgroundDownload(downloadId, null);
 }
 
 /** Register a downloaded image model, activate if first, then cleanup + alert. */
-async function registerAndNotify(
+export async function registerAndNotify(
   deps: ImageDownloadDeps,
   opts: { imageModel: ONNXImageModel; modelName: string; downloadId?: number },
 ) {
@@ -32,7 +32,7 @@ async function registerAndNotify(
 }
 
 /** Wire error + complete listeners that unsub on completion and share cleanup logic. */
-function wireDownloadListeners(
+export function wireDownloadListeners(
   ctx: { downloadId: number; modelId: string; deps: ImageDownloadDeps },
   onCompleteWork: () => Promise<void>,
 ) {
@@ -154,6 +154,10 @@ export async function downloadCoreMLMultiFile(
     deps.setImageModelDownloadId(modelInfo.id, downloadInfo.downloadId);
     deps.setBackgroundDownload(downloadInfo.downloadId, {
       modelId: `image:${modelInfo.id}`, fileName: modelInfo.id, quantization: 'Core ML', author: 'Image Generation', totalBytes: modelInfo.size,
+      imageModelName: modelInfo.name, imageModelDescription: modelInfo.description,
+      imageModelSize: modelInfo.size, imageModelStyle: modelInfo.style,
+      imageModelBackend: modelInfo.backend, imageModelRepo: modelInfo.repo,
+      imageDownloadType: 'multifile',
     });
     const listeners = wireDownloadListeners({ downloadId: downloadInfo.downloadId, modelId: modelInfo.id, deps }, async () => {
       if (modelInfo.backend === 'coreml' && modelInfo.repo) await downloadCoreMLTokenizerFiles(modelDir, modelInfo.repo);
@@ -198,6 +202,9 @@ export async function proceedWithDownload(
     deps.setImageModelDownloadId(modelInfo.id, downloadInfo.downloadId);
     deps.setBackgroundDownload(downloadInfo.downloadId, {
       modelId: `image:${modelInfo.id}`, fileName, quantization: '', author: 'Image Generation', totalBytes: modelInfo.size,
+      imageModelName: modelInfo.name, imageModelDescription: modelInfo.description,
+      imageModelSize: modelInfo.size, imageModelStyle: modelInfo.style,
+      imageModelBackend: modelInfo.backend, imageDownloadType: 'zip',
     });
     const listeners = wireDownloadListeners({ downloadId: downloadInfo.downloadId, modelId: modelInfo.id, deps }, async () => {
       deps.updateModelProgress(modelInfo.id, 0.9);

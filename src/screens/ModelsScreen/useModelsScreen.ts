@@ -134,7 +134,6 @@ export function useModelsScreen() {
 
   const isFirstDownload =
     text.downloadedModels.length === 0 && image.downloadedImageModels.length === 0;
-
   const maybeShowNotifRationale = useCallback(async (proceed: () => void) => {
     if (Platform.OS !== 'android' || Platform.Version < 33 || !isFirstDownload) {
       proceed();

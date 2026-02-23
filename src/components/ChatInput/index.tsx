@@ -164,13 +164,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             onFocus={handleFocus}
             onBlur={handleBlur}
           />
-          {/* Icons slide right and collapse width on focus */}
+          {/* Width collapses on focus; pill overflow:hidden clips the content */}
           <Animated.View
             pointerEvents={isFocused ? 'none' : 'auto'}
             style={[styles.pillIcons, {
               width: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [PILL_ICONS_WIDTH, 0] }),
-              opacity: focusAnim.interpolate({ inputRange: [0, 0.5], outputRange: [1, 0], extrapolate: 'clamp' }),
-              transform: [{ translateX: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [0, PILL_ICONS_WIDTH] }) }],
+              opacity: focusAnim.interpolate({ inputRange: [0, 0.4], outputRange: [1, 0], extrapolate: 'clamp' }),
             }]}
           >
             {/* Attachment button */}

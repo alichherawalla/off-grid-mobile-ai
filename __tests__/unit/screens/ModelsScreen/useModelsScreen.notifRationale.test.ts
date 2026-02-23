@@ -225,7 +225,7 @@ describe('useModelsScreen — notification permission rationale', () => {
     expect(mockTextHandleDownload).toHaveBeenCalledTimes(1);
   });
 
-  it('calls through without modal if models already downloaded (not first download)', async () => {
+  it('shows rationale modal even if models already downloaded when permission not granted', async () => {
     setPlatform('android', 33);
     mockPermissionsCheck.mockResolvedValue(false);
 
@@ -236,12 +236,9 @@ describe('useModelsScreen — notification permission rationale', () => {
 
     const { result } = renderHook(() => useModelsScreen());
 
-    await act(async () => {
-      result.current.handleDownload({} as any, {} as any);
-    });
-
-    expect(result.current.showNotifRationale).toBe(false);
-    expect(mockTextHandleDownload).toHaveBeenCalledTimes(1);
+    act(() => { result.current.handleDownload({} as any, {} as any); });
+    await waitFor(() => expect(result.current.showNotifRationale).toBe(true));
+    expect(mockTextHandleDownload).not.toHaveBeenCalled();
   });
 
   // -------------------------------------------------------------------------

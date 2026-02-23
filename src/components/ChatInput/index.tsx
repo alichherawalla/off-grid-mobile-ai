@@ -56,23 +56,27 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const reducedMotion = useReducedMotion();
   const iconsWidth = useSharedValue(ICONS_WIDTH);
   const iconsOpacity = useSharedValue(1);
+  const iconsTranslateX = useSharedValue(0);
 
   const animatedIconsStyle = useAnimatedStyle(() => ({
     width: iconsWidth.value,
     opacity: iconsOpacity.value,
+    transform: [{ translateX: iconsTranslateX.value }],
   }));
 
   const handleInputFocus = useCallback(() => {
     const duration = reducedMotion ? 0 : 200;
+    iconsTranslateX.value = withTiming(ICONS_WIDTH, { duration });
     iconsOpacity.value = withTiming(0, { duration });
     iconsWidth.value = withTiming(0, { duration });
-  }, [reducedMotion, iconsOpacity, iconsWidth]);
+  }, [reducedMotion, iconsTranslateX, iconsOpacity, iconsWidth]);
 
   const handleInputBlur = useCallback(() => {
     const duration = reducedMotion ? 0 : 250;
+    iconsTranslateX.value = withTiming(0, { duration });
     iconsOpacity.value = withTiming(1, { duration });
     iconsWidth.value = withTiming(ICONS_WIDTH, { duration });
-  }, [reducedMotion, iconsOpacity, iconsWidth]);
+  }, [reducedMotion, iconsTranslateX, iconsOpacity, iconsWidth]);
 
   const { attachments, removeAttachment, clearAttachments, handlePickImage, handlePickDocument } = useAttachments(setAlertState);
 

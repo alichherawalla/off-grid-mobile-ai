@@ -4,7 +4,7 @@
 # Usage: ./run-tests.sh [folder]
 # Example: ./run-tests.sh p0
 
-TEST_DIR="${1:-.maestro/flows/p0}"
+TEST_DIR="${1:-.maestro/flows/p2}"
 FAILED_TESTS=()
 PASSED_TESTS=()
 

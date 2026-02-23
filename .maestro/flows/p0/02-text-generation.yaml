@@ -22,16 +22,10 @@ tags:
 - runFlow:
     when:
       visible:
-        text: "Welcome to Off Grid"
+        text: "YOURS"
     commands:
       - tapOn:
           text: "Skip"
-      - extendedWaitUntil:
-          visible:
-            text: "Skip for Now"
-          timeout: 30000
-      - tapOn:
-          text: "Skip for Now"
 
 # Handle download prompt if shown
 - runFlow:

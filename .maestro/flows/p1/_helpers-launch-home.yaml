@@ -1,0 +1,44 @@
+# Shared P1 helper: launch app and reach home screen
+
+appId: ai.offgridmobile.dev
+name: "P1: Helpers Launch Home"
+tags:
+  - p1
+  - helper
+---
+
+- launchApp
+
+- extendedWaitUntil:
+    notVisible:
+      id: "app-loading"
+    timeout: 30000
+
+- runFlow:
+    when:
+      visible:
+        id: "onboarding-screen"
+    commands:
+      - tapOn:
+          id: "onboarding-skip"
+
+- runFlow:
+    when:
+      visible:
+        text: "YOURS"
+    commands:
+      - tapOn:
+          text: "Skip"
+
+- runFlow:
+    when:
+      visible:
+        text: "Download Your First Model"
+    commands:
+      - tapOn:
+          text: "Skip for Now"
+
+- extendedWaitUntil:
+    visible:
+      id: "home-screen"
+    timeout: 15000

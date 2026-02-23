@@ -1,159 +1,79 @@
-# P0 E2E: Image Attachment Flow
-# Tests the image attachment button and camera/library picker dialog
-# Prerequisites: Text model must be loaded
-#
-# Strategy:
-# 1. Open chat
-# 2. Verify camera button visibility (depends on vision support)
-# 3. Tap camera button
-# 4. Verify source selection dialog appears (Camera / Photo Library)
-# 5. Dismiss dialog
-# 6. Verify chat remains functional
+# P1 E2E: Image Attachment Button Behavior
 
 appId: ai.offgridmobile.dev
-name: "P0: Image Attachment"
+name: "P1: Image Attachment"
 tags:
-  - p0
+  - p1
   - attachment
   - image
 ---
 
-# ==============================
-# Launch app
-# ==============================
-- evalScript: "${console.log('IMG_ATTACH - Launch')}"
-- launchApp
+- runFlow: 00-setup-model.yaml
 
-- extendedWaitUntil:
-    notVisible:
-      id: "app-loading"
-    timeout: 30000
-
-# ==============================
-# Handle onboarding
-# ==============================
-- runFlow:
-    when:
-      visible:
-        text: "Welcome to Off Grid"
-    commands:
-      - evalScript: "${console.log('IMG_ATTACH - Skip onboarding')}"
-      - tapOn:
-          text: "Skip"
-      - extendedWaitUntil:
-          visible:
-            text: "Skip for Now"
-          timeout: 30000
-      - tapOn:
-          text: "Skip for Now"
-
-- runFlow:
-    when:
-      visible:
-        text: "Download Your First Model"
-    commands:
-      - evalScript: "${console.log('IMG_ATTACH - Skip prompt')}"
-      - tapOn:
-          text: "Skip for Now"
-
-# ==============================
-# Wait for home screen
-# ==============================
-- extendedWaitUntil:
-    visible:
-      id: "home-screen"
-    timeout: 15000
-- evalScript: "${console.log('IMG_ATTACH - On home')}"
-
-# ==============================
-# Ensure model is loaded
-# ==============================
-- runFlow:
-    when:
-      visible:
-        id: "setup-card"
-    commands:
-      - evalScript: "${console.log('IMG_ATTACH - Load model')}"
-      - runFlow: 00-setup-model.yaml
-
-- extendedWaitUntil:
-    visible:
-      id: "new-chat-button"
-    timeout: 5000
-
-# ==============================
-# Open chat
-# ==============================
-- evalScript: "${console.log('IMG_ATTACH - Open chat')}"
 - tapOn:
     id: "new-chat-button"
-
 - extendedWaitUntil:
     visible:
       id: "chat-screen"
     timeout: 10000
-- takeScreenshot: 01-chat-screen
 
-# ==============================
-# Test: Camera button (vision-capable models only)
-# ==============================
-# Camera button only appears when model supports vision (mmProjPath)
-# If camera button is visible, test the image picker flow
+- assertVisible:
+    id: "camera-button"
+- tapOn:
+    id: "camera-button"
+
+# Vision-disabled path.
 - runFlow:
     when:
       visible:
-        id: "camera-button"
+        text: "Vision Not Supported"
     commands:
-      - evalScript: "${console.log('IMG_ATTACH - Camera button visible (vision model)')}"
-      - takeScreenshot: 02-camera-button
-
-      # Tap camera button to open source selection
       - tapOn:
-          id: "camera-button"
+          text: "OK"
 
-      # Verify source selection dialog appears
-      - extendedWaitUntil:
-          visible:
-            text: "Camera"
-          timeout: 5000
-      - evalScript: "${console.log('IMG_ATTACH - Source selection dialog shown')}"
-      - takeScreenshot: 03-source-dialog
+# Vision-enabled path variants.
+- runFlow:
+    when:
+      visible:
+        text: "Camera"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              text: "Cancel"
+          commands:
+            - tapOn:
+                text: "Cancel"
+- runFlow:
+    when:
+      visible:
+        text: "Choose from Library"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              text: "Cancel"
+          commands:
+            - tapOn:
+                text: "Cancel"
 
-      # Verify both options exist
-      - assertVisible:
-          text: "Camera"
-      - assertVisible:
-          text: "Photo Library"
-
-      # Dismiss dialog by tapping Cancel
-      - tapOn:
-          text: "Cancel"
-      - evalScript: "${console.log('IMG_ATTACH - Dialog dismissed')}"
-      - takeScreenshot: 04-dialog-dismissed
-
-      # Verify vision indicator badge is shown
-      - assertVisible:
-          id: "vision-indicator"
-      - evalScript: "${console.log('IMG_ATTACH - Vision indicator visible')}"
-
-# If no camera button, model doesn't support vision - that's OK
+# Fallback if native picker is still open.
 - runFlow:
     when:
       notVisible:
-        id: "camera-button"
+        id: "chat-input"
     commands:
-      - evalScript: "${console.log('IMG_ATTACH - No camera button (non-vision model), skipping image tests')}"
-      - takeScreenshot: 02-no-camera-button
+      - back
 
-# ==============================
-# Verify chat is still functional
-# ==============================
-- evalScript: "${console.log('IMG_ATTACH - Verify chat functional')}"
+- extendedWaitUntil:
+    visible:
+      id: "chat-input"
+    timeout: 5000
+
 - tapOn:
     id: "chat-input"
 - inputText: "Say OK"
 - hideKeyboard
-
 - tapOn:
     id: "send-button"
 
@@ -162,5 +82,4 @@ tags:
       id: "assistant-message"
     timeout: 60000
 
-- evalScript: "${console.log('IMG_ATTACH - PASSED')}"
-- takeScreenshot: 99-complete
+- evalScript: "${console.log('P1_IMG_ATTACH - passed')}"

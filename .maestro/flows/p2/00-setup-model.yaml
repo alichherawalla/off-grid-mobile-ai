@@ -33,15 +33,6 @@ tags:
 - runFlow:
     when:
       visible:
-        text: "Welcome to Off Grid"
-    commands:
-      - evalScript: "${console.log('SETUP - Skip onboarding (legacy)')}"
-      - tapOn:
-          text: "Skip"
-
-- runFlow:
-    when:
-      visible:
         text: "YOURS"
     commands:
       - evalScript: "${console.log('SETUP - Skip onboarding')}"
@@ -170,6 +161,10 @@ tags:
             - takeScreenshot: 11-success
             - tapOn:
                 text: "OK"
+
+            # Go back from model detail screen to Models tab
+            - evalScript: "${console.log('SETUP - Back to models list')}"
+            - back
 
             # Go back to home
             - evalScript: "${console.log('SETUP - Back to home')}"

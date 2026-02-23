@@ -1,0 +1,106 @@
+# P1 E2E: Setup - ensure a text model is loaded and ready for chat
+
+appId: ai.offgridmobile.dev
+name: "P1: Setup Text Model"
+tags:
+  - p1
+  - setup
+---
+
+- runFlow: _helpers-launch-home.yaml
+
+# Early exit if already loaded.
+- runFlow:
+    when:
+      visible:
+        id: "new-chat-button"
+    commands:
+      - evalScript: "${console.log('P1_SETUP - model already loaded')}"
+
+# If no active model, load one from picker or download first.
+- runFlow:
+    when:
+      visible:
+        id: "setup-card"
+    commands:
+      - tapOn:
+          text: "Text"
+      - extendedWaitUntil:
+          visible:
+            text: "Text Models"
+          timeout: 5000
+
+      - runFlow:
+          when:
+            visible:
+              text: "No text models downloaded"
+          commands:
+            - tapOn:
+                point: "50%,10%"
+            - tapOn:
+                id: "models-tab"
+            - extendedWaitUntil:
+                visible:
+                  id: "models-screen"
+                timeout: 10000
+            - extendedWaitUntil:
+                visible:
+                  id: "models-list"
+                timeout: 15000
+            - tapOn:
+                id: "search-input"
+            - inputText: "SmolLM2-135M-Instruct-GGUF unsloth"
+            - tapOn:
+                id: "search-button"
+            - extendedWaitUntil:
+                visible:
+                  text: "SmolLM2-135M-Instruct-GGUF"
+                timeout: 30000
+            - tapOn:
+                text: "SmolLM2-135M-Instruct-GGUF"
+            - extendedWaitUntil:
+                visible:
+                  text: "Available Files"
+                timeout: 15000
+            - tapOn:
+                id: "file-card-0-download"
+            - extendedWaitUntil:
+                visible:
+                  text: "Success"
+                timeout: 300000
+            - tapOn:
+                text: "OK"
+            - back
+            - tapOn:
+                id: "home-tab"
+            - extendedWaitUntil:
+                visible:
+                  id: "home-screen"
+                timeout: 10000
+            - tapOn:
+                text: "Text"
+            - extendedWaitUntil:
+                visible:
+                  text: "Text Models"
+                timeout: 5000
+
+      - tapOn:
+          id: "model-item"
+          index: 0
+
+      - runFlow:
+          when:
+            visible:
+              text: "Load Anyway"
+          commands:
+            - tapOn:
+                text: "Load Anyway"
+
+- extendedWaitUntil:
+    visible:
+      id: "new-chat-button"
+    timeout: 120000
+
+- assertVisible:
+    id: "new-chat-button"
+- evalScript: "${console.log('P1_SETUP - passed')}"

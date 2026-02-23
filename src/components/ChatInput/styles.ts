@@ -113,6 +113,7 @@ export const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
     paddingRight: 4,
     paddingVertical: 4,
     minHeight: 48,
+    overflow: 'hidden' as const,
   },
   pillInput: {
     flex: 1,

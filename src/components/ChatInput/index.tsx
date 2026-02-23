@@ -150,7 +150,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         return { color: imageModelLoaded ? colors.textSecondary : colors.textMuted, badge: 'A', badgeStyle: 'auto' };
     }
   };
-
   const imgState = imageModeIcon();
 
   return (

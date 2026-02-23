@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { View, TextInput, TouchableOpacity, Text } from 'react-native';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, useReducedMotion } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/Feather';
@@ -29,6 +29,8 @@ interface ChatInputProps {
 }
 
 const IMAGE_MODE_CYCLE: ImageModeState[] = ['auto', 'force', 'disabled'];
+// 3 icons × 36px each
+const ICONS_WIDTH = 108;
 
 export const ChatInput: React.FC<ChatInputProps> = ({
   onSend,
@@ -52,8 +54,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [alertState, setAlertState] = useState<AlertState>(initialAlertState);
   const inputRef = useRef<TextInput>(null);
   const reducedMotion = useReducedMotion();
-  // 3 icons × 36px each
-  const ICONS_WIDTH = 108;
   const iconsWidth = useSharedValue(ICONS_WIDTH);
   const iconsOpacity = useSharedValue(1);
 
@@ -62,17 +62,17 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     opacity: iconsOpacity.value,
   }));
 
-  const handleInputFocus = () => {
+  const handleInputFocus = useCallback(() => {
     const duration = reducedMotion ? 0 : 200;
     iconsOpacity.value = withTiming(0, { duration });
     iconsWidth.value = withTiming(0, { duration });
-  };
+  }, [reducedMotion, iconsOpacity, iconsWidth]);
 
-  const handleInputBlur = () => {
+  const handleInputBlur = useCallback(() => {
     const duration = reducedMotion ? 0 : 250;
     iconsOpacity.value = withTiming(1, { duration });
     iconsWidth.value = withTiming(ICONS_WIDTH, { duration });
-  };
+  }, [reducedMotion, iconsOpacity, iconsWidth]);
 
   const { attachments, removeAttachment, clearAttachments, handlePickImage, handlePickDocument } = useAttachments(setAlertState);
 

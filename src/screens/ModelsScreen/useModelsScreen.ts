@@ -132,10 +132,8 @@ export function useModelsScreen() {
     image.downloadedImageModels.length +
     Object.keys(text.downloadProgress).length;
 
-  const isFirstDownload =
-    text.downloadedModels.length === 0 && image.downloadedImageModels.length === 0;
   const maybeShowNotifRationale = useCallback(async (proceed: () => void) => {
-    if (Platform.OS !== 'android' || Platform.Version < 33 || !isFirstDownload) {
+    if (Platform.OS !== 'android' || Platform.Version < 33) {
       proceed();
       return;
     }
@@ -148,20 +146,22 @@ export function useModelsScreen() {
     }
     pendingDownload.current = proceed;
     setShowNotifRationale(true);
-  }, [isFirstDownload]);
+  }, []);
 
+  const textHandleDownload = text.handleDownload;
   const handleDownload = useCallback(
-    (...args: Parameters<typeof text.handleDownload>) => {
-      maybeShowNotifRationale(() => text.handleDownload(...args));
+    (...args: Parameters<typeof textHandleDownload>) => {
+      maybeShowNotifRationale(() => textHandleDownload(...args));
     },
-    [maybeShowNotifRationale, text],
+    [maybeShowNotifRationale, textHandleDownload],
   );
 
+  const imageHandleDownload = image.handleDownloadImageModel;
   const handleDownloadImageModel = useCallback(
-    (...args: Parameters<typeof image.handleDownloadImageModel>) => {
-      maybeShowNotifRationale(() => image.handleDownloadImageModel(...args));
+    (...args: Parameters<typeof imageHandleDownload>) => {
+      maybeShowNotifRationale(() => imageHandleDownload(...args));
     },
-    [maybeShowNotifRationale, image],
+    [maybeShowNotifRationale, imageHandleDownload],
   );
 
   const handleNotifRationaleAllow = useCallback(() => {

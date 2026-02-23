@@ -6,7 +6,7 @@ import { ImageModeState, MediaAttachment } from '../../types';
 import { VoiceRecordButton } from '../VoiceRecordButton';
 import { triggerHaptic } from '../../utils/haptics';
 import { CustomAlert, showAlert, hideAlert, AlertState, initialAlertState } from '../CustomAlert';
-import { createStyles, PILL_ICONS_WIDTH } from './styles';
+import { createStyles, PILL_ICONS_WIDTH, ANIM_DURATION_IN, ANIM_DURATION_OUT } from './styles';
 import { QueueRow } from './Toolbar';
 import { AttachmentPreview, useAttachments } from './Attachments';
 import { useVoiceInput } from './Voice';
@@ -55,12 +55,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
   const handleFocus = useCallback(() => {
     setIsFocused(true);
-    Animated.timing(focusAnim, { toValue: 1, duration: 180, useNativeDriver: false }).start();
+    Animated.timing(focusAnim, { toValue: 1, duration: ANIM_DURATION_IN, useNativeDriver: false }).start();
   }, [focusAnim]);
 
   const handleBlur = useCallback(() => {
     setIsFocused(false);
-    Animated.timing(focusAnim, { toValue: 0, duration: 200, useNativeDriver: false }).start();
+    Animated.timing(focusAnim, { toValue: 0, duration: ANIM_DURATION_OUT, useNativeDriver: false }).start();
   }, [focusAnim]);
 
   const { attachments, removeAttachment, clearAttachments, handlePickImage, handlePickDocument } = useAttachments(setAlertState);

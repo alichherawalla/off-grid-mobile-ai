@@ -5,6 +5,8 @@ import { Platform } from 'react-native';
 export const PILL_ICON_SIZE = 36;
 const NUM_PILL_ICONS = 3;
 export const PILL_ICONS_WIDTH = PILL_ICON_SIZE * NUM_PILL_ICONS;
+export const ANIM_DURATION_IN = 180;
+export const ANIM_DURATION_OUT = 200;
 
 export const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
   container: {

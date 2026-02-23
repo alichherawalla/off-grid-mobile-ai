@@ -55,26 +55,21 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   // 3 icons × 36px each
   const ICONS_WIDTH = 108;
   const iconsWidth = useSharedValue(ICONS_WIDTH);
-  const iconsTranslateX = useSharedValue(0);
   const iconsOpacity = useSharedValue(1);
 
   const animatedIconsStyle = useAnimatedStyle(() => ({
     width: iconsWidth.value,
-    transform: [{ translateX: iconsTranslateX.value }],
     opacity: iconsOpacity.value,
-    overflow: 'hidden' as const,
   }));
 
   const handleInputFocus = () => {
     const duration = reducedMotion ? 0 : 200;
-    iconsTranslateX.value = withTiming(ICONS_WIDTH, { duration });
     iconsOpacity.value = withTiming(0, { duration });
     iconsWidth.value = withTiming(0, { duration });
   };
 
   const handleInputBlur = () => {
     const duration = reducedMotion ? 0 : 250;
-    iconsTranslateX.value = withTiming(0, { duration });
     iconsOpacity.value = withTiming(1, { duration });
     iconsWidth.value = withTiming(ICONS_WIDTH, { duration });
   };

@@ -133,6 +133,7 @@ export const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
     alignItems: 'flex-end' as const,
     paddingBottom: 4,
     gap: 0,
+    overflow: 'hidden' as const,
   },
   pillIconButton: {
     width: 36,

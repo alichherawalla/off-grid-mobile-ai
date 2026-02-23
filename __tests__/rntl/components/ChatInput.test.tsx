@@ -1830,4 +1830,68 @@ describe('ChatInput', () => {
       jest.useRealTimers();
     });
   });
+
+  // ============================================================================
+  // Icon animation on focus / blur (covers handleInputFocus + handleInputBlur)
+  // ============================================================================
+  describe('icon animation on focus/blur', () => {
+    const ICONS_WIDTH = 108;
+
+    beforeEach(() => {
+      const { useReducedMotion } = require('react-native-reanimated');
+      (useReducedMotion as jest.Mock).mockReturnValue(false);
+    });
+
+    afterEach(() => {
+      const { useReducedMotion } = require('react-native-reanimated');
+      (useReducedMotion as jest.Mock).mockReturnValue(false);
+    });
+
+    it('collapses icons width and fades opacity to 0 on focus at 200ms', () => {
+      const { withTiming } = require('react-native-reanimated');
+      const { getByTestId } = render(<ChatInput {...defaultProps} />);
+
+      act(() => { getByTestId('chat-input').props.onFocus?.(); });
+
+      // opacity → 0, width → 0
+      expect(withTiming).toHaveBeenCalledTimes(2);
+      expect(withTiming).toHaveBeenCalledWith(0, { duration: 200 });
+    });
+
+    it('restores icons width to 108 and fades opacity to 1 on blur at 250ms', () => {
+      const { withTiming } = require('react-native-reanimated');
+      const { getByTestId } = render(<ChatInput {...defaultProps} />);
+
+      act(() => { getByTestId('chat-input').props.onBlur?.(); });
+
+      expect(withTiming).toHaveBeenCalledWith(1, { duration: 250 });
+      expect(withTiming).toHaveBeenCalledWith(ICONS_WIDTH, { duration: 250 });
+    });
+
+    it('uses duration 0 for both values on focus when reduced motion is enabled', () => {
+      const { withTiming, useReducedMotion } = require('react-native-reanimated');
+      (useReducedMotion as jest.Mock).mockReturnValue(true);
+
+      const { getByTestId } = render(<ChatInput {...defaultProps} />);
+
+      act(() => { getByTestId('chat-input').props.onFocus?.(); });
+
+      expect(withTiming).toHaveBeenCalledTimes(2);
+      expect(withTiming).toHaveBeenCalledWith(0, { duration: 0 });
+      expect(withTiming).not.toHaveBeenCalledWith(expect.anything(), { duration: 200 });
+    });
+
+    it('uses duration 0 for both values on blur when reduced motion is enabled', () => {
+      const { withTiming, useReducedMotion } = require('react-native-reanimated');
+      (useReducedMotion as jest.Mock).mockReturnValue(true);
+
+      const { getByTestId } = render(<ChatInput {...defaultProps} />);
+
+      act(() => { getByTestId('chat-input').props.onBlur?.(); });
+
+      expect(withTiming).toHaveBeenCalledWith(1, { duration: 0 });
+      expect(withTiming).toHaveBeenCalledWith(ICONS_WIDTH, { duration: 0 });
+      expect(withTiming).not.toHaveBeenCalledWith(expect.anything(), { duration: 250 });
+    });
+  });
 });

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { View, TextInput, TouchableOpacity, Text } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, useReducedMotion } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/Feather';
 import { useTheme, useThemedStyles } from '../../theme';
 import { ImageModeState, MediaAttachment } from '../../types';
@@ -50,6 +51,33 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [imageMode, setImageMode] = useState<ImageModeState>('auto');
   const [alertState, setAlertState] = useState<AlertState>(initialAlertState);
   const inputRef = useRef<TextInput>(null);
+  const reducedMotion = useReducedMotion();
+  // 3 icons × 36px each
+  const ICONS_WIDTH = 108;
+  const iconsWidth = useSharedValue(ICONS_WIDTH);
+  const iconsTranslateX = useSharedValue(0);
+  const iconsOpacity = useSharedValue(1);
+
+  const animatedIconsStyle = useAnimatedStyle(() => ({
+    width: iconsWidth.value,
+    transform: [{ translateX: iconsTranslateX.value }],
+    opacity: iconsOpacity.value,
+    overflow: 'hidden' as const,
+  }));
+
+  const handleInputFocus = () => {
+    const duration = reducedMotion ? 0 : 200;
+    iconsTranslateX.value = withTiming(ICONS_WIDTH, { duration });
+    iconsOpacity.value = withTiming(0, { duration });
+    iconsWidth.value = withTiming(0, { duration });
+  };
+
+  const handleInputBlur = () => {
+    const duration = reducedMotion ? 0 : 250;
+    iconsTranslateX.value = withTiming(0, { duration });
+    iconsOpacity.value = withTiming(1, { duration });
+    iconsWidth.value = withTiming(ICONS_WIDTH, { duration });
+  };
 
   const { attachments, removeAttachment, clearAttachments, handlePickImage, handlePickDocument } = useAttachments(setAlertState);
 
@@ -149,8 +177,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             editable={!disabled}
             blurOnSubmit={false}
             returnKeyType="default"
+            onFocus={handleInputFocus}
+            onBlur={handleInputBlur}
           />
-          <View style={styles.pillIcons}>
+          <Animated.View style={[styles.pillIcons, animatedIconsStyle]}>
             {/* Attachment button */}
             <TouchableOpacity
               testID="document-picker-button"
@@ -205,7 +235,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 <Text style={styles.iconBadgeText}>{imgState.badge}</Text>
               </View>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         </View>
 
         {/* Circular action button */}

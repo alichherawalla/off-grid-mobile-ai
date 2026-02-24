@@ -189,7 +189,7 @@ export const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
     backgroundColor: colors.primary,
   },
   circleButtonStop: {
-    backgroundColor: `${colors.error}CC`,
+    backgroundColor: `${colors.error}`,
   },
   circleButtonIdle: {
     backgroundColor: colors.surface,

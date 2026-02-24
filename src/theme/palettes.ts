@@ -76,7 +76,7 @@ export const COLORS_DARK = {
   // Semantic colors
   success: '#B0B0B0',
   warning: '#FFFFFF',
-  error: '#EF4444',
+  error: '#C75050',
   errorBackground: 'rgba(239, 68, 68, 0.15)',
   info: '#B0B0B0',
 

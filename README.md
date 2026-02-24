@@ -71,13 +71,11 @@ Tested on Snapdragon 8 Gen 2/3, Apple A17 Pro. Results vary by model size and qu
 <a name="install"></a>
 ## Install
 
-### iOS — App Store
+<div align="center">
 
-[<img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" width="200" />](https://apps.apple.com/us/app/off-grid-local-ai/id6759299882)
+[<img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" height="58" />](https://apps.apple.com/us/app/off-grid-local-ai/id6759299882)&nbsp;&nbsp;&nbsp;[<img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="58" />](https://play.google.com/store/apps/details?id=ai.offgridmobile)
 
-### Android — Google Play
-
-[<img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" width="200" />](https://play.google.com/store/apps/details?id=ai.offgridmobile)
+</div>
 
 Or grab the latest APK from [**GitHub Releases**](https://github.com/alichherawalla/off-grid-mobile/releases/latest).
 

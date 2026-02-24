@@ -160,6 +160,26 @@ describe('stripControlTokens', () => {
   });
 
   // ==========================================================================
+  // Tool call tag stripping
+  // ==========================================================================
+  describe('tool_call tag stripping', () => {
+    it('strips tool_call tags with JSON content', () => {
+      expect(stripControlTokens('Hello <tool_call>{"name":"calc"}</tool_call> world')).toBe('Hello world');
+    });
+
+    it('strips multiple tool_call tags', () => {
+      const input = 'Start <tool_call>{"name":"add","args":{"a":1}}</tool_call> middle <tool_call>{"name":"sub","args":{"b":2}}</tool_call> end';
+      expect(stripControlTokens(input)).toBe('Start middle end');
+    });
+
+    it('strips multiline tool_call content', () => {
+      const input = 'Before <tool_call>\n{\n  "name": "search",\n  "query": "test"\n}\n</tool_call> after';
+      expect(stripControlTokens(input)).toBe('Before after');
+    });
+  });
+
+
+  // ==========================================================================
   // Streaming simulation
   // ==========================================================================
   describe('streaming token accumulation', () => {

@@ -28,22 +28,21 @@ function makeToolCall(name: string, args: Record<string, any> = {}): ToolCall {
 }
 
 /**
- * Builds a minimal DuckDuckGo-style HTML string containing result blocks.
- * Each entry produces one block with class="result", result__a, result__url,
- * and result__snippet elements.
+ * Builds a minimal Brave Search-style HTML string containing result blocks.
+ * Each entry produces one block with class="result-wrapper" containing
+ * a title link, URL, and snippet paragraph.
  */
-function buildDuckDuckGoHTML(
+function buildBraveSearchHTML(
   results: Array<{ title: string; url: string; snippet: string }>,
 ): string {
   const blocks = results
     .map(
       (r) =>
-        `<div class="result results_links results_links_deep web-result">
-          <div class="links_main links_deep result__body">
-            <a class="result__a" href="${r.url}">${r.title}</a>
-            <span class="result__url">${r.url}</span>
-            <a class="result__snippet">${r.snippet}</a>
-          </div>
+        `<div class="result-wrapper">
+          <a class="result-header" href="${r.url}">
+            <span class="snippet-title">${r.title}</span>
+          </a>
+          <p class="snippet-description">${r.snippet}</p>
         </div>`,
     )
     .join('\n');
@@ -211,7 +210,7 @@ describe('Tool Handlers', () => {
     });
 
     it('returns formatted results when fetch succeeds', async () => {
-      const html = buildDuckDuckGoHTML([
+      const html = buildBraveSearchHTML([
         {
           title: 'React Native Docs',
           url: 'https://reactnative.dev',
@@ -262,5 +261,30 @@ describe('Tool Handlers', () => {
       expect(result.error).toContain('Network request failed');
       expect(result.content).toBe('');
     });
+
+    it('returns error when query is empty string', async () => {
+      const result = await executeToolCall(
+        makeToolCall('web_search', { query: '' }),
+      );
+
+      expect(result.error).toContain('Missing required parameter: query');
+    });
+
+    it('returns error when query is undefined', async () => {
+      const result = await executeToolCall(
+        makeToolCall('web_search', {}),
+      );
+
+      expect(result.error).toContain('Missing required parameter: query');
+    });
+
+    it('returns error when query is whitespace only', async () => {
+      const result = await executeToolCall(
+        makeToolCall('web_search', { query: '   ' }),
+      );
+
+      expect(result.error).toContain('Missing required parameter: query');
+    });
+
   });
 });

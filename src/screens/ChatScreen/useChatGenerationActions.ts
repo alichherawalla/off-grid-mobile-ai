@@ -8,6 +8,7 @@ import {
   hideAlert,
 } from '../../components';
 import { APP_CONFIG } from '../../constants';
+import { useAppStore } from '../../stores/appStore';
 import {
   llmService,
   intentClassifier,
@@ -18,7 +19,7 @@ import {
   buildToolSystemPromptHint,
 } from '../../services';
 import { useChatStore, useProjectStore } from '../../stores';
-import { Message, MediaAttachment, Project, DownloadedModel, ModelLoadingStrategy } from '../../types';
+import { Message, MediaAttachment, Project, DownloadedModel, ModelLoadingStrategy, CacheType } from '../../types';
 import logger from '../../utils/logger';
 
 type SetState<T> = Dispatch<SetStateAction<T>>;
@@ -44,6 +45,7 @@ type GenerationDeps = {
     imageSteps?: number;
     imageGuidanceScale?: number;
     enabledTools?: string[];
+    cacheType?: CacheType;
   };
   downloadedModels: DownloadedModel[];
   setAlertState: SetState<AlertState>;
@@ -57,6 +59,7 @@ type GenerationDeps = {
   removeImagesByConversationId: (convId: string) => string[];
   generatingForConversationRef: MutableRefObject<string | null>;
   navigation: any;
+  setShowSettingsPanel?: SetState<boolean>;
   ensureModelLoaded: () => Promise<void>;
 };
 
@@ -66,7 +69,7 @@ function buildMessagesForContext(
   systemPrompt: string,
 ): Message[] {
   const conversation = useChatStore.getState().conversations.find(c => c.id === conversationId);
-  const conversationMessages = conversation?.messages || [];
+  const conversationMessages = (conversation?.messages || []).filter(m => !m.isSystemInfo);
   const lastUserMsg = conversationMessages.at(-1);
   const userMessageForContext = (lastUserMsg?.role === 'user'
     ? { ...lastUserMsg, content: messageText }
@@ -175,7 +178,7 @@ export async function startGenerationFn(deps: GenerationDeps, call: StartGenerat
   }
   const conversation = useChatStore.getState().conversations.find(c => c.id === targetConversationId);
   const project = conversation?.projectId ? useProjectStore.getState().getProject(conversation.projectId) : null;
-  const enabledTools = deps.settings.enabledTools || [];
+  const enabledTools = llmService.supportsToolCalling() ? (deps.settings.enabledTools || []) : [];
   const basePrompt = project?.systemPrompt || deps.settings.systemPrompt || APP_CONFIG.defaultSystemPrompt;
   const systemPrompt = enabledTools.length > 0 ? basePrompt + buildToolSystemPromptHint(enabledTools) : basePrompt;
   const messagesForContext = buildMessagesForContext(targetConversationId, messageText, systemPrompt);
@@ -193,8 +196,26 @@ export async function startGenerationFn(deps: GenerationDeps, call: StartGenerat
     }
   } catch (error: any) {
     deps.setAlertState(showAlert('Generation Error', error.message || 'Failed to generate response'));
+    deps.generatingForConversationRef.current = null;
+    return;
   }
   deps.generatingForConversationRef.current = null;
+
+  const appState = useAppStore.getState();
+  if (!appState.hasSeenCacheTypeNudge && deps.settings.cacheType === 'q8_0') {
+    appState.setHasSeenCacheTypeNudge(true);
+    deps.setAlertState(showAlert(
+      'Improve Output Quality',
+      'You can improve response quality by changing the KV cache type to f16 in Model Settings. This uses more memory but produces better outputs. Requires a model reload.',
+      [
+        {
+          text: 'Go to Settings',
+          onPress: () => { deps.setAlertState(hideAlert()); deps.setShowSettingsPanel?.(true); },
+        },
+        { text: 'Got it', style: 'cancel' },
+      ],
+    ));
+  }
 }
 
 export type SendCall = {

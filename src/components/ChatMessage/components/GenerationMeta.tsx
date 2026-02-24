@@ -10,36 +10,33 @@ interface GenerationMetaProps {
 
 type MetaItem = { key: string; label: string; maxLines?: number };
 
+function formatOptionalMeta(meta: NonNullable<Message['generationMeta']>, tps: number | null | undefined): MetaItem[] {
+  const m = meta;
+  const entries: Array<[string, string | undefined, number?]> = [
+    ['model', m.modelName, 1],
+    ['tps', tps != null && tps > 0 ? `${tps.toFixed(1)} tok/s` : undefined],
+    ['ttft', m.timeToFirstToken != null && m.timeToFirstToken > 0 ? `TTFT ${m.timeToFirstToken.toFixed(1)}s` : undefined],
+    ['tokens', m.tokenCount != null && m.tokenCount > 0 ? `${m.tokenCount} tokens` : undefined],
+    ['steps', m.steps != null ? `${m.steps} steps` : undefined],
+    ['cfg', m.guidanceScale != null ? `cfg ${m.guidanceScale}` : undefined],
+    ['res', m.resolution],
+    ['cache', m.cacheType ? `KV ${m.cacheType}` : undefined],
+  ];
+  return entries
+    .filter((e): e is [string, string, number?] => e[1] != null)
+    .map(([key, label, maxLines]) => ({ key, label, maxLines }));
+}
+
 function buildMetaItems(
-  generationMeta: NonNullable<Message['generationMeta']>,
+  meta: NonNullable<Message['generationMeta']>,
   tps: number | null | undefined,
 ): MetaItem[] {
-  const items: MetaItem[] = [];
-  const layers = generationMeta.gpuLayers != null && generationMeta.gpuLayers > 0
-    ? ` (${generationMeta.gpuLayers}L)` : '';
-  items.push({ key: 'backend', label: `${generationMeta.gpuBackend || (generationMeta.gpu ? 'GPU' : 'CPU')}${layers}` });
-  if (generationMeta.modelName) {
-    items.push({ key: 'model', label: generationMeta.modelName, maxLines: 1 });
-  }
-  if (tps != null && tps > 0) {
-    items.push({ key: 'tps', label: `${tps.toFixed(1)} tok/s` });
-  }
-  if (generationMeta.timeToFirstToken != null && generationMeta.timeToFirstToken > 0) {
-    items.push({ key: 'ttft', label: `TTFT ${generationMeta.timeToFirstToken.toFixed(1)}s` });
-  }
-  if (generationMeta.tokenCount != null && generationMeta.tokenCount > 0) {
-    items.push({ key: 'tokens', label: `${generationMeta.tokenCount} tokens` });
-  }
-  if (generationMeta.steps != null) {
-    items.push({ key: 'steps', label: `${generationMeta.steps} steps` });
-  }
-  if (generationMeta.guidanceScale != null) {
-    items.push({ key: 'cfg', label: `cfg ${generationMeta.guidanceScale}` });
-  }
-  if (generationMeta.resolution) {
-    items.push({ key: 'res', label: generationMeta.resolution });
-  }
-  return items;
+  const layers = meta.gpuLayers != null && meta.gpuLayers > 0 ? ` (${meta.gpuLayers}L)` : '';
+  const backend = meta.gpuBackend || (meta.gpu ? 'GPU' : 'CPU');
+  return [
+    { key: 'backend', label: `${backend}${layers}` },
+    ...formatOptionalMeta(meta, tps),
+  ];
 }
 
 export function GenerationMeta({ generationMeta, styles }: GenerationMetaProps) {

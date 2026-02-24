@@ -75,6 +75,23 @@ describe('RECOMMENDED_MODELS', () => {
       expect(model.params).toBeGreaterThan(0);
     }
   });
+
+  it('contains all SmolVLM vision models', () => {
+    const smolVLMIds = [
+      'ggml-org/SmolVLM-256M-Instruct-GGUF',
+      'ggml-org/SmolVLM2-256M-Video-Instruct-GGUF',
+      'ggml-org/SmolVLM-500M-Instruct-GGUF',
+      'ggml-org/SmolVLM2-500M-Video-Instruct-GGUF',
+      'ggml-org/SmolVLM-Instruct-GGUF',
+      'ggml-org/SmolVLM2-2.2B-Instruct-GGUF',
+    ];
+    for (const id of smolVLMIds) {
+      const model = RECOMMENDED_MODELS.find(m => m.id === id);
+      expect(model).toBeDefined();
+      expect(model!.type).toBe('vision');
+      expect(model!.org).toBe('HuggingFaceTB');
+    }
+  });
 });
 
 describe('MODEL_ORGS', () => {

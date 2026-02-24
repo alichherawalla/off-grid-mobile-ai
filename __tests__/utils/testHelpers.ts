@@ -79,6 +79,7 @@ export const resetStores = (): void => {
     imageGenerationStatus: null,
     imagePreviewPath: null,
     generatedImages: [],
+    hasSeenCacheTypeNudge: false,
   });
 
   // Reset chat store

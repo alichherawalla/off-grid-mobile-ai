@@ -173,7 +173,7 @@ describe('generateWithToolsImpl', () => {
       const original = [createUserMessage('original')];
       await generateWithToolsImpl(deps, original, { tools: SAMPLE_TOOLS });
 
-      expect(manageContextWindow).toHaveBeenCalledWith(original);
+      expect(manageContextWindow).toHaveBeenCalledWith(original, expect.any(Number));
       expect(convertToOAIMessages).toHaveBeenCalledWith(managed);
       expect(completion.mock.calls[0][0].messages).toEqual([
         { role: 'user', content: 'managed' },
@@ -423,15 +423,15 @@ describe('generateWithToolsImpl', () => {
       expect(result.toolCalls[0].arguments).toEqual({ expression: '5+5' });
     });
 
-    it('does NOT use completionResult tool_calls when streaming already collected some', async () => {
+    it('prefers completionResult tool_calls over streamed ones (complete data)', async () => {
       const completion = jest.fn(async (_params: any, cb: any) => {
-        // Streaming delivers a tool call
+        // Streaming delivers a partial tool call (may have incomplete args)
         cb({
           tool_calls: [
             { id: 'stream_call', function: { name: 'calculator', arguments: '{"x":1}' } },
           ],
         });
-        // completionResult also has tool_calls
+        // completionResult has the complete tool call data
         return {
           tool_calls: [
             { id: 'result_call', function: { name: 'get_current_datetime', arguments: '{}' } },
@@ -444,9 +444,9 @@ describe('generateWithToolsImpl', () => {
         tools: SAMPLE_TOOLS,
       });
 
-      // Only the streaming one should be present
+      // completionResult tool_calls are preferred (they're always complete)
       expect(result.toolCalls).toHaveLength(1);
-      expect(result.toolCalls[0].id).toBe('stream_call');
+      expect(result.toolCalls[0].id).toBe('result_call');
     });
   });
 
@@ -488,29 +488,23 @@ describe('generateWithToolsImpl', () => {
       expect(calls[calls.length - 1][0]).toBe(false);
     });
 
-    it('ignores streaming data when isGenerating becomes false', async () => {
+    it('captures all streamed tokens while generating', async () => {
       const deps = createMockDeps();
       const onStream = jest.fn();
 
-      // Replace context.completion to simulate stopping mid-stream
       (deps.context as any).completion = jest.fn(async (_params: any, cb: any) => {
         cb({ token: 'First' });
-        // Simulate generation being stopped externally
-        deps.isGenerating = false;
         cb({ token: ' Second' });
         return {};
       });
 
-      // Start with isGenerating = false, then it gets set to true by the function
-      // But the streaming callback checks deps.isGenerating which we mutate above
       const result = await generateWithToolsImpl(deps, [createUserMessage('Hi')], {
         tools: SAMPLE_TOOLS,
         onStream,
       });
 
-      // Only the first token should be captured (before isGenerating was set false)
-      expect(result.fullResponse).toBe('First');
-      expect(onStream).toHaveBeenCalledTimes(1);
+      expect(result.fullResponse).toBe('First Second');
+      expect(onStream).toHaveBeenCalledTimes(2);
     });
   });
 

@@ -8,9 +8,14 @@ export async function executeToolCall(call: ToolCall): Promise<ToolResult> {
   try {
     let content: string;
     switch (call.name) {
-      case 'web_search':
-        content = await handleWebSearch(call.arguments.query);
+      case 'web_search': {
+        const query = call.arguments.query;
+        if (!query || typeof query !== 'string' || !query.trim()) {
+          return { toolCallId: call.id, name: call.name, content: '', error: 'Missing required parameter: query', durationMs: Date.now() - start };
+        }
+        content = await handleWebSearch(query.trim());
         break;
+      }
       case 'calculator':
         content = handleCalculator(call.arguments.expression);
         break;
@@ -52,16 +57,16 @@ async function handleWebSearch(query: string): Promise<string> {
   const timeout = setTimeout(() => controller.abort(), 8000);
 
   try {
-    // Use DuckDuckGo HTML endpoint (more reliable than Lite)
-    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const url = `https://search.brave.com/search?q=${encodeURIComponent(query)}&source=web`;
     const response = await fetch(url, {
       signal: controller.signal,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        'Accept': 'text/html',
       },
     });
     const html = await response.text();
-    const results = parseDuckDuckGoResults(html);
+    const results = parseBraveResults(html);
 
     if (results.length === 0) {
       return `No results found for "${query}".`;
@@ -79,15 +84,15 @@ async function handleWebSearch(query: string): Promise<string> {
 type SearchResult = { title: string; snippet: string; url?: string };
 
 function parseResultBlock(block: string): SearchResult | null {
-  const titleMatch = block.match(/class="result__a"[^>]*>([^<]+)</);
+  const urlMatch = block.match(/<a[^>]*href="(https?:\/\/[^"]+)"/);
+  const url = urlMatch ? decodeHTMLEntities(urlMatch[1]) : '';
+
+  const titleMatch = block.match(/class="[^"]*title[^"]*"[^>]*>([^<]+)</) ||
+                     block.match(/<a[^>]*href="https?:\/\/[^"]*"[^>]*>\s*<span[^>]*>([^<]+)/);
   const title = titleMatch ? decodeHTMLEntities(titleMatch[1].trim()) : '';
 
-  const urlMatch = block.match(/class="result__url"[^>]*>([^<]+)/) ||
-                   block.match(/class="result__a"\s+href="([^"]+)"/);
-  const url = urlMatch ? decodeHTMLEntities(urlMatch[1].trim()) : '';
-
-  const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/) ||
-                       block.match(/class="result-snippet"[^>]*>([\s\S]*?)<\/td>/);
+  const snippetMatch = block.match(/class="snippet[^"]*"[^>]*>([\s\S]*?)<\/p>/) ||
+                       block.match(/class="snippet[^"]*"[^>]*>([\s\S]*?)<\/span>/);
   const snippet = snippetMatch
     ? decodeHTMLEntities(snippetMatch[1].replace(/<[^>]+>/g, '').trim())
     : '';
@@ -96,30 +101,28 @@ function parseResultBlock(block: string): SearchResult | null {
   return { title: title || '(no title)', snippet: snippet || '(no snippet)', url };
 }
 
-function parseFallbackLinks(html: string): SearchResult[] {
+function parseBraveResults(html: string): SearchResult[] {
   const results: SearchResult[] = [];
-  const linkPattern = /<a[^>]*href="(https?:\/\/(?!duckduckgo)[^"]*)"[^>]*>([^<]{10,})<\/a>/g;
-  let match;
-  while ((match = linkPattern.exec(html)) !== null && results.length < 5) {
-    const title = decodeHTMLEntities(match[2].trim());
-    if (!title.includes('DuckDuckGo')) {
-      results.push({ title, snippet: '', url: match[1] });
-    }
-  }
-  return results;
-}
+  const blocks = html.split(/class="result-wrapper/).slice(1);
 
-function parseDuckDuckGoResults(html: string): SearchResult[] {
-  const resultBlocks = html.split(/class="result\s/).slice(1);
-  const results: SearchResult[] = [];
-
-  for (const block of resultBlocks) {
+  for (const block of blocks) {
     if (results.length >= 5) break;
     const parsed = parseResultBlock(block);
     if (parsed) results.push(parsed);
   }
 
-  return results.length > 0 ? results : parseFallbackLinks(html);
+  if (results.length === 0) {
+    const linkPattern = /<a[^>]*href="(https?:\/\/(?!search\.brave)[^"]*)"[^>]*>([^<]{10,})<\/a>/g;
+    let match;
+    while ((match = linkPattern.exec(html)) !== null && results.length < 5) {
+      const title = decodeHTMLEntities(match[2].trim());
+      if (!title.includes('Brave')) {
+        results.push({ title, snippet: '', url: match[1] });
+      }
+    }
+  }
+
+  return results;
 }
 
 function decodeHTMLEntities(text: string): string {

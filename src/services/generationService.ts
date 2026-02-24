@@ -88,7 +88,7 @@ class GenerationService {
   private buildGenerationMeta(): GenerationMeta {
     const gpuInfo = llmService.getGpuInfo();
     const perfStats = llmService.getPerformanceStats();
-    const { downloadedModels, activeModelId } = useAppStore.getState();
+    const { downloadedModels, activeModelId, settings } = useAppStore.getState();
     const activeModel = downloadedModels.find(m => m.id === activeModelId);
     return {
       gpu: gpuInfo.gpu,
@@ -99,6 +99,7 @@ class GenerationService {
       decodeTokensPerSecond: perfStats.lastDecodeTokensPerSecond,
       timeToFirstToken: perfStats.lastTimeToFirstToken,
       tokenCount: perfStats.lastTokenCount,
+      cacheType: settings.cacheType,
     };
   }
 

@@ -189,17 +189,17 @@ class LLMService {
   ): Promise<{ fullResponse: string; toolCalls: ToolCall[] }> {
     return generateWithToolsImpl({
       context: this.context, isGenerating: this.isGenerating,
-      manageContextWindow: (msgs) => this.manageContextWindow(msgs),
+      manageContextWindow: (msgs, extra?) => this.manageContextWindow(msgs, extra),
       convertToOAIMessages: (msgs) => this.convertToOAIMessages(msgs),
       setPerformanceStats: (s) => { this.performanceStats = s; },
       setIsGenerating: (v) => { this.isGenerating = v; },
     }, messages, options);
   }
 
-  private async manageContextWindow(messages: Message[]): Promise<Message[]> {
+  private async manageContextWindow(messages: Message[], extraReserve = 0): Promise<Message[]> {
     if (!this.context || messages.length === 0) return messages;
     const ctxLen = this.currentSettings.contextLength || APP_CONFIG.maxContextLength;
-    const budget = Math.floor(ctxLen * CONTEXT_SAFETY_MARGIN) - SYSTEM_PROMPT_RESERVE - RESPONSE_RESERVE;
+    const budget = Math.floor(ctxLen * CONTEXT_SAFETY_MARGIN) - SYSTEM_PROMPT_RESERVE - RESPONSE_RESERVE - extraReserve;
     const system = messages.find(m => m.role === 'system');
     const conv = messages.filter(m => m.role !== 'system');
     if (!conv.length) return messages;

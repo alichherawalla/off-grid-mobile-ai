@@ -163,6 +163,7 @@ export interface GenerationMeta {
   guidanceScale?: number;
   /** Image resolution */
   resolution?: string;
+  cacheType?: string; // KV cache quantization type
 }
 
 // Chat-related types

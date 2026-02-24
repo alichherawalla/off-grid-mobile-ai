@@ -205,7 +205,7 @@ export async function startGenerationFn(deps: GenerationDeps, call: StartGenerat
     appState.setHasSeenCacheTypeNudge(true);
     deps.setAlertState(showAlert(
       'Improve Output Quality',
-      'You can improve response quality by changing the KV cache type to f16 in Model Settings. This uses more memory but produces better outputs.',
+      'You can improve response quality by changing the KV cache type to f16 in Model Settings. This uses more memory but produces better outputs. Requires a model reload.',
       [
         {
           text: 'Go to Settings',

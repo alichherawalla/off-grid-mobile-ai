@@ -160,7 +160,6 @@ export const useAppStore = create<AppState>()(
             },
           };
         }),
-      // Background downloads (Android)
       activeBackgroundDownloads: {},
       setBackgroundDownload: (downloadId, info) =>
         set((state) => {

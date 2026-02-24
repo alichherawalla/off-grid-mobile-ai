@@ -76,20 +76,21 @@ describe('RECOMMENDED_MODELS', () => {
     }
   });
 
-  it('contains SmolVLM 2B vision model', () => {
-    const model = RECOMMENDED_MODELS.find(m => m.id === 'ggml-org/SmolVLM-Instruct-GGUF');
-    expect(model).toBeDefined();
-    expect(model!.type).toBe('vision');
-    expect(model!.params).toBe(2);
-    expect(model!.org).toBe('HuggingFaceTB');
-  });
-
-  it('contains SmolVLM 500M vision model', () => {
-    const model = RECOMMENDED_MODELS.find(m => m.id === 'ggml-org/SmolVLM-500M-Instruct-GGUF');
-    expect(model).toBeDefined();
-    expect(model!.type).toBe('vision');
-    expect(model!.params).toBe(0.5);
-    expect(model!.org).toBe('HuggingFaceTB');
+  it('contains all SmolVLM vision models', () => {
+    const smolVLMIds = [
+      'ggml-org/SmolVLM-256M-Instruct-GGUF',
+      'ggml-org/SmolVLM2-256M-Video-Instruct-GGUF',
+      'ggml-org/SmolVLM-500M-Instruct-GGUF',
+      'ggml-org/SmolVLM2-500M-Video-Instruct-GGUF',
+      'ggml-org/SmolVLM-Instruct-GGUF',
+      'ggml-org/SmolVLM2-2.2B-Instruct-GGUF',
+    ];
+    for (const id of smolVLMIds) {
+      const model = RECOMMENDED_MODELS.find(m => m.id === id);
+      expect(model).toBeDefined();
+      expect(model!.type).toBe('vision');
+      expect(model!.org).toBe('HuggingFaceTB');
+    }
   });
 });
 

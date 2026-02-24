@@ -8,6 +8,7 @@ import { useChatStore } from '../stores';
 import { Message } from '../types';
 import { getToolsAsOpenAISchema, executeToolCall } from './tools';
 import type { ToolResult } from './tools/types';
+import logger from '../utils/logger';
 
 const MAX_TOOL_ITERATIONS = 5;
 
@@ -66,10 +67,12 @@ export async function runToolLoop(ctx: ToolLoopContext): Promise<void> {
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
     if (ctx.isAborted()) break;
 
+    logger.log(`[ToolLoop] Iteration ${iteration}, messages: ${loopMessages.length}, tools: ${toolSchemas.length}`);
     const { fullResponse, toolCalls } = await llmService.generateResponseWithTools(
       loopMessages,
       { tools: toolSchemas },
     );
+    logger.log(`[ToolLoop] Result: response=${fullResponse.length} chars, toolCalls=${toolCalls.length}`);
 
     if (toolCalls.length === 0 || iteration === MAX_TOOL_ITERATIONS - 1) {
       if (fullResponse) {

@@ -7,6 +7,7 @@ import { useAppStore } from '../stores';
 import type { Message } from '../types';
 import type { ToolCall } from './tools/types';
 import { recordGenerationStats, buildCompletionParams } from './llmHelpers';
+import logger from '../utils/logger';
 
 type StreamCallback = (token: string) => void;
 type CompleteCallback = (fullResponse: string) => void;
@@ -49,12 +50,14 @@ export async function generateWithToolsImpl(
     let firstReceived = false;
     const collectedToolCalls: ToolCall[] = [];
 
-    const completionResult = await deps.context.completion({
+    const completionParams = {
       messages: oaiMessages,
       ...buildCompletionParams(settings),
       tools: options.tools,
       tool_choice: 'auto',
-    } as any, (data: any) => {
+    };
+    logger.log(`[LLM-Tools] Completion params: ${oaiMessages.length} msgs, ${options.tools.length} tools, n_predict=${(completionParams as any).n_predict}`);
+    const completionResult = await deps.context.completion(completionParams as any, (data: any) => {
       if (!deps.isGenerating) return;
       if (data.tool_calls) {
         for (const tc of data.tool_calls) {
@@ -68,6 +71,8 @@ export async function generateWithToolsImpl(
       options.onStream?.(data.token);
     });
 
+    logger.log(`[LLM-Tools] Completion done: tokens=${tokenCount}, response="${fullResponse.substring(0, 100)}", streamedToolCalls=${collectedToolCalls.length}`);
+    logger.log(`[LLM-Tools] completionResult keys: ${completionResult ? Object.keys(completionResult as any).join(', ') : 'null'}`);
     // Check final result for tool calls if none collected during streaming
     const resultToolCalls = (completionResult as any)?.tool_calls;
     if (resultToolCalls?.length && collectedToolCalls.length === 0) {

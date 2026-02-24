@@ -228,7 +228,7 @@ export async function fitMessagesInBudget(
   return result;
 }
 
-export const STOP_TOKENS = ['</s>', '<|end|>', '<|eot_id|>', '<|im_end|>', '<|im_start|>'];
+export const STOP_TOKENS = ['</s>', '<|end|>', '<|eot_id|>', '<|im_end|>'];
 
 export function buildCompletionParams(settings: {
   maxTokens?: number; temperature?: number; topP?: number; repeatPenalty?: number;

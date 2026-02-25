@@ -355,7 +355,7 @@ All stores use `zustand/middleware` `persist` with AsyncStorage. Only serializab
 | **Active Models** | `activeModelId`, `activeImageModelId` | Persisted; model re-loaded on next use |
 | **Loading Flags** | `isLoadingModel`, `isGeneratingImage` | Not persisted |
 | **Downloads** | `downloadProgress{}`, `activeBackgroundDownloads[]` | Background downloads persisted (Android) |
-| **Settings** | `systemPrompt`, `temperature`, `maxTokens`, `topP`, `repeatPenalty`, `contextLength`, `nThreads`, `nBatch`, `useGPU`, `nGPULayers`, `modelLoadingStrategy`, `flashAttention`, `kvCacheType` | All persisted |
+| **Settings** | `systemPrompt`, `temperature`, `maxTokens`, `topP`, `repeatPenalty`, `contextLength`, `nThreads`, `nBatch`, `useGPU`, `nGPULayers`, `modelLoadingStrategy`, `flashAttn`, `cacheType` | All persisted |
 | **Image Settings** | `imageSteps`, `imageGuidanceScale`, `imageWidth`, `imageHeight`, `imageThreads` | All persisted |
 | **Intent** | `imageGenerationMode`, `autoDetectMethod`, `classifierModelId` | Persisted |
 | **Tools** | `enabledTools[]` | User-selected tool IDs (default: `['calculator', 'get_current_datetime']`). Persisted |
@@ -449,7 +449,7 @@ MediaAttachment
 
 GenerationMeta
 ├── gpu, gpuBackend?, gpuLayers?
-├── kvCacheType?, flashAttention?
+├── cacheType?, flashAttn?
 ├── modelName?
 ├── tokensPerSecond?, decodeTokensPerSecond?
 ├── timeToFirstToken?, tokenCount?
@@ -1092,7 +1092,7 @@ This section expands on every testable flow, grouped by feature area. Each flow 
    - Final message saved to conversation with `generationMeta`:
      - `tokensPerSecond`, `decodeTokensPerSecond`, `timeToFirstToken`, `tokenCount`
      - `gpu` (boolean), `gpuBackend`, `gpuLayers`
-     - `kvCacheType`, `flashAttention`
+     - `cacheType`, `flashAttn`
      - `modelName`
    - `generationTimeMs` recorded
    - `chatStore.setStreaming(false)`

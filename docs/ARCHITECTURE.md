@@ -31,7 +31,7 @@ Multi-model LLM inference using llama.cpp compiled for ARM64 Android via llama.r
 - **Performance instrumentation** - Tracks tok/s (overall and decode-only), TTFT, token count
 - **Custom system prompts** via project-based conversation contexts
 - **KV cache management** with manual clear capability for memory optimization
-- **Configurable KV cache type** — Choose between f16 (default), q8_0, and q4_0 quantization for memory/quality tradeoffs
+- **Configurable KV cache type** — Choose between f16, q8_0 (default), and q4_0 quantization for memory/quality tradeoffs
 - **Flash attention** — User-configurable toggle for faster inference (automatically disabled when GPU layers > 0 on Android due to llama.cpp compatibility)
 - **Markdown rendering** — Rich text output with syntax highlighting, lists, and formatting
 - **llama.cpp parameter constraints** — Automatic enforcement of GPU/flash attention/KV cache compatibility to prevent native crashes (SIGSEGV, SIGABRT)

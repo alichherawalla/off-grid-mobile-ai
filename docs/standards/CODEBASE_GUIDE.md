@@ -617,7 +617,8 @@ Passphrase management.
 Bridge to native download managers on both platforms.
 
 - Downloads continue even after app is killed (both Android and iOS)
-- Android: Persists download state in SharedPreferences, 500ms polling for progress
+- Persists download state on both platforms (Android: SharedPreferences, iOS: UserDefaults)
+- Android: 500ms polling for progress updates
 - iOS: Uses background URLSession with app lifecycle integration
 - Emits events: `DownloadProgress`, `DownloadComplete`, `DownloadError`
 - Moves completed files from Downloads temp to models directory
@@ -641,7 +642,7 @@ On-device function calling for compatible models.
 **Tool Loop (`generationToolLoop.ts`):**
 - Orchestrates multi-turn tool execution: LLM → parse → execute → inject → repeat
 - Hard limits: 3 iterations, 5 total tool calls
-- Supports structured tool calls AND fallback XML tag parsing for smaller models
+- Supports structured tool calls AND fallback XML tag parsing (`<tool_call>`) for smaller models
 - Empty web search queries fall back to last user message
 
 **LLM Tool Generation (`llmToolGeneration.ts`):**

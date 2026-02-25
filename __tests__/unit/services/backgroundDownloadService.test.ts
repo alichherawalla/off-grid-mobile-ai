@@ -346,7 +346,7 @@ describe('BackgroundDownloadService', () => {
   // event dispatching
   // ========================================================================
   describe('event dispatching', () => {
-    it('dispatches progress to specific and global listeners', () => {
+    it('dispatches progress to both specific and global listeners', () => {
       const specificCb = jest.fn();
       const globalCb = jest.fn();
       service.onProgress(42, specificCb);
@@ -359,7 +359,21 @@ describe('BackgroundDownloadService', () => {
         eventHandlers.DownloadProgress(event);
       }
 
+      // Both listeners fire; consumer-side logic handles deduplication
       expect(specificCb).toHaveBeenCalledWith(event);
+      expect(globalCb).toHaveBeenCalledWith(event);
+    });
+
+    it('dispatches progress to global listener when no per-download listener exists', () => {
+      const globalCb = jest.fn();
+      service.onAnyProgress(globalCb);
+
+      const event = { downloadId: 99, bytesDownloaded: 1000, totalBytes: 5000, status: 'running', fileName: 'model.gguf', modelId: 'test' };
+
+      if (eventHandlers.DownloadProgress) {
+        eventHandlers.DownloadProgress(event);
+      }
+
       expect(globalCb).toHaveBeenCalledWith(event);
     });
 
@@ -811,6 +825,320 @@ describe('BackgroundDownloadService', () => {
       expect(addListenerSpy).not.toHaveBeenCalled();
 
       NativeModules.DownloadManagerModule = savedModule;
+    });
+  });
+
+  // ========================================================================
+  // requestNotificationPermission
+  // ========================================================================
+  describe('requestNotificationPermission', () => {
+    const { PermissionsAndroid } = require('react-native');
+
+    beforeEach(() => {
+      PermissionsAndroid.request = jest.fn().mockResolvedValue('granted');
+    });
+
+    it('requests POST_NOTIFICATIONS on Android API 33+', async () => {
+      Object.defineProperty(Platform, 'OS', { get: () => 'android' });
+      Object.defineProperty(Platform, 'Version', { get: () => 33 });
+
+      await service.requestNotificationPermission();
+
+      expect(PermissionsAndroid.request).toHaveBeenCalledWith(
+        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+      );
+    });
+
+    it('requests on API 34', async () => {
+      Object.defineProperty(Platform, 'OS', { get: () => 'android' });
+      Object.defineProperty(Platform, 'Version', { get: () => 34 });
+
+      await service.requestNotificationPermission();
+
+      expect(PermissionsAndroid.request).toHaveBeenCalled();
+    });
+
+    it('does nothing on iOS', async () => {
+      Object.defineProperty(Platform, 'OS', { get: () => 'ios' });
+
+      await service.requestNotificationPermission();
+
+      expect(PermissionsAndroid.request).not.toHaveBeenCalled();
+    });
+
+    it('does nothing on Android API 32', async () => {
+      Object.defineProperty(Platform, 'OS', { get: () => 'android' });
+      Object.defineProperty(Platform, 'Version', { get: () => 32 });
+
+      await service.requestNotificationPermission();
+
+      expect(PermissionsAndroid.request).not.toHaveBeenCalled();
+    });
+
+    it('does not throw when permission request rejects', async () => {
+      Object.defineProperty(Platform, 'OS', { get: () => 'android' });
+      Object.defineProperty(Platform, 'Version', { get: () => 33 });
+      PermissionsAndroid.request = jest.fn().mockRejectedValue(new Error('Permission error'));
+
+      await expect(service.requestNotificationPermission()).resolves.toBeUndefined();
+    });
+
+    it('handles denied permission without throwing', async () => {
+      Object.defineProperty(Platform, 'OS', { get: () => 'android' });
+      Object.defineProperty(Platform, 'Version', { get: () => 33 });
+      PermissionsAndroid.request = jest.fn().mockResolvedValue('denied');
+
+      await expect(service.requestNotificationPermission()).resolves.toBeUndefined();
+    });
+  });
+
+  // ========================================================================
+  // downloadFileTo
+  // ========================================================================
+  describe('downloadFileTo', () => {
+    const baseParams = {
+      url: 'https://example.com/dep.gguf',
+      fileName: 'dep.gguf',
+      modelId: 'test/model',
+      totalBytes: 1_000_000,
+    };
+
+    it('resolves after complete event and calls moveCompletedDownload', async () => {
+      mockDownloadManagerModule.startDownload.mockResolvedValue({
+        downloadId: 10, fileName: 'dep.gguf', modelId: 'test/model',
+      });
+      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue('/dest/dep.gguf');
+
+      const { promise } = service.downloadFileTo({
+        params: baseParams,
+        destPath: '/dest/dep.gguf',
+      });
+
+      // Let startDownload mock resolve and listeners register
+      await Promise.resolve();
+
+      if (eventHandlers.DownloadComplete) {
+        eventHandlers.DownloadComplete({
+          downloadId: 10, fileName: 'dep.gguf', modelId: 'test/model',
+          bytesDownloaded: 1_000_000, totalBytes: 1_000_000,
+          status: 'completed', localUri: '/downloads/dep.gguf',
+        });
+      }
+
+      await promise;
+      expect(mockDownloadManagerModule.moveCompletedDownload).toHaveBeenCalledWith(10, '/dest/dep.gguf');
+    });
+
+    it('resolves downloadIdPromise once native start returns id', async () => {
+      mockDownloadManagerModule.startDownload.mockResolvedValue({
+        downloadId: 17, fileName: 'dep.gguf', modelId: 'test/model',
+      });
+      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue('/dest/dep.gguf');
+
+      const { downloadIdPromise, promise } = service.downloadFileTo({
+        params: baseParams,
+        destPath: '/dest/dep.gguf',
+      });
+
+      await expect(downloadIdPromise).resolves.toBe(17);
+
+      if (eventHandlers.DownloadComplete) {
+        eventHandlers.DownloadComplete({
+          downloadId: 17, fileName: 'dep.gguf', modelId: 'test/model',
+          bytesDownloaded: 1_000_000, totalBytes: 1_000_000,
+          status: 'completed', localUri: '/downloads/dep.gguf',
+        });
+      }
+      await promise;
+    });
+
+    it('rejects downloadIdPromise when native startDownload fails', async () => {
+      mockDownloadManagerModule.startDownload.mockRejectedValue(new Error('Failed to start'));
+
+      const { downloadIdPromise, promise } = service.downloadFileTo({
+        params: baseParams,
+        destPath: '/dest/dep.gguf',
+      });
+
+      await expect(downloadIdPromise).rejects.toThrow('Failed to start');
+      await expect(promise).rejects.toThrow('Failed to start');
+    });
+
+    it('rejects when error event fires', async () => {
+      mockDownloadManagerModule.startDownload.mockResolvedValue({
+        downloadId: 11, fileName: 'dep.gguf', modelId: 'test/model',
+      });
+
+      const { promise } = service.downloadFileTo({
+        params: baseParams,
+        destPath: '/dest/dep.gguf',
+      });
+
+      await Promise.resolve();
+
+      if (eventHandlers.DownloadError) {
+        eventHandlers.DownloadError({
+          downloadId: 11, fileName: 'dep.gguf', modelId: 'test/model',
+          status: 'failed', reason: 'Network timeout',
+        });
+      }
+
+      await expect(promise).rejects.toThrow('Network timeout');
+    });
+
+    it('passes hideNotification:true to native when silent:true', async () => {
+      mockDownloadManagerModule.startDownload.mockResolvedValue({
+        downloadId: 12, fileName: 'dep.gguf', modelId: 'test/model',
+      });
+      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue('/dest/dep.gguf');
+
+      const { promise } = service.downloadFileTo({
+        params: baseParams,
+        destPath: '/dest/dep.gguf',
+        silent: true,
+      });
+
+      await Promise.resolve();
+
+      if (eventHandlers.DownloadComplete) {
+        eventHandlers.DownloadComplete({
+          downloadId: 12, fileName: 'dep.gguf', modelId: 'test/model',
+          bytesDownloaded: 1_000_000, totalBytes: 1_000_000,
+          status: 'completed', localUri: '/downloads/dep.gguf',
+        });
+      }
+
+      await promise;
+      const callArgs = mockDownloadManagerModule.startDownload.mock.calls[0][0];
+      expect(callArgs.hideNotification).toBe(true);
+    });
+
+    it('passes hideNotification:false when silent is false', async () => {
+      mockDownloadManagerModule.startDownload.mockResolvedValue({
+        downloadId: 13, fileName: 'dep.gguf', modelId: 'test/model',
+      });
+      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue('/dest/dep.gguf');
+
+      const { promise } = service.downloadFileTo({
+        params: baseParams,
+        destPath: '/dest/dep.gguf',
+        silent: false,
+      });
+
+      await Promise.resolve();
+
+      if (eventHandlers.DownloadComplete) {
+        eventHandlers.DownloadComplete({
+          downloadId: 13, fileName: 'dep.gguf', modelId: 'test/model',
+          bytesDownloaded: 1_000_000, totalBytes: 1_000_000,
+          status: 'completed', localUri: '/downloads/dep.gguf',
+        });
+      }
+
+      await promise;
+      const callArgs = mockDownloadManagerModule.startDownload.mock.calls[0][0];
+      expect(callArgs.hideNotification).toBe(false);
+    });
+
+    it('calls onProgress callback with bytesDownloaded and totalBytes', async () => {
+      mockDownloadManagerModule.startDownload.mockResolvedValue({
+        downloadId: 14, fileName: 'dep.gguf', modelId: 'test/model',
+      });
+      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue('/dest/dep.gguf');
+
+      const onProgress = jest.fn();
+      const { promise } = service.downloadFileTo({
+        params: baseParams,
+        destPath: '/dest/dep.gguf',
+        onProgress,
+      });
+
+      await Promise.resolve();
+
+      if (eventHandlers.DownloadProgress) {
+        eventHandlers.DownloadProgress({
+          downloadId: 14, fileName: 'dep.gguf', modelId: 'test/model',
+          bytesDownloaded: 500_000, totalBytes: 1_000_000, status: 'running',
+        });
+      }
+
+      if (eventHandlers.DownloadComplete) {
+        eventHandlers.DownloadComplete({
+          downloadId: 14, fileName: 'dep.gguf', modelId: 'test/model',
+          bytesDownloaded: 1_000_000, totalBytes: 1_000_000,
+          status: 'completed', localUri: '/downloads/dep.gguf',
+        });
+      }
+
+      await promise;
+      expect(onProgress).toHaveBeenCalledWith(500_000, 1_000_000);
+    });
+
+    it('starts polling when download begins', async () => {
+      mockDownloadManagerModule.startDownload.mockResolvedValue({
+        downloadId: 15, fileName: 'dep.gguf', modelId: 'test/model',
+      });
+      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue('/dest/dep.gguf');
+
+      const { promise } = service.downloadFileTo({
+        params: baseParams,
+        destPath: '/dest/dep.gguf',
+      });
+
+      await Promise.resolve();
+
+      if (eventHandlers.DownloadComplete) {
+        eventHandlers.DownloadComplete({
+          downloadId: 15, fileName: 'dep.gguf', modelId: 'test/model',
+          bytesDownloaded: 1_000_000, totalBytes: 1_000_000,
+          status: 'completed', localUri: '/downloads/dep.gguf',
+        });
+      }
+
+      await promise;
+      expect(mockDownloadManagerModule.startProgressPolling).toHaveBeenCalled();
+    });
+
+    it('throws when service is not available', async () => {
+      const savedModule = NativeModules.DownloadManagerModule;
+      NativeModules.DownloadManagerModule = null;
+
+      let unavailableService: any;
+      jest.isolateModules(() => {
+        const mod = require('../../../src/services/backgroundDownloadService');
+        unavailableService = new (mod.backgroundDownloadService as any).constructor();
+      });
+
+      expect(() =>
+        unavailableService.downloadFileTo({
+          params: baseParams,
+          destPath: '/dest/dep.gguf',
+        })
+      ).toThrow('not available');
+
+      NativeModules.DownloadManagerModule = savedModule;
+    });
+
+    it('rejects with fallback message when error event has no reason', async () => {
+      mockDownloadManagerModule.startDownload.mockResolvedValue({
+        downloadId: 16, fileName: 'dep.gguf', modelId: 'test/model',
+      });
+
+      const { promise } = service.downloadFileTo({
+        params: baseParams,
+        destPath: '/dest/dep.gguf',
+      });
+
+      await Promise.resolve();
+
+      if (eventHandlers.DownloadError) {
+        eventHandlers.DownloadError({
+          downloadId: 16, fileName: 'dep.gguf', modelId: 'test/model',
+          status: 'failed', reason: undefined as any,
+        });
+      }
+
+      await expect(promise).rejects.toThrow('Download failed');
     });
   });
 });

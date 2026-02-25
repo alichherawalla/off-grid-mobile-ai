@@ -31,8 +31,8 @@ class CoreMLDiffusionModule: RCTEventEmitter {
   // MARK: - loadModel
 
   @objc func loadModel(_ params: NSDictionary,
-                        resolver resolve: @escaping RCTPromiseResolveBlock,
-                        rejecter reject: @escaping RCTPromiseRejectBlock) {
+                       resolver resolve: @escaping RCTPromiseResolveBlock,
+                       rejecter reject: @escaping RCTPromiseRejectBlock) {
     guard let modelPath = params["modelPath"] as? String else {
       reject("ERR_INVALID_PARAMS", "modelPath is required", nil)
       return
@@ -74,7 +74,7 @@ class CoreMLDiffusionModule: RCTEventEmitter {
   // MARK: - unloadModel
 
   @objc func unloadModel(_ resolve: @escaping RCTPromiseResolveBlock,
-                          rejecter reject: @escaping RCTPromiseRejectBlock) {
+                         rejecter reject: @escaping RCTPromiseRejectBlock) {
     pipelineQueue.async { [weak self] in
       self?.pipeline = nil
       self?.loadedModelPath = nil
@@ -85,22 +85,22 @@ class CoreMLDiffusionModule: RCTEventEmitter {
   // MARK: - isModelLoaded
 
   @objc func isModelLoaded(_ resolve: @escaping RCTPromiseResolveBlock,
-                            rejecter reject: @escaping RCTPromiseRejectBlock) {
+                           rejecter reject: @escaping RCTPromiseRejectBlock) {
     resolve(pipeline != nil)
   }
 
   // MARK: - getLoadedModelPath
 
   @objc func getLoadedModelPath(_ resolve: @escaping RCTPromiseResolveBlock,
-                                 rejecter reject: @escaping RCTPromiseRejectBlock) {
+                                rejecter reject: @escaping RCTPromiseRejectBlock) {
     resolve(loadedModelPath as Any)
   }
 
   // MARK: - generateImage
 
   @objc func generateImage(_ params: NSDictionary,
-                            resolver resolve: @escaping RCTPromiseResolveBlock,
-                            rejecter reject: @escaping RCTPromiseRejectBlock) {
+                           resolver resolve: @escaping RCTPromiseResolveBlock,
+                           rejecter reject: @escaping RCTPromiseRejectBlock) {
     guard let pipe = pipeline else {
       reject("ERR_NO_MODEL", "No model loaded", nil)
       return
@@ -139,7 +139,7 @@ class CoreMLDiffusionModule: RCTEventEmitter {
           self.sendEvent(withName: "LocalDreamProgress", body: [
             "step": progress.step,
             "totalSteps": progress.stepCount,
-            "progress": progressValue,
+            "progress": progressValue
           ])
 
           return true // continue
@@ -157,7 +157,10 @@ class CoreMLDiffusionModule: RCTEventEmitter {
 
         // Save to app's documents directory
         let imageId = UUID().uuidString
-        let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        guard let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+          reject("ERR_NO_DOCS_DIR", "Could not locate documents directory", nil)
+          return
+        }
         let generatedDir = docsDir.appendingPathComponent("generated_images")
         try FileManager.default.createDirectory(at: generatedDir, withIntermediateDirectories: true)
 
@@ -174,13 +177,13 @@ class CoreMLDiffusionModule: RCTEventEmitter {
           "imagePath": imagePath.path,
           "width": cgImage.width,
           "height": cgImage.height,
-          "seed": seed,
+          "seed": seed
         ] as [String: Any])
 
       } catch {
         if !self.cancelRequested {
           self.sendEvent(withName: "LocalDreamError", body: [
-            "error": error.localizedDescription,
+            "error": error.localizedDescription
           ])
           reject("ERR_GENERATION", "Image generation failed: \(error.localizedDescription)", error)
         } else {
@@ -193,7 +196,7 @@ class CoreMLDiffusionModule: RCTEventEmitter {
   // MARK: - cancelGeneration
 
   @objc func cancelGeneration(_ resolve: @escaping RCTPromiseResolveBlock,
-                               rejecter reject: @escaping RCTPromiseRejectBlock) {
+                              rejecter reject: @escaping RCTPromiseRejectBlock) {
     cancelRequested = true
     resolve(true)
   }
@@ -201,22 +204,25 @@ class CoreMLDiffusionModule: RCTEventEmitter {
   // MARK: - isGenerating
 
   @objc func isGenerating(_ resolve: @escaping RCTPromiseResolveBlock,
-                           rejecter reject: @escaping RCTPromiseRejectBlock) {
+                          rejecter reject: @escaping RCTPromiseRejectBlock) {
     resolve(generating)
   }
 
   // MARK: - isNpuSupported (always true on Apple Silicon)
 
   @objc func isNpuSupported(_ resolve: @escaping RCTPromiseResolveBlock,
-                             rejecter reject: @escaping RCTPromiseRejectBlock) {
+                            rejecter reject: @escaping RCTPromiseRejectBlock) {
     resolve(true)
   }
 
   // MARK: - getGeneratedImages
 
   @objc func getGeneratedImages(_ resolve: @escaping RCTPromiseResolveBlock,
-                                 rejecter reject: @escaping RCTPromiseRejectBlock) {
-    let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+                                rejecter reject: @escaping RCTPromiseRejectBlock) {
+    guard let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+      resolve([])
+      return
+    }
     let generatedDir = docsDir.appendingPathComponent("generated_images")
 
     guard let files = try? FileManager.default.contentsOfDirectory(
@@ -242,7 +248,7 @@ class CoreMLDiffusionModule: RCTEventEmitter {
           "steps": 0,
           "seed": 0,
           "modelId": "",
-          "createdAt": createdAt,
+          "createdAt": createdAt
         ] as [String: Any]
       }
 
@@ -252,9 +258,12 @@ class CoreMLDiffusionModule: RCTEventEmitter {
   // MARK: - deleteGeneratedImage
 
   @objc func deleteGeneratedImage(_ imageId: String,
-                                   resolver resolve: @escaping RCTPromiseResolveBlock,
-                                   rejecter reject: @escaping RCTPromiseRejectBlock) {
-    let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+                                  resolver resolve: @escaping RCTPromiseResolveBlock,
+                                  rejecter reject: @escaping RCTPromiseRejectBlock) {
+    guard let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+      reject("ERR_NO_DOCS_DIR", "Could not locate documents directory", nil)
+      return
+    }
     let imagePath = docsDir
       .appendingPathComponent("generated_images")
       .appendingPathComponent("\(imageId).png")

@@ -106,7 +106,6 @@ jest.mock('../../../src/services', () => ({
 
 // Override global Swipeable mock to render rightActions for testing
 jest.mock('react-native-gesture-handler/Swipeable', () => {
-  const React = require('react');
   return ({ children, renderRightActions }: any) => {
     const { View } = require('react-native');
     return (

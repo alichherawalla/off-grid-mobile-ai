@@ -363,18 +363,13 @@ describe('generationService', () => {
       const convId = setupWithConversation();
       const clearStreamingSpy = jest.spyOn(useChatStore.getState(), 'clearStreamingMessage');
 
-      mockedLlmService.generateResponse.mockImplementation((async (
-        _messages: any,
-        _onStream: any,
-        _onComplete: any,
-        onError: any
-      ) => {
-        onError?.(new Error('Generation failed'));
-      }) as any);
+      mockedLlmService.generateResponse.mockRejectedValue(new Error('Generation failed'));
 
-      await generationService.generateResponse(convId, [
-        createMessage({ role: 'user', content: 'Hi' }),
-      ]);
+      await expect(
+        generationService.generateResponse(convId, [
+          createMessage({ role: 'user', content: 'Hi' }),
+        ])
+      ).rejects.toThrow('Generation failed');
 
       expect(clearStreamingSpy).toHaveBeenCalled();
       expect(generationService.getState().isGenerating).toBe(false);

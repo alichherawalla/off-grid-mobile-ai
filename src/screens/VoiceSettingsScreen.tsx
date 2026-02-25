@@ -204,7 +204,7 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
     ...TYPOGRAPHY.label,
     textTransform: 'uppercase' as const,
     color: colors.primary,
-    backgroundColor: colors.primary + '20',
+    backgroundColor: `${colors.primary  }20`,
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
     borderRadius: 6,

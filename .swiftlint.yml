@@ -1,0 +1,26 @@
+included:
+  - ios
+
+excluded:
+  - ios/Pods
+  - ios/build
+  - ios/OffgridMobile.xcodeproj
+  - ios/OffgridMobileTests
+
+disabled_rules:
+  - trailing_whitespace   # handled by editor
+  - line_length           # RN bridge code has long lines
+
+opt_in_rules:
+  - force_unwrapping
+
+force_unwrapping:
+  severity: warning
+
+function_body_length:
+  warning: 100
+  error: 200
+
+type_body_length:
+  warning: 400
+  error: 1000

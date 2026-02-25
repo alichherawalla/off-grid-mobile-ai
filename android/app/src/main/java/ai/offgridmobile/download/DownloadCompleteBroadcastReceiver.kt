@@ -18,77 +18,63 @@ import org.json.JSONObject
 class DownloadCompleteBroadcastReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) {
-            return
-        }
+        if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
 
         val downloadId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-        if (downloadId == -1L) {
-            return
-        }
+        if (downloadId == -1L) return
 
         val sharedPrefs = context.getSharedPreferences(
             DownloadManagerModule.PREFS_NAME,
             Context.MODE_PRIVATE
         )
+        val downloads = parseDownloads(sharedPrefs.getString(DownloadManagerModule.DOWNLOADS_KEY, "[]")) ?: return
+        val (downloadInfo, downloadIndex) = findDownload(downloads, downloadId) ?: return
 
-        val downloadsJson = sharedPrefs.getString(DownloadManagerModule.DOWNLOADS_KEY, "[]") ?: "[]"
-        val downloads = try {
-            JSONArray(downloadsJson)
-        } catch (e: Exception) {
-            return
-        }
+        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        applyDownloadResult(downloadManager, downloadId, downloadInfo) ?: return
 
-        // Find the download in our tracked list
-        var downloadInfo: JSONObject? = null
-        var downloadIndex = -1
+        downloads.put(downloadIndex, downloadInfo)
+        sharedPrefs.edit()
+            .putString(DownloadManagerModule.DOWNLOADS_KEY, downloads.toString())
+            .apply()
+    }
+
+    private fun parseDownloads(json: String?): JSONArray? = try {
+        JSONArray(json ?: "[]")
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun findDownload(downloads: JSONArray, downloadId: Long): Pair<JSONObject, Int>? {
         for (i in 0 until downloads.length()) {
             val download = downloads.getJSONObject(i)
-            if (download.getLong("downloadId") == downloadId) {
-                downloadInfo = download
-                downloadIndex = i
-                break
-            }
+            if (download.getLong("downloadId") == downloadId) return Pair(download, i)
         }
+        return null
+    }
 
-        if (downloadInfo == null) {
-            // Not a download we're tracking
-            return
-        }
-
-        // Query the DownloadManager for the result
-        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val query = DownloadManager.Query().setFilterById(downloadId)
-        val cursor: Cursor? = downloadManager.query(query)
-
-        cursor?.use {
-            if (it.moveToFirst()) {
-                val statusIdx = it.getColumnIndex(DownloadManager.COLUMN_STATUS)
-                val localUriIdx = it.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
-                val reasonIdx = it.getColumnIndex(DownloadManager.COLUMN_REASON)
-
-                val status = if (statusIdx >= 0) it.getInt(statusIdx) else -1
-                val localUri = if (localUriIdx >= 0) it.getString(localUriIdx) else null
-                val reason = if (reasonIdx >= 0) it.getInt(reasonIdx) else 0
-
-                when (status) {
-                    DownloadManager.STATUS_SUCCESSFUL -> {
-                        downloadInfo.put("status", "completed")
-                        downloadInfo.put("localUri", localUri ?: "")
-                        downloadInfo.put("completedAt", System.currentTimeMillis())
-                    }
-                    DownloadManager.STATUS_FAILED -> {
-                        downloadInfo.put("status", "failed")
-                        downloadInfo.put("failureReason", reasonToString(reason))
-                        downloadInfo.put("completedAt", System.currentTimeMillis())
-                    }
+    private fun applyDownloadResult(
+        downloadManager: DownloadManager,
+        downloadId: Long,
+        downloadInfo: JSONObject,
+    ): Unit? {
+        val cursor = downloadManager.query(DownloadManager.Query().setFilterById(downloadId))
+        return cursor?.use {
+            if (!it.moveToFirst()) return@use null
+            val status = it.getColumnIndex(DownloadManager.COLUMN_STATUS).let { idx -> if (idx >= 0) it.getInt(idx) else -1 }
+            val localUri = it.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI).let { idx -> if (idx >= 0) it.getString(idx) else null }
+            val reason = it.getColumnIndex(DownloadManager.COLUMN_REASON).let { idx -> if (idx >= 0) it.getInt(idx) else 0 }
+            when (status) {
+                DownloadManager.STATUS_SUCCESSFUL -> {
+                    downloadInfo.put("status", "completed")
+                    downloadInfo.put("localUri", localUri ?: "")
+                    downloadInfo.put("completedAt", System.currentTimeMillis())
                 }
-
-                // Update the download in our list
-                downloads.put(downloadIndex, downloadInfo)
-                sharedPrefs.edit()
-                    .putString(DownloadManagerModule.DOWNLOADS_KEY, downloads.toString())
-                    .apply()
+                DownloadManager.STATUS_FAILED -> {
+                    downloadInfo.put("status", "failed")
+                    downloadInfo.put("failureReason", reasonToString(reason))
+                    downloadInfo.put("completedAt", System.currentTimeMillis())
+                }
             }
         }
     }

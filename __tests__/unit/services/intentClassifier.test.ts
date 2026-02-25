@@ -815,7 +815,7 @@ describe('IntentClassifier', () => {
     });
 
     test('should handle very long messages without errors', async () => {
-      const longMessage = 'draw a ' + 'very '.repeat(100) + 'beautiful landscape';
+      const longMessage = `draw a ${  'very '.repeat(100)  }beautiful landscape`;
 
       // Should not throw despite long message
       const result = await intentClassifier.classifyIntent(longMessage, { useLLM: false });

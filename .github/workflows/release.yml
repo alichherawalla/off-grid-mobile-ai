@@ -88,19 +88,19 @@ jobs:
       - name: Build Android Release APK
         run: |
           cd android
-          ./gradlew assembleStandardRelease
+          ./gradlew assembleRelease
 
       - name: Rename APK
         run: |
-          mv android/app/build/outputs/apk/standard/release/app-standard-release.apk \
-             android/app/build/outputs/apk/standard/release/OffgridMobile-v${{ env.NEW_VERSION }}.apk
+          mv android/app/build/outputs/apk/release/app-release.apk \
+             android/app/build/outputs/apk/release/OffgridMobile-v${{ env.NEW_VERSION }}.apk
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create v${{ env.NEW_VERSION }} \
-            android/app/build/outputs/apk/standard/release/OffgridMobile-v${{ env.NEW_VERSION }}.apk \
+            android/app/build/outputs/apk/release/OffgridMobile-v${{ env.NEW_VERSION }}.apk \
             --title "Off Grid v${{ env.NEW_VERSION }}" \
             --notes-file release-notes.md
 

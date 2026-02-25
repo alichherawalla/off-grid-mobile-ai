@@ -5,187 +5,61 @@ class HuggingFaceService {
   private baseUrl = HF_API.baseUrl;
   private apiUrl = HF_API.apiUrl;
 
+  private async fetchJson<T>(url: string): Promise<T> {
+    const response = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error(`API error: ${response.status}`);
+    return response.json() as Promise<T>;
+  }
+
   async searchModels(
     query: string = '',
-    options: {
-      limit?: number;
-      sort?: string;
-      direction?: string;
-      pipelineTag?: string;
-    } = {}
+    options: { limit?: number; sort?: string; direction?: string; pipelineTag?: string } = {}
   ): Promise<ModelInfo[]> {
     const { limit = 30, sort = 'downloads', direction = '-1', pipelineTag } = options;
-
-    try {
-      const params = new URLSearchParams({
-        filter: 'gguf',
-        sort,
-        direction,
-        limit: limit.toString(),
-      });
-
-      if (query) {
-        params.append('search', query);
-      }
-
-      if (pipelineTag) {
-        params.append('pipeline_tag', pipelineTag);
-      }
-
-      const response = await fetch(
-        `${this.apiUrl}/models?${params.toString()}`,
-        {
-          headers: {
-            Accept: 'application/json',
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const results: HFModelSearchResult[] = await response.json();
-
-      // Transform to our ModelInfo format
-      return results.map(this.transformModelResult);
-    } catch (error) {
-      console.error('Error searching models:', error);
-      throw error;
-    }
+    const params = new URLSearchParams({ filter: 'gguf', sort, direction, limit: limit.toString() });
+    if (query) params.append('search', query);
+    if (pipelineTag) params.append('pipeline_tag', pipelineTag);
+    const results = await this.fetchJson<HFModelSearchResult[]>(`${this.apiUrl}/models?${params.toString()}`);
+    return results.map(this.transformModelResult);
   }
 
   async getModelDetails(modelId: string): Promise<ModelInfo> {
-    try {
-      const response = await fetch(
-        `${this.apiUrl}/models/${modelId}`,
-        {
-          headers: {
-            Accept: 'application/json',
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const result: HFModelSearchResult = await response.json();
-      return this.transformModelResult(result);
-    } catch (error) {
-      console.error('Error fetching model details:', error);
-      throw error;
-    }
+    const result = await this.fetchJson<HFModelSearchResult>(`${this.apiUrl}/models/${modelId}`);
+    return this.transformModelResult(result);
   }
 
   async getModelFiles(modelId: string): Promise<ModelFile[]> {
     try {
-      // Use the tree endpoint which includes file sizes
-      const response = await fetch(
-        `${this.apiUrl}/models/${modelId}/tree/main`,
-        {
-          headers: {
-            Accept: 'application/json',
-          },
-        }
-      );
-
-      if (!response.ok) {
-        // Fallback to basic model endpoint if tree fails
-        return this.getModelFilesFromSiblings(modelId);
-      }
-
-      const files: Array<{
-        type: string;
-        path: string;
-        size?: number;
-        lfs?: { size: number };
-      }> = await response.json();
-
-      // Filter for GGUF files
-      const allGguf = files.filter(file => file.type === 'file' && file.path.endsWith('.gguf'));
-
-      // Separate mmproj files from model files
+      const response = await fetch(`${this.apiUrl}/models/${modelId}/tree/main`, { headers: { Accept: 'application/json' } });
+      if (!response.ok) return this.getModelFilesFromSiblings(modelId);
+      const files: Array<{ type: string; path: string; size?: number; lfs?: { size: number } }> = await response.json();
+      const allGguf = files.filter(f => f.type === 'file' && f.path.endsWith('.gguf'));
       const mmProjFiles = allGguf.filter(f => this.isMMProjFile(f.path));
       const modelFiles = allGguf.filter(f => !this.isMMProjFile(f.path));
-
-      console.log('[HuggingFace] Found GGUF files:', allGguf.map(f => f.path));
-      console.log('[HuggingFace] MMProj files:', mmProjFiles.map(f => f.path));
-      console.log('[HuggingFace] Model files:', modelFiles.map(f => f.path));
-
-      // Transform and pair each model file with its matching mmproj
-      const result = modelFiles
-        .map(file => {
-          const mmProjFile = this.findMatchingMMProj(file.path, mmProjFiles, modelId);
-          console.log('[HuggingFace] Pairing', file.path, '→ mmproj:', mmProjFile?.name || 'NONE');
-          return {
-            name: file.path,
-            size: file.lfs?.size || file.size || 0,
-            quantization: this.extractQuantization(file.path),
-            downloadUrl: this.getDownloadUrl(modelId, file.path),
-            mmProjFile,
-          };
-        })
+      return modelFiles
+        .map(file => ({
+          name: file.path,
+          size: file.lfs?.size || file.size || 0,
+          quantization: this.extractQuantization(file.path),
+          downloadUrl: this.getDownloadUrl(modelId, file.path),
+          mmProjFile: this.findMatchingMMProj(file.path, mmProjFiles, modelId),
+        }))
         .sort((a, b) => a.size - b.size);
-
-      return result;
-    } catch (error) {
-      console.error('Error fetching model files:', error);
-      // Fallback to siblings method
+    } catch {
       return this.getModelFilesFromSiblings(modelId);
     }
   }
 
   private async getModelFilesFromSiblings(modelId: string): Promise<ModelFile[]> {
-    try {
-      const response = await fetch(
-        `${this.apiUrl}/models/${modelId}`,
-        {
-          headers: {
-            Accept: 'application/json',
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const result: HFModelSearchResult = await response.json();
-
-      if (!result.siblings) {
-        return [];
-      }
-
-      // Filter for GGUF files
-      const allGguf = result.siblings.filter(file => file.rfilename.endsWith('.gguf'));
-
-      // Separate mmproj files from model files
-      const mmProjFiles = allGguf.filter(f => this.isMMProjFile(f.rfilename));
-      const modelFiles = allGguf.filter(f => !this.isMMProjFile(f.rfilename));
-
-      // Convert mmproj files to the format expected by findMatchingMMProj
-      const mmProjFilesForMatching = mmProjFiles.map(f => ({
-        path: f.rfilename,
-        size: f.size,
-        lfs: f.lfs,
-      }));
-
-      // Transform and pair each model file with its matching mmproj
-      return modelFiles
-        .map(file => {
-          const baseFile = this.transformFileInfo(modelId, file);
-          const mmProjFile = this.findMatchingMMProj(file.rfilename, mmProjFilesForMatching, modelId);
-          return {
-            ...baseFile,
-            mmProjFile,
-          };
-        })
-        .sort((a, b) => a.size - b.size);
-    } catch (error) {
-      console.error('Error fetching model files from siblings:', error);
-      throw error;
-    }
+    const result = await this.fetchJson<HFModelSearchResult>(`${this.apiUrl}/models/${modelId}`);
+    if (!result.siblings) return [];
+    const allGguf = result.siblings.filter(f => f.rfilename.endsWith('.gguf'));
+    const mmProjFiles = allGguf.filter(f => this.isMMProjFile(f.rfilename));
+    const modelFiles = allGguf.filter(f => !this.isMMProjFile(f.rfilename));
+    const mmProjForMatch = mmProjFiles.map(f => ({ path: f.rfilename, size: f.size, lfs: f.lfs }));
+    return modelFiles
+      .map(file => ({ ...this.transformFileInfo(modelId, file), mmProjFile: this.findMatchingMMProj(file.rfilename, mmProjForMatch, modelId) }))
+      .sort((a, b) => a.size - b.size);
   }
 
   getDownloadUrl(modelId: string, fileName: string, revision: string = 'main'): string {
@@ -193,42 +67,13 @@ class HuggingFaceService {
   }
 
   private determineCredibility(author: string): ModelCredibility {
-    // Check if from LM Studio community (highest credibility for GGUF)
-    if (LMSTUDIO_AUTHORS.includes(author)) {
-      return {
-        source: 'lmstudio',
-        isOfficial: false,
-        isVerifiedQuantizer: true,
-        verifiedBy: 'LM Studio',
-      };
-    }
-
-    // Check if from official model creator
-    if (OFFICIAL_MODEL_AUTHORS[author]) {
-      return {
-        source: 'official',
-        isOfficial: true,
-        isVerifiedQuantizer: false,
-        verifiedBy: OFFICIAL_MODEL_AUTHORS[author],
-      };
-    }
-
-    // Check if from verified quantizer
-    if (VERIFIED_QUANTIZERS[author]) {
-      return {
-        source: 'verified-quantizer',
-        isOfficial: false,
-        isVerifiedQuantizer: true,
-        verifiedBy: VERIFIED_QUANTIZERS[author],
-      };
-    }
-
-    // Community/unknown source
-    return {
-      source: 'community',
-      isOfficial: false,
-      isVerifiedQuantizer: false,
-    };
+    if (LMSTUDIO_AUTHORS.includes(author))
+      return { source: 'lmstudio', isOfficial: false, isVerifiedQuantizer: true, verifiedBy: 'LM Studio' };
+    if (OFFICIAL_MODEL_AUTHORS[author])
+      return { source: 'official', isOfficial: true, isVerifiedQuantizer: false, verifiedBy: OFFICIAL_MODEL_AUTHORS[author] };
+    if (VERIFIED_QUANTIZERS[author])
+      return { source: 'verified-quantizer', isOfficial: false, isVerifiedQuantizer: true, verifiedBy: VERIFIED_QUANTIZERS[author] };
+    return { source: 'community', isOfficial: false, isVerifiedQuantizer: false };
   }
 
   private transformModelResult = (result: HFModelSearchResult): ModelInfo => {
@@ -334,34 +179,28 @@ class HuggingFaceService {
     };
   }
 
+  private detectModelType(name: string, tags: string[]): string {
+    if (tags.some(t => t.includes('code')) || name.includes('code') || name.includes('coder'))
+      return 'Code generation';
+    if (tags.some(t => t.includes('vision') || t.includes('multimodal') || t.includes('image-text'))
+      || name.includes('vision') || name.includes('vlm') || name.includes('llava'))
+      return 'Vision';
+    return 'Text generation';
+  }
+
   private extractDescription(result: HFModelSearchResult): string {
     const name = (result.id.split('/').pop() || '').toLowerCase();
     const tags = result.tags?.map(t => t.toLowerCase()) || [];
     const author = result.author || result.id.split('/')[0] || '';
-
-    // Detect model type
-    let type = 'Text generation';
-    if (tags.some(t => t.includes('code')) || name.includes('code') || name.includes('coder')) {
-      type = 'Code generation';
-    } else if (tags.some(t => t.includes('vision') || t.includes('multimodal') || t.includes('image-text')) ||
-      name.includes('vision') || name.includes('vlm') || name.includes('llava')) {
-      type = 'Vision';
-    }
-
-    // Extract param count from name
+    const type = this.detectModelType(name, tags);
     const paramMatch = name.match(/(\d+\.?\d*)\s*b(?:\b|-)/);
     const paramStr = paramMatch ? `${paramMatch[1]}B` : null;
-
-    // Extract license
     const license = result.cardData?.license;
     const licenseStr = license ? license.toUpperCase().replace(/-/g, ' ') : null;
-
-    // Build description parts
     const parts: string[] = [type];
     if (paramStr) parts.push(paramStr);
     if (licenseStr) parts.push(licenseStr);
     if (author) parts.push(`by ${author}`);
-
     return parts.join(' · ');
   }
 
@@ -383,145 +222,6 @@ class HuggingFaceService {
     };
   }
 
-  // Image generation model search
-  async searchImageGenerationModels(
-    query: string = '',
-    options: { limit?: number } = {}
-  ): Promise<Array<{
-    id: string;
-    name: string;
-    author: string;
-    description: string;
-    downloads: number;
-    likes: number;
-    isMediaPipeCompatible: boolean;
-    modelType: string;
-  }>> {
-    const { limit = 20 } = options;
-
-    try {
-      // Search for diffusers/stable-diffusion models
-      const params = new URLSearchParams({
-        filter: 'diffusers',
-        sort: 'downloads',
-        direction: '-1',
-        limit: limit.toString(),
-      });
-
-      if (query) {
-        params.append('search', query);
-      } else {
-        // Default search for small/mobile-friendly SD models
-        params.append('search', 'stable-diffusion small mobile');
-      }
-
-      const response = await fetch(
-        `${this.apiUrl}/models?${params.toString()}`,
-        {
-          headers: {
-            Accept: 'application/json',
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const results: HFModelSearchResult[] = await response.json();
-
-      return results.map(result => {
-        const author = result.author || result.id.split('/')[0] || 'Unknown';
-        const isMediaPipe = this.isMediaPipeCompatible(result);
-
-        return {
-          id: result.id,
-          name: result.id.split('/').pop() || result.id,
-          author,
-          description: this.extractImageModelDescription(result),
-          downloads: result.downloads || 0,
-          likes: result.likes || 0,
-          isMediaPipeCompatible: isMediaPipe,
-          modelType: this.getImageModelType(result),
-        };
-      });
-    } catch (error) {
-      console.error('Error searching image models:', error);
-      throw error;
-    }
-  }
-
-  private isMediaPipeCompatible(result: HFModelSearchResult): boolean {
-    const tags = result.tags || [];
-    const id = result.id.toLowerCase();
-
-    // Check for MediaPipe-specific tags or known compatible models
-    if (tags.includes('mediapipe') || id.includes('mediapipe')) {
-      return true;
-    }
-
-    // Models known to work with MediaPipe
-    const knownCompatible = [
-      'runwayml/stable-diffusion-v1-5',
-      'stabilityai/stable-diffusion-2-1',
-      'CompVis/stable-diffusion-v1-4',
-    ];
-
-    return knownCompatible.some(known => id.includes(known.toLowerCase()));
-  }
-
-  private getImageModelType(result: HFModelSearchResult): string {
-    const tags = result.tags || [];
-
-    if (tags.includes('stable-diffusion-xl')) return 'SDXL';
-    if (tags.includes('stable-diffusion')) return 'SD 1.x/2.x';
-    if (tags.includes('flux')) return 'Flux';
-    if (tags.includes('latent-consistency')) return 'LCM';
-
-    return 'Diffusion';
-  }
-
-  private extractImageModelDescription(result: HFModelSearchResult): string {
-    const tags = result.tags || [];
-
-    const relevantTags = tags.filter(tag =>
-      !tag.startsWith('license:') &&
-      !tag.startsWith('language:') &&
-      tag !== 'diffusers'
-    ).slice(0, 3);
-
-    if (relevantTags.length > 0) {
-      return relevantTags.join(', ');
-    }
-
-    return 'Image generation model';
-  }
-
-  // Get known MediaPipe-compatible models (curated list)
-  getKnownMediaPipeModels(): Array<{
-    id: string;
-    name: string;
-    description: string;
-    size: string;
-    recommended: boolean;
-  }> {
-    return [
-      {
-        id: 'mediapipe-sd-v1-5',
-        name: 'Stable Diffusion v1.5 (MediaPipe)',
-        description: 'Standard SD 1.5 optimized for MediaPipe on mobile devices',
-        size: '~2GB',
-        recommended: true,
-      },
-      {
-        id: 'mediapipe-sd-v2-1',
-        name: 'Stable Diffusion v2.1 (MediaPipe)',
-        description: 'Improved quality SD 2.1 for MediaPipe',
-        size: '~3GB',
-        recommended: false,
-      },
-    ];
-  }
 }
 
 export const huggingFaceService = new HuggingFaceService();

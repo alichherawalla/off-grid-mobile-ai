@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Vibration } from 'react-native';
 import { whisperService } from '../services/whisperService';
 import { useWhisperStore } from '../stores/whisperStore';
+import logger from '../utils/logger';
 
 export interface UseWhisperTranscriptionResult {
   isRecording: boolean;
@@ -34,12 +35,12 @@ export const useWhisperTranscription = (): UseWhisperTranscriptionResult => {
   useEffect(() => {
     const autoLoadModel = async () => {
       if (downloadedModelId && !isModelLoaded && !whisperService.isModelLoaded()) {
-        console.log('[Whisper] Auto-loading model...');
+        logger.log('[Whisper] Auto-loading model...');
         try {
           await loadModel();
-          console.log('[Whisper] Model auto-loaded successfully');
+          logger.log('[Whisper] Model auto-loaded successfully');
         } catch (err) {
-          console.error('[Whisper] Failed to auto-load model:', err);
+          logger.error('[Whisper] Failed to auto-load model:', err);
         }
       }
     };
@@ -86,7 +87,7 @@ export const useWhisperTranscription = (): UseWhisperTranscriptionResult => {
 
   // Define stopRecording first since startRecording depends on it
   const stopRecording = useCallback(async () => {
-    console.log('[Whisper] stopRecording called');
+    logger.log('[Whisper] stopRecording called');
 
     // Immediately update UI to show "Transcribing..." state
     // But keep recording in background for better accuracy
@@ -97,12 +98,12 @@ export const useWhisperTranscription = (): UseWhisperTranscriptionResult => {
       // Continue recording for a bit longer to capture trailing audio
       // This helps Whisper process the speech more accurately
       // User sees "Transcribing..." during this time
-      console.log('[Whisper] Capturing trailing audio for', TRAILING_RECORD_TIME, 'ms...');
+      logger.log('[Whisper] Capturing trailing audio for', TRAILING_RECORD_TIME, 'ms...');
       await new Promise<void>(resolve => setTimeout(() => resolve(), TRAILING_RECORD_TIME));
 
       // Check if cancelled during the wait
       if (isCancelled.current) {
-        console.log('[Whisper] Cancelled during trailing capture');
+        logger.log('[Whisper] Cancelled during trailing capture');
         whisperService.forceReset();
         return;
       }
@@ -112,7 +113,7 @@ export const useWhisperTranscription = (): UseWhisperTranscriptionResult => {
       // Haptic feedback
       Vibration.vibrate(30);
     } catch (err) {
-      console.error('[Whisper] Stop error:', err);
+      logger.error('[Whisper] Stop error:', err);
       // Force reset on error
       whisperService.forceReset();
       // On error, also clear transcribing state
@@ -135,19 +136,19 @@ export const useWhisperTranscription = (): UseWhisperTranscriptionResult => {
   }, []);
 
   const startRecording = useCallback(async () => {
-    console.log('[Whisper] startRecording called');
-    console.log('[Whisper] Model loaded:', whisperService.isModelLoaded());
-    console.log('[Whisper] Current isRecording state:', isRecording);
+    logger.log('[Whisper] startRecording called');
+    logger.log('[Whisper] Model loaded:', whisperService.isModelLoaded());
+    logger.log('[Whisper] Current isRecording state:', isRecording);
 
     // If already recording, stop first
     if (isRecording || whisperService.isCurrentlyTranscribing()) {
-      console.log('[Whisper] Already recording, stopping first...');
+      logger.log('[Whisper] Already recording, stopping first...');
       await stopRecording();
       await new Promise<void>(resolve => setTimeout(resolve, 150));
     }
 
     if (!whisperService.isModelLoaded()) {
-      console.log('[Whisper] Model not loaded, trying to load...');
+      logger.log('[Whisper] Model not loaded, trying to load...');
       // Try to load if we have a downloaded model
       if (downloadedModelId) {
         try {
@@ -173,10 +174,10 @@ export const useWhisperTranscription = (): UseWhisperTranscriptionResult => {
       setIsRecording(true);
       setIsTranscribing(true);
 
-      console.log('[Whisper] Starting realtime transcription...');
+      logger.log('[Whisper] Starting realtime transcription...');
 
       await whisperService.startRealtimeTranscription((result) => {
-        console.log('[Whisper] Transcription result:', result.isCapturing, result.text?.slice(0, 50));
+        logger.log('[Whisper] Transcription result:', result.isCapturing, result.text?.slice(0, 50));
 
         if (isCancelled.current) return;
 
@@ -202,7 +203,7 @@ export const useWhisperTranscription = (): UseWhisperTranscriptionResult => {
         }
       });
     } catch (err) {
-      console.error('[Whisper] Recording error:', err);
+      logger.error('[Whisper] Recording error:', err);
       const errorMsg = err instanceof Error ? err.message : 'Failed to start recording';
       setError(errorMsg);
       setIsRecording(false);

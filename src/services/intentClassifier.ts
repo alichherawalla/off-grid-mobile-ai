@@ -1,6 +1,7 @@
 import { llmService } from './llm';
 import { activeModelService } from './activeModelService';
 import { DownloadedModel, ModelLoadingStrategy } from '../types';
+import logger from '../utils/logger';
 
 export type Intent = 'image' | 'text';
 
@@ -182,7 +183,7 @@ class IntentClassifier {
         this.cacheIntent(cacheKey, llmResult);
         return llmResult;
       } catch (error) {
-        console.warn('[IntentClassifier] LLM classification failed:', error);
+        logger.warn('[IntentClassifier] LLM classification failed:', error);
       }
     }
 
@@ -246,7 +247,7 @@ Answer:`;
         const activeInfo = activeModelService.getActiveModels();
         originalModelId = activeInfo.text.model?.id || null;
 
-        console.log('[IntentClassifier] Swapping to classifier model:', opts.classifierModel.name);
+        logger.log('[IntentClassifier] Swapping to classifier model:', opts.classifierModel.name);
         opts.onStatusChange?.(`Loading ${opts.classifierModel.name}...`);
         // Use activeModelService singleton to load - prevents duplicate loads
         await activeModelService.loadTextModel(opts.classifierModel.id);
@@ -276,9 +277,6 @@ Answer:`;
         (token) => {
           response += token;
         },
-        undefined,
-        undefined,
-        undefined
       );
     } finally {
       // Swap back to original model if we changed it
@@ -286,12 +284,12 @@ Answer:`;
       // The ChatScreen will reload it on-demand when needed for text generation
       const strategy = opts.modelLoadingStrategy ?? 'performance';
       if (needsModelSwap && originalModelId && strategy === 'performance') {
-        console.log('[IntentClassifier] Swapping back to original model (performance mode)');
+        logger.log('[IntentClassifier] Swapping back to original model (performance mode)');
         opts.onStatusChange?.('Restoring text model...');
         // Use activeModelService singleton to load
         await activeModelService.loadTextModel(originalModelId);
       } else if (needsModelSwap && strategy === 'memory') {
-        console.log('[IntentClassifier] Keeping classifier model loaded (memory mode - will reload text model on demand)');
+        logger.log('[IntentClassifier] Keeping classifier model loaded (memory mode - will reload text model on demand)');
       }
     }
 

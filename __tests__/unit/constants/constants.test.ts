@@ -75,6 +75,23 @@ describe('RECOMMENDED_MODELS', () => {
       expect(model.params).toBeGreaterThan(0);
     }
   });
+
+  it('contains all SmolVLM vision models', () => {
+    const smolVLMIds = [
+      'ggml-org/SmolVLM-256M-Instruct-GGUF',
+      'ggml-org/SmolVLM2-256M-Video-Instruct-GGUF',
+      'ggml-org/SmolVLM-500M-Instruct-GGUF',
+      'ggml-org/SmolVLM2-500M-Video-Instruct-GGUF',
+      'ggml-org/SmolVLM-Instruct-GGUF',
+      'ggml-org/SmolVLM2-2.2B-Instruct-GGUF',
+    ];
+    for (const id of smolVLMIds) {
+      const model = RECOMMENDED_MODELS.find(m => m.id === id);
+      expect(model).toBeDefined();
+      expect(model!.type).toBe('vision');
+      expect(model!.org).toBe('HuggingFaceTB');
+    }
+  });
 });
 
 describe('MODEL_ORGS', () => {
@@ -105,7 +122,7 @@ describe('VERIFIED_QUANTIZERS', () => {
   });
 
   it('includes bartowski', () => {
-    expect(VERIFIED_QUANTIZERS['bartowski']).toBeDefined();
+    expect(VERIFIED_QUANTIZERS.bartowski).toBeDefined();
   });
 
   it('all entries have non-empty display names', () => {
@@ -119,9 +136,9 @@ describe('VERIFIED_QUANTIZERS', () => {
 describe('OFFICIAL_MODEL_AUTHORS', () => {
   it('includes major model creators', () => {
     expect(OFFICIAL_MODEL_AUTHORS['meta-llama']).toBe('Meta');
-    expect(OFFICIAL_MODEL_AUTHORS['google']).toBe('Google');
-    expect(OFFICIAL_MODEL_AUTHORS['microsoft']).toBe('Microsoft');
-    expect(OFFICIAL_MODEL_AUTHORS['Qwen']).toBe('Alibaba');
+    expect(OFFICIAL_MODEL_AUTHORS.google).toBe('Google');
+    expect(OFFICIAL_MODEL_AUTHORS.microsoft).toBe('Microsoft');
+    expect(OFFICIAL_MODEL_AUTHORS.Qwen).toBe('Alibaba');
   });
 
   it('all entries have non-empty display names', () => {
@@ -144,8 +161,8 @@ describe('LMSTUDIO_AUTHORS', () => {
 
 describe('QUANTIZATION_INFO', () => {
   it('has Q4_K_M as recommended', () => {
-    expect(QUANTIZATION_INFO['Q4_K_M']).toBeDefined();
-    expect(QUANTIZATION_INFO['Q4_K_M'].recommended).toBe(true);
+    expect(QUANTIZATION_INFO.Q4_K_M).toBeDefined();
+    expect(QUANTIZATION_INFO.Q4_K_M.recommended).toBe(true);
   });
 
   it('all entries have required fields', () => {

@@ -19,3 +19,4 @@ export { AppSheet } from './AppSheet';
 export type { AppSheetProps } from './AppSheet';
 export { ProjectSelectorSheet } from './ProjectSelectorSheet';
 export { DebugSheet } from './DebugSheet';
+export { ToolPickerSheet } from './ToolPickerSheet';

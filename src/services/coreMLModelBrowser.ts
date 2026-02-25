@@ -1,3 +1,4 @@
+import logger from '../utils/logger';
 export interface CoreMLModelFile {
   path: string;
   relativePath: string;
@@ -90,44 +91,6 @@ function findCompiledZip(entries: HFTreeEntry[]): HFTreeEntry | null {
   return v2Zip || null;
 }
 
-/**
- * Recursively enumerate all files under a path. Subdirectories fetched in parallel.
- */
-async function enumerateFiles(
-  repo: string,
-  dirPath: string,
-  basePath: string,
-  maxDepth = 4,
-): Promise<CoreMLModelFile[]> {
-  if (maxDepth <= 0) return [];
-  const entries = await fetchRepoTree(repo, dirPath);
-  const files: CoreMLModelFile[] = [];
-  const dirPromises: Promise<CoreMLModelFile[]>[] = [];
-
-  for (const entry of entries) {
-    if (entry.type === 'file') {
-      const relativePath = entry.path.startsWith(basePath + '/')
-        ? entry.path.slice(basePath.length + 1)
-        : entry.path;
-      files.push({
-        path: entry.path,
-        relativePath,
-        size: entry.lfs?.size ?? entry.size ?? 0,
-        downloadUrl: `https://huggingface.co/${repo}/resolve/main/${entry.path}`,
-      });
-    } else if (entry.type === 'directory') {
-      if (entry.path.endsWith('/analytics')) continue;
-      dirPromises.push(enumerateFiles(repo, entry.path, basePath, maxDepth - 1));
-    }
-  }
-
-  const subResults = await Promise.all(dirPromises);
-  for (const sub of subResults) {
-    files.push(...sub);
-  }
-  return files;
-}
-
 async function fetchModelFromRepo(
   repoInfo: (typeof REPOS)[number],
 ): Promise<CoreMLImageModel | null> {
@@ -163,7 +126,40 @@ async function fetchModelFromRepo(
   );
   if (!compiledDir) return null;
 
-  const files = await enumerateFiles(repo, compiledDir.path, compiledDir.path);
+  const basePath = compiledDir.path;
+
+  /** Recursively enumerate all files under a path. Subdirectories fetched in parallel. */
+  async function enumerate(dirPath: string, maxDepth = 4): Promise<CoreMLModelFile[]> {
+    if (maxDepth <= 0) return [];
+    const entries = await fetchRepoTree(repo, dirPath);
+    const files: CoreMLModelFile[] = [];
+    const dirPromises: Promise<CoreMLModelFile[]>[] = [];
+
+    for (const entry of entries) {
+      if (entry.type === 'file') {
+        const relativePath = entry.path.startsWith(`${basePath}/`)
+          ? entry.path.slice(basePath.length + 1)
+          : entry.path;
+        files.push({
+          path: entry.path,
+          relativePath,
+          size: entry.lfs?.size ?? entry.size ?? 0,
+          downloadUrl: `https://huggingface.co/${repo}/resolve/main/${entry.path}`,
+        });
+      } else if (entry.type === 'directory') {
+        if (entry.path.endsWith('/analytics')) continue;
+        dirPromises.push(enumerate(entry.path, maxDepth - 1));
+      }
+    }
+
+    const subResults = await Promise.all(dirPromises);
+    for (const sub of subResults) {
+      files.push(...sub);
+    }
+    return files;
+  }
+
+  const files = await enumerate(compiledDir.path);
   const totalSize = files.reduce((sum, f) => sum + f.size, 0);
 
   return {
@@ -199,7 +195,7 @@ export async function fetchAvailableCoreMLModels(
 
   results.forEach((r, i) => {
     if (r.status === 'rejected') {
-      console.warn(`[CoreMLBrowser] Failed to fetch ${REPOS[i].repo}:`, r.reason);
+      logger.warn(`[CoreMLBrowser] Failed to fetch ${REPOS[i].repo}:`, r.reason);
     }
   });
 

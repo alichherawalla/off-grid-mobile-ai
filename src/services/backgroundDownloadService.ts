@@ -1,4 +1,4 @@
-import { NativeModules, NativeEventEmitter } from 'react-native';
+import { NativeModules, NativeEventEmitter, Platform, PermissionsAndroid } from 'react-native';
 import { BackgroundDownloadInfo, BackgroundDownloadStatus } from '../types';
 
 const { DownloadManagerModule } = NativeModules;
@@ -58,6 +58,7 @@ class BackgroundDownloadService {
   private errorListeners: Map<string, DownloadErrorCallback> = new Map();
   private subscriptions: { remove: () => void }[] = [];
   private isPolling = false;
+  private silentDownloadIds: Set<number> = new Set();
 
   constructor() {
     if (this.isAvailable()) {
@@ -66,16 +67,10 @@ class BackgroundDownloadService {
     }
   }
 
-  /**
-   * Check if background downloads are available (Android only)
-   */
   isAvailable(): boolean {
     return DownloadManagerModule != null;
   }
 
-  /**
-   * Start a background download
-   */
   async startDownload(params: DownloadParams): Promise<BackgroundDownloadInfo> {
     if (!this.isAvailable()) {
       throw new Error('Background downloads not available on this platform');
@@ -90,9 +85,6 @@ class BackgroundDownloadService {
       totalBytes: params.totalBytes || 0,
     });
 
-    // Start polling for progress
-    // this.startProgressPolling(); // REMOVED: Callers must start polling after registering listeners to avoid race conditions
-
     return {
       downloadId: result.downloadId,
       fileName: result.fileName,
@@ -104,9 +96,6 @@ class BackgroundDownloadService {
     };
   }
 
-  /**
-   * Start a multi-file background download (files downloaded to destinationDir preserving relative paths)
-   */
   async startMultiFileDownload(params: MultiFileDownloadParams): Promise<BackgroundDownloadInfo> {
     if (!this.isAvailable()) {
       throw new Error('Background downloads not available on this platform');
@@ -131,25 +120,17 @@ class BackgroundDownloadService {
     };
   }
 
-  /**
-   * Cancel an active download
-   */
   async cancelDownload(downloadId: number): Promise<void> {
     if (!this.isAvailable()) {
       throw new Error('Background downloads not available on this platform');
     }
-
     await DownloadManagerModule.cancelDownload(downloadId);
   }
 
-  /**
-   * Get all active/persisted downloads
-   */
   async getActiveDownloads(): Promise<BackgroundDownloadInfo[]> {
     if (!this.isAvailable()) {
       return [];
     }
-
     const downloads = await DownloadManagerModule.getActiveDownloads();
     return downloads.map((d: any) => ({
       downloadId: d.downloadId,
@@ -163,9 +144,6 @@ class BackgroundDownloadService {
     }));
   }
 
-  /**
-   * Get progress for a specific download
-   */
   async getDownloadProgress(downloadId: number): Promise<{
     bytesDownloaded: number;
     totalBytes: number;
@@ -176,7 +154,6 @@ class BackgroundDownloadService {
     if (!this.isAvailable()) {
       throw new Error('Background downloads not available on this platform');
     }
-
     const progress = await DownloadManagerModule.getDownloadProgress(downloadId);
     return {
       bytesDownloaded: progress.bytesDownloaded,
@@ -187,74 +164,49 @@ class BackgroundDownloadService {
     };
   }
 
-  /**
-   * Move a completed download to the target path
-   */
   async moveCompletedDownload(downloadId: number, targetPath: string): Promise<string> {
     if (!this.isAvailable()) {
       throw new Error('Background downloads not available on this platform');
     }
-
     return await DownloadManagerModule.moveCompletedDownload(downloadId, targetPath);
   }
 
-  /**
-   * Subscribe to progress updates for a specific download
-   */
   onProgress(downloadId: number, callback: DownloadProgressCallback): () => void {
     const key = `progress_${downloadId}`;
     this.progressListeners.set(key, callback);
     return () => this.progressListeners.delete(key);
   }
 
-  /**
-   * Subscribe to completion events for a specific download
-   */
   onComplete(downloadId: number, callback: DownloadCompleteCallback): () => void {
     const key = `complete_${downloadId}`;
     this.completeListeners.set(key, callback);
     return () => this.completeListeners.delete(key);
   }
 
-  /**
-   * Subscribe to error events for a specific download
-   */
   onError(downloadId: number, callback: DownloadErrorCallback): () => void {
     const key = `error_${downloadId}`;
     this.errorListeners.set(key, callback);
     return () => this.errorListeners.delete(key);
   }
 
-  /**
-   * Subscribe to all progress updates
-   */
   onAnyProgress(callback: DownloadProgressCallback): () => void {
     const key = 'progress_all';
     this.progressListeners.set(key, callback);
     return () => this.progressListeners.delete(key);
   }
 
-  /**
-   * Subscribe to all completion events
-   */
   onAnyComplete(callback: DownloadCompleteCallback): () => void {
     const key = 'complete_all';
     this.completeListeners.set(key, callback);
     return () => this.completeListeners.delete(key);
   }
 
-  /**
-   * Subscribe to all error events
-   */
   onAnyError(callback: DownloadErrorCallback): () => void {
     const key = 'error_all';
     this.errorListeners.set(key, callback);
     return () => this.errorListeners.delete(key);
   }
 
-  /**
-   * Start polling for progress updates (called automatically on startDownload)
-   */
   startProgressPolling(): void {
     if (!this.isAvailable() || this.isPolling) {
       return;
@@ -263,9 +215,6 @@ class BackgroundDownloadService {
     DownloadManagerModule.startProgressPolling();
   }
 
-  /**
-   * Stop polling for progress updates
-   */
   stopProgressPolling(): void {
     if (!this.isAvailable() || !this.isPolling) {
       return;
@@ -274,9 +223,88 @@ class BackgroundDownloadService {
     DownloadManagerModule.stopProgressPolling();
   }
 
-  /**
-   * Clean up all listeners
-   */
+  async requestNotificationPermission(): Promise<void> {
+    if (Platform.OS !== 'android' || Platform.Version < 33) return;
+    try {
+      await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+      );
+    } catch {
+      // Non-fatal — download still works, just no system notification
+    }
+  }
+
+  /** Start a background download, wait for completion, then move to destPath. */
+  downloadFileTo(opts: {
+    params: DownloadParams;
+    destPath: string;
+    onProgress?: (bytesDownloaded: number, totalBytes: number) => void;
+    silent?: boolean;
+  }): { downloadId: number; downloadIdPromise: Promise<number>; promise: Promise<void> } {
+    const { params, destPath, onProgress, silent } = opts;
+    if (!this.isAvailable()) {
+      throw new Error('Background downloads not available on this platform');
+    }
+    let resolvedDownloadId = 0;
+    let resolveDownloadId!: (id: number) => void;
+    let rejectDownloadId!: (error: unknown) => void;
+    const downloadIdPromise = new Promise<number>((resolve, reject) => {
+      resolveDownloadId = resolve;
+      rejectDownloadId = reject;
+    });
+    const promise = (async () => {
+      try {
+        const info = await DownloadManagerModule.startDownload({
+          url: params.url,
+          fileName: params.fileName,
+          modelId: params.modelId,
+          title: params.title ?? `Downloading ${params.fileName}`,
+          description: params.description ?? 'Downloading…',
+          totalBytes: params.totalBytes ?? 0,
+          hideNotification: silent === true,
+        });
+        this.startProgressPolling();
+        const downloadId: number = info.downloadId;
+        resolvedDownloadId = downloadId;
+        resolveDownloadId(downloadId);
+        if (silent) this.silentDownloadIds.add(downloadId);
+        await new Promise<void>((resolve, reject) => {
+          const removeProgress = onProgress
+            ? this.onProgress(downloadId, (event) => {
+                onProgress(event.bytesDownloaded, event.totalBytes);
+              })
+            : () => {};
+          const removeComplete = this.onComplete(downloadId, async () => {
+            removeProgress();
+            removeComplete();
+            removeError();
+            this.silentDownloadIds.delete(downloadId);
+            try {
+              await this.moveCompletedDownload(downloadId, destPath);
+              resolve();
+            } catch (e) {
+              reject(e);
+            }
+          });
+          const removeError = this.onError(downloadId, (event) => {
+            removeProgress();
+            removeComplete();
+            removeError();
+            this.silentDownloadIds.delete(downloadId);
+            reject(new Error(event.reason ?? 'Download failed'));
+          });
+        });
+      } catch (error) {
+        if (resolvedDownloadId === 0) rejectDownloadId(error);
+        throw error;
+      }
+    })();
+    return { get downloadId() { return resolvedDownloadId; }, downloadIdPromise, promise };
+  }
+
+  markSilent(downloadId: number): void { this.silentDownloadIds.add(downloadId); }
+  unmarkSilent(downloadId: number): void { this.silentDownloadIds.delete(downloadId); }
+
   cleanup(): void {
     this.stopProgressPolling();
     this.subscriptions.forEach(sub => sub.remove());
@@ -288,48 +316,25 @@ class BackgroundDownloadService {
 
   private setupEventListeners(): void {
     if (!this.eventEmitter) return;
-
-    // Progress events
-    const progressSub = this.eventEmitter.addListener(
-      'DownloadProgress',
-      (event: DownloadProgressEvent) => {
-        // Notify specific listeners
-        const specificKey = `progress_${event.downloadId}`;
-        this.progressListeners.get(specificKey)?.(event);
-
-        // Notify global listeners
-        this.progressListeners.get('progress_all')?.(event);
+    const push = (s: { remove: () => void }) => this.subscriptions.push(s);
+    push(this.eventEmitter.addListener('DownloadProgress', (e: DownloadProgressEvent) => {
+      this.progressListeners.get(`progress_${e.downloadId}`)?.(e);
+      if (!this.silentDownloadIds.has(e.downloadId)) {
+        this.progressListeners.get('progress_all')?.(e);
       }
-    );
-    this.subscriptions.push(progressSub);
-
-    // Complete events
-    const completeSub = this.eventEmitter.addListener(
-      'DownloadComplete',
-      (event: DownloadCompleteEvent) => {
-        // Notify specific listeners
-        const specificKey = `complete_${event.downloadId}`;
-        this.completeListeners.get(specificKey)?.(event);
-
-        // Notify global listeners
-        this.completeListeners.get('complete_all')?.(event);
+    }));
+    push(this.eventEmitter.addListener('DownloadComplete', (e: DownloadCompleteEvent) => {
+      this.completeListeners.get(`complete_${e.downloadId}`)?.(e);
+      if (!this.silentDownloadIds.has(e.downloadId)) {
+        this.completeListeners.get('complete_all')?.(e);
       }
-    );
-    this.subscriptions.push(completeSub);
-
-    // Error events
-    const errorSub = this.eventEmitter.addListener(
-      'DownloadError',
-      (event: DownloadErrorEvent) => {
-        // Notify specific listeners
-        const specificKey = `error_${event.downloadId}`;
-        this.errorListeners.get(specificKey)?.(event);
-
-        // Notify global listeners
-        this.errorListeners.get('error_all')?.(event);
+    }));
+    push(this.eventEmitter.addListener('DownloadError', (e: DownloadErrorEvent) => {
+      this.errorListeners.get(`error_${e.downloadId}`)?.(e);
+      if (!this.silentDownloadIds.has(e.downloadId)) {
+        this.errorListeners.get('error_all')?.(e);
       }
-    );
-    this.subscriptions.push(errorSub);
+    }));
   }
 }
 

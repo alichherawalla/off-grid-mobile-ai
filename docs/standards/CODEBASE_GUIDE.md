@@ -30,10 +30,12 @@ OffgridMobile is a **privacy-first, on-device AI assistant** built with React Na
 
 **Core capabilities:**
 - Text chat with streaming LLM inference (llama.cpp via `llama.rn`)
+- Tool calling with automatic tool loop (web search, calculator, date/time, device info)
 - Image generation with Stable Diffusion (MNN/QNN backends via LocalDream)
 - Voice input via Whisper speech-to-text (whisper.cpp via `whisper.rn`)
 - Vision model support (multimodal LLMs with image understanding)
 - Document attachment and analysis
+- Markdown rendering in chat messages
 - Project-based system prompt presets
 - Generated image gallery with metadata
 - Passphrase lock with lockout protection
@@ -163,7 +165,14 @@ OffgridMobile/
 │   │   ├── hardware.ts                 # Device info, RAM, recommendations
 │   │   ├── backgroundDownloadService.ts # DownloadManager bridge (Android + iOS)
 │   │   ├── documentService.ts          # Document text extraction
-│   │   └── pdfExtractor.ts             # Native PDF text extraction
+│   │   ├── pdfExtractor.ts             # Native PDF text extraction
+│   │   ├── generationToolLoop.ts       # Multi-turn tool loop orchestration (max 3 iterations)
+│   │   ├── llmToolGeneration.ts        # Tool-aware LLM generation with schema injection
+│   │   └── tools/                      # Tool calling subsystem
+│   │       ├── index.ts                # Public exports
+│   │       ├── registry.ts             # Tool definitions, OpenAI schema conversion
+│   │       ├── handlers.ts             # Tool execution (web search, calculator, datetime, device info)
+│   │       └── types.ts                # ToolDefinition, ToolCall, ToolResult types
 │   │
 │   ├── hooks/
 │   │   ├── useAppState.ts              # AppState foreground/background tracking
@@ -346,9 +355,10 @@ All stores use `zustand/middleware` `persist` with AsyncStorage. Only serializab
 | **Active Models** | `activeModelId`, `activeImageModelId` | Persisted; model re-loaded on next use |
 | **Loading Flags** | `isLoadingModel`, `isGeneratingImage` | Not persisted |
 | **Downloads** | `downloadProgress{}`, `activeBackgroundDownloads[]` | Background downloads persisted (Android) |
-| **Settings** | `systemPrompt`, `temperature`, `maxTokens`, `topP`, `repeatPenalty`, `contextLength`, `nThreads`, `nBatch`, `useGPU`, `nGPULayers`, `modelLoadingStrategy` | All persisted |
+| **Settings** | `systemPrompt`, `temperature`, `maxTokens`, `topP`, `repeatPenalty`, `contextLength`, `nThreads`, `nBatch`, `useGPU`, `nGPULayers`, `modelLoadingStrategy`, `flashAttention`, `kvCacheType` | All persisted |
 | **Image Settings** | `imageSteps`, `imageGuidanceScale`, `imageWidth`, `imageHeight`, `imageThreads` | All persisted |
 | **Intent** | `imageGenerationMode`, `autoDetectMethod`, `classifierModelId` | Persisted |
+| **Tools** | `enabledTools[]` | User-selected tool IDs (default: `['calculator', 'get_current_datetime']`). Persisted |
 | **UI** | `showGenerationDetails` | Persisted |
 | **Gallery** | `generatedImages[]` | Full metadata array, persisted |
 
@@ -439,6 +449,7 @@ MediaAttachment
 
 GenerationMeta
 ├── gpu, gpuBackend?, gpuLayers?
+├── kvCacheType?, flashAttention?
 ├── modelName?
 ├── tokensPerSecond?, decodeTokensPerSecond?
 ├── timeToFirstToken?, tokenCount?
@@ -483,6 +494,9 @@ The central service for on-device text inference.
 - Support multimodal/vision models via mmproj files
 - KV cache management (clear between conversations)
 - Session caching for repeated system prompts
+- Tool calling capability detection via jinja chat template introspection
+- Configurable KV cache type (f16, q8_0, q4_0) and flash attention toggle
+- Parameter constraint enforcement (GPU/flash attention/KV cache compatibility on Android)
 
 **Platform defaults:**
 
@@ -598,15 +612,42 @@ Passphrase management.
 - Store in device Keychain (encrypted native storage)
 - Methods: `setPassphrase()`, `verifyPassphrase()`, `hasPassphrase()`, `removePassphrase()`
 
-### BackgroundDownloadService (`src/services/backgroundDownloadService.ts`, 9KB) — Android only
+### BackgroundDownloadService (`src/services/backgroundDownloadService.ts`, 9KB)
 
-Bridge to Android's native DownloadManager.
+Bridge to native download managers on both platforms.
 
-- Downloads continue even after app is killed
-- Persists download state in SharedPreferences
-- 500ms polling for progress updates
+- Downloads continue even after app is killed (both Android and iOS)
+- Android: Persists download state in SharedPreferences, 500ms polling for progress
+- iOS: Uses background URLSession with app lifecycle integration
 - Emits events: `DownloadProgress`, `DownloadComplete`, `DownloadError`
 - Moves completed files from Downloads temp to models directory
+- Tracks event delivery separately from completion status to prevent race conditions
+
+### Tool Calling Services (`src/services/tools/`, `src/services/generationToolLoop.ts`, `src/services/llmToolGeneration.ts`)
+
+On-device function calling for compatible models.
+
+**Tool Registry (`tools/registry.ts`):**
+- Defines 4 built-in tools: `web_search`, `calculator`, `get_current_datetime`, `get_device_info`
+- Converts tool definitions to OpenAI function calling schema for llama.cpp
+- Generates system prompt hints listing available tools
+
+**Tool Handlers (`tools/handlers.ts`):**
+- `web_search` — Scrapes Brave Search, returns top 5 results with clickable URLs
+- `calculator` — Recursive descent parser (no `eval()`), supports `+, -, *, /, %, ^, ()`
+- `get_current_datetime` — Formatted date/time with optional timezone
+- `get_device_info` — Battery, storage, memory via `react-native-device-info`
+
+**Tool Loop (`generationToolLoop.ts`):**
+- Orchestrates multi-turn tool execution: LLM → parse → execute → inject → repeat
+- Hard limits: 3 iterations, 5 total tool calls
+- Supports structured tool calls AND fallback XML tag parsing for smaller models
+- Empty web search queries fall back to last user message
+
+**LLM Tool Generation (`llmToolGeneration.ts`):**
+- Reserves ~100 tokens per tool in context window for schema injection
+- Passes tool schemas via `tool_choice: 'auto'` to llama.rn
+- Prefers completion result tool calls over streaming (more complete)
 
 ---
 
@@ -1050,10 +1091,12 @@ This section expands on every testable flow, grouped by feature area. Each flow 
    - Final message saved to conversation with `generationMeta`:
      - `tokensPerSecond`, `decodeTokensPerSecond`, `timeToFirstToken`, `tokenCount`
      - `gpu` (boolean), `gpuBackend`, `gpuLayers`
+     - `kvCacheType`, `flashAttention`
      - `modelName`
    - `generationTimeMs` recorded
    - `chatStore.setStreaming(false)`
    - Conversation `updatedAt` timestamp updated
+   - If tool calling enabled and model supports it, enters tool loop (see Tool Calling Services)
 
 #### 9.5.2 Stop Generation
 

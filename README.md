@@ -6,11 +6,12 @@
 
 ### The Swiss Army Knife of On-Device AI
 
-**Chat. Generate images. See. Listen. All on your phone. All offline. Zero data leaves your device.**
+**Chat. Generate images. Use tools. See. Listen. All on your phone. All offline. Zero data leaves your device.**
 
 [![GitHub stars](https://img.shields.io/github/stars/alichherawalla/off-grid-mobile?style=social)](https://github.com/alichherawalla/off-grid-mobile)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Google Play](https://img.shields.io/badge/Google%20Play-Download-brightgreen?logo=google-play)](https://play.google.com/store/apps/details?id=ai.offgridmobile)
+[![App Store](https://img.shields.io/badge/App%20Store-Download-blue?logo=apple)](https://apps.apple.com/us/app/off-grid-local-ai/id6759299882)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS-green.svg)](#install)
 [![codecov](https://codecov.io/gh/alichherawalla/off-grid-mobile/graph/badge.svg)](https://codecov.io/gh/alichherawalla/off-grid-mobile)
 [![Slack](https://img.shields.io/badge/Slack-Join%20Community-4A154B?logo=slack)](https://join.slack.com/t/off-grid-mobile/shared_invite/zt-3q7kj5gr6-rVzx5gl5LKPQh4mUE2CCvA)
@@ -21,7 +22,7 @@
 
 ## Not just another chat app
 
-Most "local LLM" apps give you a text chatbot and call it a day. Off Grid is a **complete offline AI suite** — text generation, image generation, vision AI, voice transcription, and document analysis, all running natively on your phone's hardware.
+Most "local LLM" apps give you a text chatbot and call it a day. Off Grid is a **complete offline AI suite** — text generation, image generation, vision AI, voice transcription, tool calling, and document analysis, all running natively on your phone's hardware.
 
 ---
 
@@ -39,7 +40,9 @@ Most "local LLM" apps give you a text chatbot and call it a day. Off Grid is a *
 </table>
 </div>
 
-**Text Generation** — Run Qwen 3, Llama 3.2, Gemma 3, Phi-4, and any GGUF model. Streaming responses, thinking mode, 15-30 tok/s on flagship devices. Bring your own `.gguf` files too.
+**Text Generation** — Run Qwen 3, Llama 3.2, Gemma 3, Phi-4, and any GGUF model. Streaming responses, thinking mode, markdown rendering, 15-30 tok/s on flagship devices. Bring your own `.gguf` files too.
+
+**Tool Calling** — Models that support function calling can use built-in tools: web search, calculator, date/time, and device info. Automatic tool loop with runaway prevention. Clickable links in search results.
 
 **Image Generation** — On-device Stable Diffusion with real-time preview. NPU-accelerated on Snapdragon (5-10s per image), Core ML on iOS. 20+ models including Absolute Reality, DreamShaper, Anything V5.
 
@@ -70,9 +73,12 @@ Tested on Snapdragon 8 Gen 2/3, Apple A17 Pro. Results vary by model size and qu
 <a name="install"></a>
 ## Install
 
-### Android — Google Play
-
-[<img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" width="200" />](https://play.google.com/store/apps/details?id=ai.offgridmobile)
+<div align="center">
+<table><tr>
+<td align="center"><a href="https://apps.apple.com/us/app/off-grid-local-ai/id6759299882"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" width="180" /></a></td>
+<td align="center"><a href="https://play.google.com/store/apps/details?id=ai.offgridmobile"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" width="220" /></a></td>
+</tr></table>
+</div>
 
 Or grab the latest APK from [**GitHub Releases**](https://github.com/alichherawalla/off-grid-mobile/releases/latest).
 

@@ -1,0 +1,128 @@
+import RNFS from 'react-native-fs';
+import { guessStyle, HFImageModel } from '../../services/huggingFaceModelBrowser';
+import { ModelInfo, ImageModelRecommendation } from '../../types';
+import { ImageModelDescriptor, ModelTypeFilter } from './types';
+
+export function formatNumber(num: number): string {
+  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+  return num.toString();
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${bytes} B`;
+}
+
+export async function getDirectorySize(dirPath: string): Promise<number> {
+  let total = 0;
+  const items = await RNFS.readDir(dirPath);
+  for (const item of items) {
+    if (item.isDirectory()) {
+      total += await getDirectorySize(item.path);
+    } else {
+      const s = typeof item.size === 'string' ? parseInt(item.size, 10) : (item.size || 0);
+      total += s;
+    }
+  }
+  return total;
+}
+
+// -- getModelType helpers (extracted to keep complexity per function low) --
+
+function isImageGenModel(tags: string[], name: string, id: string): boolean {
+  return (
+    tags.some(t => t.includes('diffusion') || t.includes('text-to-image') || t.includes('image-generation') || t.includes('diffusers')) ||
+    name.includes('stable-diffusion') || name.includes('sd-') || name.includes('sdxl') ||
+    id.includes('stable-diffusion') || id.includes('coreml-stable')
+  );
+}
+
+function isVisionModel(tags: string[], name: string, id: string): boolean {
+  return (
+    tags.some(t => t.includes('vision') || t.includes('multimodal') || t.includes('image-text')) ||
+    name.includes('vision') || name.includes('vlm') || name.includes('llava') ||
+    id.includes('vision') || id.includes('vlm') || id.includes('llava')
+  );
+}
+
+function isCodeModel(tags: string[], name: string, id: string): boolean {
+  return (
+    tags.some(t => t.includes('code')) ||
+    name.includes('code') || name.includes('coder') || name.includes('starcoder') ||
+    id.includes('code') || id.includes('coder')
+  );
+}
+
+export function getModelType(model: ModelInfo): ModelTypeFilter {
+  const tags = model.tags.map(t => t.toLowerCase());
+  const name = model.name.toLowerCase();
+  const id = model.id.toLowerCase();
+  if (isImageGenModel(tags, name, id)) return 'image-gen';
+  if (isVisionModel(tags, name, id)) return 'vision';
+  if (isCodeModel(tags, name, id)) return 'code';
+  return 'text';
+}
+
+// -- SD version filter helper --
+
+export function matchesSdVersionFilter(modelName: string, sdVersionFilter: string): boolean {
+  if (sdVersionFilter === 'all') return true;
+  const nameLower = modelName.toLowerCase();
+  if (sdVersionFilter === 'sdxl') return nameLower.includes('sdxl') || nameLower.includes('xl');
+  if (sdVersionFilter === 'sd21') return nameLower.includes('2.1') || nameLower.includes('2-1');
+  if (sdVersionFilter === 'sd15') {
+    return nameLower.includes('1.5') || nameLower.includes('1-5') || nameLower.includes('v1-5');
+  }
+  return true;
+}
+
+// -- Image model compatibility helper --
+
+export function getImageModelCompatibility(
+  model: HFImageModel,
+  imageRec: ImageModelRecommendation | null,
+): { isCompatible: boolean; incompatibleReason: string | undefined } {
+  const backendCompatible =
+    !imageRec?.compatibleBackends ||
+    imageRec.compatibleBackends.includes(model.backend as any);
+
+  const variantCompatible =
+    !model.variant ||
+    !imageRec?.qnnVariant ||
+    model.variant === imageRec.qnnVariant ||
+    imageRec.qnnVariant === '8gen2' ||
+    (imageRec.qnnVariant === '8gen1' && model.variant !== '8gen2');
+
+  const isCompatible = backendCompatible && variantCompatible;
+  const incompatibleReason = !backendCompatible
+    ? 'Incompatible'
+    : !variantCompatible
+    ? 'Wrong chip variant'
+    : undefined;
+
+  return { isCompatible, incompatibleReason };
+}
+
+// -- HF model → descriptor conversion --
+
+export function hfModelToDescriptor(
+  hfModel: HFImageModel & { _coreml?: boolean; _coremlFiles?: any[] },
+): ImageModelDescriptor {
+  return {
+    id: hfModel.id,
+    name: hfModel.displayName,
+    description: hfModel._coreml
+      ? `Core ML model from ${hfModel.repo}`
+      : `${hfModel.backend === 'qnn' ? 'NPU' : 'CPU'} model from ${hfModel.repo}`,
+    downloadUrl: hfModel.downloadUrl,
+    size: hfModel.size,
+    style: guessStyle(hfModel.name),
+    backend: hfModel._coreml ? 'coreml' : hfModel.backend,
+    variant: hfModel.variant,
+    coremlFiles: hfModel._coremlFiles,
+    repo: hfModel.repo,
+  };
+}

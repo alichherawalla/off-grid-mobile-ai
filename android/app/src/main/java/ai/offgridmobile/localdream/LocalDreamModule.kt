@@ -41,6 +41,159 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
 
         private const val EVENT_PROGRESS = "LocalDreamProgress"
         private const val EVENT_ERROR = "LocalDreamError"
+
+        internal fun isNpuSupportedInternal(): Boolean {
+            val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Build.SOC_MODEL
+            } else {
+                ""
+            }
+            return soc.startsWith("SM") || soc.startsWith("QCS") || soc.startsWith("QCM")
+        }
+
+        internal fun resolveModelDir(dir: File, isCpu: Boolean): File? {
+            val markerFile = if (isCpu) "unet.mnn" else "unet.bin"
+
+            if (File(dir, markerFile).exists()) return dir
+
+            fun searchDir(current: File, depth: Int): File? {
+                if (depth > 3) return null
+                current.listFiles()?.filter { it.isDirectory }?.forEach { subDir ->
+                    if (File(subDir, markerFile).exists()) {
+                        Log.d(TAG, "Found $markerFile in: ${subDir.absolutePath}")
+                        return subDir
+                    }
+                    val deeper = searchDir(subDir, depth + 1)
+                    if (deeper != null) return deeper
+                }
+                return null
+            }
+
+            return searchDir(dir, 0)
+        }
+
+        internal fun detectTextEmbeddingSize(modelDir: File, isCpu: Boolean): String {
+            // SD1.5 models always use 768
+            return "768"
+        }
+
+        internal fun buildCommand(
+            executable: File,
+            modelDir: File,
+            runtimeDir: File,
+            isCpu: Boolean,
+        ): List<String> {
+            val embeddingSize = detectTextEmbeddingSize(modelDir, isCpu)
+            Log.d(TAG, "Detected text_embedding_size: $embeddingSize")
+
+            return if (isCpu) {
+                // MNN CPU backend
+                // IMPORTANT: Always pass "clip.mnn" even if only clip_v2.mnn exists.
+                // The binary auto-detects clip_v2.mnn in the same directory when the
+                // --clip path ends with "clip.mnn", and loads pos_emb.bin + token_emb.bin.
+                // Passing clip_v2.mnn directly bypasses this and causes a segfault.
+                mutableListOf(
+                    executable.absolutePath,
+                    "--clip", File(modelDir, "clip.mnn").absolutePath,
+                    "--unet", File(modelDir, "unet.mnn").absolutePath,
+                    "--vae_decoder", File(modelDir, "vae_decoder.mnn").absolutePath,
+                    "--tokenizer", File(modelDir, "tokenizer.json").absolutePath,
+                    "--port", SERVER_PORT.toString(),
+                    "--text_embedding_size", embeddingSize,
+                    "--cpu",
+                ).also { cmd ->
+                    val vaeEncoder = File(modelDir, "vae_encoder.mnn")
+                    if (vaeEncoder.exists()) {
+                        cmd.addAll(listOf("--vae_encoder", vaeEncoder.absolutePath))
+                    }
+                }
+            } else {
+                // QNN NPU backend
+                // Same clip.mnn rule applies for QNN — binary auto-detects clip_v2
+                val hasMnnClip = File(modelDir, "clip.mnn").exists() || File(modelDir, "clip_v2.mnn").exists()
+                val clipFile = if (hasMnnClip) "clip.mnn" else "clip.bin"
+
+                mutableListOf(
+                    executable.absolutePath,
+                    "--clip", File(modelDir, clipFile).absolutePath,
+                    "--unet", File(modelDir, "unet.bin").absolutePath,
+                    "--vae_decoder", File(modelDir, "vae_decoder.bin").absolutePath,
+                    "--tokenizer", File(modelDir, "tokenizer.json").absolutePath,
+                    "--backend", File(runtimeDir, "libQnnHtp.so").absolutePath,
+                    "--system_library", File(runtimeDir, "libQnnSystem.so").absolutePath,
+                    "--port", SERVER_PORT.toString(),
+                    "--text_embedding_size", embeddingSize,
+                ).also { cmd ->
+                    if (hasMnnClip) {
+                        cmd.add("--use_cpu_clip")
+                    }
+                    val vaeEncoder = File(modelDir, "vae_encoder.bin")
+                    if (vaeEncoder.exists()) {
+                        cmd.addAll(listOf("--vae_encoder", vaeEncoder.absolutePath))
+                    }
+                }
+            }
+        }
+
+        internal fun saveRgbToPng(base64Rgb: String, width: Int, height: Int, outputPath: String) {
+            val rgbBytes = Base64.decode(base64Rgb, Base64.DEFAULT)
+            val expectedSize = width * height * 3
+            if (rgbBytes.size != expectedSize) {
+                throw IllegalArgumentException(
+                    "RGB data size ${rgbBytes.size} doesn't match expected $expectedSize (${width}x${height}x3)"
+                )
+            }
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val pixels = IntArray(width * height)
+
+            for (i in 0 until width * height) {
+                val idx = i * 3
+                val r = rgbBytes[idx].toInt() and 0xFF
+                val g = rgbBytes[idx + 1].toInt() and 0xFF
+                val b = rgbBytes[idx + 2].toInt() and 0xFF
+                pixels[i] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+            }
+
+            bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+
+            File(outputPath).parentFile?.mkdirs()
+            FileOutputStream(outputPath).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+            bitmap.recycle()
+        }
+
+        internal fun buildEnvironment(runtimeDir: File): Map<String, String> {
+            val env = mutableMapOf<String, String>()
+
+            val systemLibPaths = mutableListOf(
+                runtimeDir.absolutePath,
+                "/system/lib64",
+                "/vendor/lib64",
+                "/vendor/lib64/egl",
+            )
+
+            try {
+                val maliSymlink = File("/system/vendor/lib64/egl/libGLES_mali.so")
+                if (maliSymlink.exists()) {
+                    val realPath = maliSymlink.canonicalPath
+                    val soc = realPath.split("/").getOrNull(realPath.split("/").size - 2)
+                    if (soc != null) {
+                        listOf("/vendor/lib64/$soc", "/vendor/lib64/egl/$soc").forEach { path ->
+                            if (!systemLibPaths.contains(path)) systemLibPaths.add(path)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to resolve Mali paths: ${e.message}")
+            }
+
+            env["LD_LIBRARY_PATH"] = systemLibPaths.joinToString(":")
+            env["DSP_LIBRARY_PATH"] = runtimeDir.absolutePath
+            env["ADSP_LIBRARY_PATH"] = runtimeDir.absolutePath
+
+            return env
+        }
     }
 
     private var serverProcess: Process? = null
@@ -127,41 +280,6 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
      * This function checks for model files at the root, and if not found,
      * looks one level deep for a subdirectory that contains them.
      */
-    private fun resolveModelDir(dir: File, isCpu: Boolean): File? {
-        val markerFile = if (isCpu) "unet.mnn" else "unet.bin"
-
-        // Check root level
-        if (File(dir, markerFile).exists()) {
-            return dir
-        }
-
-        // Recursively search up to 3 levels deep for the marker file
-        // NPU zips can extract as: model_dir/output_512/qnn_models_min/unet.bin
-        fun searchDir(current: File, depth: Int): File? {
-            if (depth > 3) return null
-            current.listFiles()?.filter { it.isDirectory }?.forEach { subDir ->
-                if (File(subDir, markerFile).exists()) {
-                    Log.d(TAG, "Found $markerFile in: ${subDir.absolutePath}")
-                    return subDir
-                }
-                val deeper = searchDir(subDir, depth + 1)
-                if (deeper != null) return deeper
-            }
-            return null
-        }
-
-        return searchDir(dir, 0)
-    }
-
-    private fun isNpuSupportedInternal(): Boolean {
-        val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            Build.SOC_MODEL
-        } else {
-            ""
-        }
-        return soc.startsWith("SM") || soc.startsWith("QCS") || soc.startsWith("QCM")
-    }
-
     // =====================================================================
     // Process Lifecycle
     // =====================================================================
@@ -362,107 +480,6 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
      * Note: "clip_v2" refers to MNN model format v2 (separate weight files),
      * NOT CLIP architecture v2. The embedding dimension is still 768.
      */
-    private fun detectTextEmbeddingSize(modelDir: File, isCpu: Boolean): String {
-        // SD1.5 models always use 768
-        return "768"
-    }
-
-    private fun buildCommand(
-        executable: File,
-        modelDir: File,
-        runtimeDir: File,
-        isCpu: Boolean
-    ): List<String> {
-        val embeddingSize = detectTextEmbeddingSize(modelDir, isCpu)
-        Log.d(TAG, "Detected text_embedding_size: $embeddingSize")
-
-        return if (isCpu) {
-            // MNN CPU backend
-            // IMPORTANT: Always pass "clip.mnn" even if only clip_v2.mnn exists.
-            // The binary auto-detects clip_v2.mnn in the same directory when the
-            // --clip path ends with "clip.mnn", and loads pos_emb.bin + token_emb.bin.
-            // Passing clip_v2.mnn directly bypasses this and causes a segfault.
-            mutableListOf(
-                executable.absolutePath,
-                "--clip", File(modelDir, "clip.mnn").absolutePath,
-                "--unet", File(modelDir, "unet.mnn").absolutePath,
-                "--vae_decoder", File(modelDir, "vae_decoder.mnn").absolutePath,
-                "--tokenizer", File(modelDir, "tokenizer.json").absolutePath,
-                "--port", SERVER_PORT.toString(),
-                "--text_embedding_size", embeddingSize,
-                "--cpu"
-            ).also { cmd ->
-                // Add vae_encoder if present (for img2img)
-                val vaeEncoder = File(modelDir, "vae_encoder.mnn")
-                if (vaeEncoder.exists()) {
-                    cmd.addAll(listOf("--vae_encoder", vaeEncoder.absolutePath))
-                }
-            }
-        } else {
-            // QNN NPU backend
-            // Same clip.mnn rule applies for QNN — binary auto-detects clip_v2
-            val hasMnnClip = File(modelDir, "clip.mnn").exists() || File(modelDir, "clip_v2.mnn").exists()
-            val clipFile = if (hasMnnClip) "clip.mnn" else "clip.bin"
-
-            mutableListOf(
-                executable.absolutePath,
-                "--clip", File(modelDir, clipFile).absolutePath,
-                "--unet", File(modelDir, "unet.bin").absolutePath,
-                "--vae_decoder", File(modelDir, "vae_decoder.bin").absolutePath,
-                "--tokenizer", File(modelDir, "tokenizer.json").absolutePath,
-                "--backend", File(runtimeDir, "libQnnHtp.so").absolutePath,
-                "--system_library", File(runtimeDir, "libQnnSystem.so").absolutePath,
-                "--port", SERVER_PORT.toString(),
-                "--text_embedding_size", embeddingSize
-            ).also { cmd ->
-                // Use CPU clip if .mnn clip exists (common for NPU models)
-                if (hasMnnClip) {
-                    cmd.add("--use_cpu_clip")
-                }
-                // Add vae_encoder if present
-                val vaeEncoder = File(modelDir, "vae_encoder.bin")
-                if (vaeEncoder.exists()) {
-                    cmd.addAll(listOf("--vae_encoder", vaeEncoder.absolutePath))
-                }
-            }
-        }
-    }
-
-    private fun buildEnvironment(runtimeDir: File): Map<String, String> {
-        val env = mutableMapOf<String, String>()
-
-        val systemLibPaths = mutableListOf(
-            runtimeDir.absolutePath,
-            "/system/lib64",
-            "/vendor/lib64",
-            "/vendor/lib64/egl",
-        )
-
-        // Detect Mali GPU paths for MNN OpenCL support
-        try {
-            val maliSymlink = File("/system/vendor/lib64/egl/libGLES_mali.so")
-            if (maliSymlink.exists()) {
-                val realPath = maliSymlink.canonicalPath
-                val soc = realPath.split("/").getOrNull(realPath.split("/").size - 2)
-                if (soc != null) {
-                    listOf("/vendor/lib64/$soc", "/vendor/lib64/egl/$soc").forEach { path ->
-                        if (!systemLibPaths.contains(path)) {
-                            systemLibPaths.add(path)
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to resolve Mali paths: ${e.message}")
-        }
-
-        env["LD_LIBRARY_PATH"] = systemLibPaths.joinToString(":")
-        env["DSP_LIBRARY_PATH"] = runtimeDir.absolutePath
-        env["ADSP_LIBRARY_PATH"] = runtimeDir.absolutePath
-
-        return env
-    }
-
     private suspend fun waitForServer(timeoutMs: Long): Boolean {
         val startTime = System.currentTimeMillis()
         while (System.currentTimeMillis() - startTime < timeoutMs) {
@@ -800,34 +817,6 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
                 connection?.disconnect()
             }
         }
-    }
-
-    private fun saveRgbToPng(base64Rgb: String, width: Int, height: Int, outputPath: String) {
-        val rgbBytes = Base64.decode(base64Rgb, Base64.DEFAULT)
-        val expectedSize = width * height * 3
-        if (rgbBytes.size != expectedSize) {
-            throw IllegalArgumentException(
-                "RGB data size ${rgbBytes.size} doesn't match expected $expectedSize (${width}x${height}x3)"
-            )
-        }
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val pixels = IntArray(width * height)
-
-        for (i in 0 until width * height) {
-            val idx = i * 3
-            val r = rgbBytes[idx].toInt() and 0xFF
-            val g = rgbBytes[idx + 1].toInt() and 0xFF
-            val b = rgbBytes[idx + 2].toInt() and 0xFF
-            pixels[i] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-        }
-
-        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
-
-        File(outputPath).parentFile?.mkdirs()
-        FileOutputStream(outputPath).use { out ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-        }
-        bitmap.recycle()
     }
 
     // =====================================================================

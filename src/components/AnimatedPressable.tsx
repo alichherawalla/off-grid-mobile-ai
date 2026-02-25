@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { TouchableOpacity, type TouchableOpacityProps, type StyleProp, type ViewStyle, type GestureResponderEvent } from 'react-native';
+import { TouchableOpacity, StyleSheet, type TouchableOpacityProps, type StyleProp, type ViewStyle, type GestureResponderEvent } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -87,9 +87,18 @@ export function AnimatedPressable({
       hitSlop={hitSlop}
       accessibilityLabel={accessibilityLabel}
       accessibilityRole={accessibilityRole}
-      style={[animatedStyle, { opacity: disabled ? 0.4 : 1, overflow: 'visible' as const }, style]}
+      style={[animatedStyle, styles.base, disabled && styles.disabled, style]}
     >
       {children}
     </AnimatedTouchable>
   );
 }
+
+const styles = StyleSheet.create({
+  base: {
+    overflow: 'visible',
+  },
+  disabled: {
+    opacity: 0.4,
+  },
+});

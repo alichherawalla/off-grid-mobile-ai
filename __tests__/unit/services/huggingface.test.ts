@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 declare const global: any;
 
 /**
@@ -517,25 +517,6 @@ describe('HuggingFaceService', () => {
   });
 
   // ============================================================================
-  // getKnownMediaPipeModels
-  // ============================================================================
-  describe('getKnownMediaPipeModels', () => {
-    it('returns curated list', () => {
-      const models = huggingFaceService.getKnownMediaPipeModels();
-      expect(models.length).toBeGreaterThan(0);
-      expect(models[0]).toHaveProperty('id');
-      expect(models[0]).toHaveProperty('name');
-      expect(models[0]).toHaveProperty('size');
-    });
-
-    it('has at least one recommended model', () => {
-      const models = huggingFaceService.getKnownMediaPipeModels();
-      const recommended = models.filter(m => m.recommended);
-      expect(recommended.length).toBeGreaterThan(0);
-    });
-  });
-
-  // ============================================================================
   // Additional branch coverage tests
   // ============================================================================
   describe('getModelDetails', () => {
@@ -569,139 +550,6 @@ describe('HuggingFaceService', () => {
     });
   });
 
-  describe('searchImageGenerationModels', () => {
-    it('returns image models on success', async () => {
-      const mockFetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve([
-          {
-            id: 'stabilityai/sd-turbo',
-            author: 'stabilityai',
-            downloads: 10000,
-            likes: 500,
-            tags: ['diffusers', 'stable-diffusion'],
-            siblings: [],
-          },
-        ]),
-      });
-      (global as any).fetch = mockFetch;
-
-      const results = await huggingFaceService.searchImageGenerationModels('sd-turbo');
-
-      expect(results).toHaveLength(1);
-      expect(results[0].id).toBe('stabilityai/sd-turbo');
-      expect(results[0].modelType).toBe('SD 1.x/2.x');
-    });
-
-    it('uses default search when query is empty', async () => {
-      const mockFetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve([]),
-      });
-      (global as any).fetch = mockFetch;
-
-      await huggingFaceService.searchImageGenerationModels('');
-
-      const url = mockFetch.mock.calls[0][0];
-      expect(url).toContain('search=stable-diffusion');
-    });
-
-    it('appends search param when query provided', async () => {
-      const mockFetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve([]),
-      });
-      (global as any).fetch = mockFetch;
-
-      await huggingFaceService.searchImageGenerationModels('my-model');
-
-      const url = mockFetch.mock.calls[0][0];
-      expect(url).toContain('search=my-model');
-    });
-
-    it('throws on API error', async () => {
-      (global as any).fetch = jest.fn().mockResolvedValue({
-        ok: false,
-        status: 500,
-      });
-
-      await expect(huggingFaceService.searchImageGenerationModels()).rejects.toThrow('API error: 500');
-    });
-  });
-
-  describe('isMediaPipeCompatible', () => {
-    it('returns true for models with mediapipe tag', () => {
-      const result = service.isMediaPipeCompatible({
-        id: 'test/model',
-        tags: ['mediapipe'],
-        siblings: [],
-      });
-      expect(result).toBe(true);
-    });
-
-    it('returns true for known compatible models', () => {
-      const result = service.isMediaPipeCompatible({
-        id: 'runwayml/stable-diffusion-v1-5',
-        tags: [],
-        siblings: [],
-      });
-      expect(result).toBe(true);
-    });
-
-    it('returns false for unknown models', () => {
-      const result = service.isMediaPipeCompatible({
-        id: 'unknown/custom-model',
-        tags: [],
-        siblings: [],
-      });
-      expect(result).toBe(false);
-    });
-  });
-
-  describe('getImageModelType', () => {
-    it('returns SDXL for stable-diffusion-xl tag', () => {
-      expect(service.getImageModelType({ tags: ['stable-diffusion-xl'], id: 'test', siblings: [] })).toBe('SDXL');
-    });
-
-    it('returns SD 1.x/2.x for stable-diffusion tag', () => {
-      expect(service.getImageModelType({ tags: ['stable-diffusion'], id: 'test', siblings: [] })).toBe('SD 1.x/2.x');
-    });
-
-    it('returns Flux for flux tag', () => {
-      expect(service.getImageModelType({ tags: ['flux'], id: 'test', siblings: [] })).toBe('Flux');
-    });
-
-    it('returns LCM for latent-consistency tag', () => {
-      expect(service.getImageModelType({ tags: ['latent-consistency'], id: 'test', siblings: [] })).toBe('LCM');
-    });
-
-    it('returns Diffusion for unknown tags', () => {
-      expect(service.getImageModelType({ tags: ['some-other-tag'], id: 'test', siblings: [] })).toBe('Diffusion');
-    });
-  });
-
-  describe('extractImageModelDescription', () => {
-    it('returns relevant tags as description', () => {
-      const desc = service.extractImageModelDescription({
-        id: 'test/model',
-        tags: ['stable-diffusion', 'text-to-image', 'license:apache-2.0'],
-        siblings: [],
-      });
-      expect(desc).toContain('stable-diffusion');
-      expect(desc).toContain('text-to-image');
-      // license tags should be filtered out
-      expect(desc).not.toContain('license:');
-    });
-
-    it('returns default description when no relevant tags', () => {
-      const desc = service.extractImageModelDescription({
-        id: 'test/model',
-        tags: ['license:mit', 'language:en', 'diffusers'],
-        siblings: [],
-      });
-      expect(desc).toBe('Image generation model');
-    });
-  });
 
   describe('extractDescription vision detection', () => {
     it('detects vision model type', () => {

@@ -1,4 +1,5 @@
 import RNFS from 'react-native-fs';
+import logger from './logger';
 
 /**
  * After extracting a Core ML zip, the contents may be nested inside a
@@ -16,7 +17,7 @@ export async function resolveCoreMLModelDir(modelDir: string): Promise<string> {
   for (const sub of subDirs) {
     const subItems = await RNFS.readDir(sub.path);
     if (subItems.some(i => i.name.endsWith('.mlmodelc'))) {
-      console.log(`[CoreML] Resolved nested model dir: ${sub.path}`);
+      logger.log(`[CoreML] Resolved nested model dir: ${sub.path}`);
       return sub.path;
     }
   }
@@ -34,10 +35,10 @@ export async function downloadCoreMLTokenizerFiles(modelDir: string, repo: strin
     const destPath = `${modelDir}/${file}`;
     if (await RNFS.exists(destPath)) continue;
     const url = `https://huggingface.co/${repo}/resolve/main/${file}`;
-    console.log(`[CoreML] Downloading tokenizer file: ${file}`);
+    logger.log(`[CoreML] Downloading tokenizer file: ${file}`);
     const result = await RNFS.downloadFile({ fromUrl: url, toFile: destPath }).promise;
     if (result.statusCode !== 200) {
-      console.warn(`[CoreML] Failed to download ${file}: HTTP ${result.statusCode}`);
+      logger.warn(`[CoreML] Failed to download ${file}: HTTP ${result.statusCode}`);
     }
   }
 }

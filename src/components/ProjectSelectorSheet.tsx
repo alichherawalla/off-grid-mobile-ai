@@ -106,7 +106,7 @@ const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
     backgroundColor: colors.surface,
   },
   projectOptionSelected: {
-    backgroundColor: colors.primary + '20',
+    backgroundColor: `${colors.primary  }20`,
     borderWidth: 1,
     borderColor: colors.primary,
   },
@@ -114,7 +114,7 @@ const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
     width: 36,
     height: 36,
     borderRadius: 8,
-    backgroundColor: colors.primary + '30',
+    backgroundColor: `${colors.primary  }30`,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     marginRight: 12,

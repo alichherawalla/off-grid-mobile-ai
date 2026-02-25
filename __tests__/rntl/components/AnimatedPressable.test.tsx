@@ -21,9 +21,9 @@ jest.mock('../../../src/utils/haptics', () => ({
   triggerHaptic: jest.fn(),
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+ 
 const { triggerHaptic: mockTriggerHaptic } = require('../../../src/utils/haptics');
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+ 
 const Reanimated = require('react-native-reanimated');
 
 describe('AnimatedPressable', () => {

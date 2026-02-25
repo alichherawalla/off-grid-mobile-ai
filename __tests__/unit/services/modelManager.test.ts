@@ -30,6 +30,7 @@ jest.mock('../../../src/services/backgroundDownloadService', () => ({
     isAvailable: jest.fn(() => false),
     startDownload: jest.fn(),
     cancelDownload: jest.fn(),
+    downloadFileTo: jest.fn(() => ({ downloadId: 999, downloadIdPromise: Promise.resolve(999), promise: Promise.resolve() })),
     getActiveDownloads: jest.fn(() => Promise.resolve([])),
     moveCompletedDownload: jest.fn(),
     startProgressPolling: jest.fn(),
@@ -37,6 +38,8 @@ jest.mock('../../../src/services/backgroundDownloadService', () => ({
     onProgress: jest.fn(() => jest.fn()),
     onComplete: jest.fn(() => jest.fn()),
     onError: jest.fn(() => jest.fn()),
+    markSilent: jest.fn(),
+    unmarkSilent: jest.fn(),
   },
 }));
 
@@ -76,6 +79,7 @@ describe('ModelManager', () => {
     mockedBackgroundDownloadService.isAvailable.mockReturnValue(false);
     mockedBackgroundDownloadService.startDownload.mockResolvedValue({} as any);
     mockedBackgroundDownloadService.cancelDownload.mockResolvedValue(undefined as any);
+    mockedBackgroundDownloadService.downloadFileTo.mockReturnValue({ downloadId: 999, downloadIdPromise: Promise.resolve(999), promise: Promise.resolve() } as any);
     mockedBackgroundDownloadService.getActiveDownloads.mockResolvedValue([]);
     mockedBackgroundDownloadService.moveCompletedDownload.mockResolvedValue('' as any);
     mockedBackgroundDownloadService.startProgressPolling.mockImplementation(() => {});
@@ -180,246 +184,19 @@ describe('ModelManager', () => {
   });
 
   // ========================================================================
-  // downloadModel
-  // ========================================================================
-  describe('downloadModel', () => {
-    const file = createModelFile({
-      name: 'test-model-q4.gguf',
-      size: 4000000000,
-      quantization: 'Q4_K_M',
-      downloadUrl: 'https://huggingface.co/test/model/resolve/main/test-model-q4.gguf',
-    });
-
-    it('throws when already downloading', async () => {
-      // Simulate an active download
-      (modelManager as any).downloadJobs.set('test-author/test-model/test-model-q4.gguf', {
-        jobId: 1,
-        cancel: jest.fn(),
-      });
-
-      await expect(
-        modelManager.downloadModel('test-author/test-model', file)
-      ).rejects.toThrow('already being downloaded');
-    });
-
-    it('skips download when files already exist', async () => {
-      mockedRNFS.exists.mockResolvedValue(true); // All exists checks return true
-      // Mock getDownloadedModels for addDownloadedModel
-      mockedAsyncStorage.getItem.mockResolvedValue('[]');
-
-      const onComplete = jest.fn();
-      await modelManager.downloadModel('test-author/test-model', file, undefined, onComplete);
-
-      expect(RNFS.downloadFile).not.toHaveBeenCalled();
-      expect(onComplete).toHaveBeenCalled();
-    });
-
-    it('downloads via RNFS when file does not exist', async () => {
-      mockedRNFS.exists
-        .mockResolvedValueOnce(true)   // initialize: modelsDir exists
-        .mockResolvedValueOnce(true)   // initialize: imageModelsDir exists
-        .mockResolvedValueOnce(false)  // mainExists = false
-        .mockResolvedValueOnce(true);  // mmProjExists (no mmproj, so vacuously true isn't called - but model needs to be added)
-
-      mockedRNFS.downloadFile.mockReturnValue({
-        jobId: 1,
-        promise: Promise.resolve({ statusCode: 200, bytesWritten: 4000000000 }),
-      } as any);
-      mockedAsyncStorage.getItem.mockResolvedValue('[]');
-      // For the addDownloadedModel -> getDownloadedModels -> exists checks
-      // After download, RNFS.exists will be called to check mmProjLocalPath
-      mockedRNFS.exists.mockResolvedValue(false);
-
-      await modelManager.downloadModel('test-author/test-model', file);
-
-      expect(RNFS.downloadFile).toHaveBeenCalled();
-    });
-
-    it('reports progress via callback', async () => {
-      mockedRNFS.exists
-        .mockResolvedValueOnce(true)   // modelsDir
-        .mockResolvedValueOnce(true)   // imageModelsDir
-        .mockResolvedValueOnce(false)  // main file doesn't exist
-        .mockResolvedValue(false);     // remaining checks
-
-      let capturedProgressFn: any;
-      mockedRNFS.downloadFile.mockImplementation((opts: any) => {
-        capturedProgressFn = opts.progress;
-        return {
-          jobId: 1,
-          promise: Promise.resolve({ statusCode: 200, bytesWritten: 4000000000 }),
-        } as any;
-      });
-      mockedAsyncStorage.getItem.mockResolvedValue('[]');
-
-      const onProgress = jest.fn();
-      await modelManager.downloadModel('test-author/test-model', file, onProgress);
-
-      // Simulate progress callback
-      if (capturedProgressFn) {
-        capturedProgressFn({ bytesWritten: 2000000000 });
-        expect(onProgress).toHaveBeenCalledWith(
-          expect.objectContaining({
-            bytesDownloaded: 2000000000,
-            totalBytes: 4000000000,
-          })
-        );
-      }
-    });
-
-    it('cleans up on non-200 status', async () => {
-      mockedRNFS.exists
-        .mockResolvedValueOnce(true)   // modelsDir
-        .mockResolvedValueOnce(true)   // imageModelsDir
-        .mockResolvedValueOnce(false)  // main doesn't exist
-        .mockResolvedValue(false);
-
-      mockedRNFS.downloadFile.mockReturnValue({
-        jobId: 1,
-        promise: Promise.resolve({ statusCode: 500, bytesWritten: 0 }),
-      } as any);
-
-      await expect(
-        modelManager.downloadModel('test-author/test-model', file)
-      ).rejects.toThrow('download failed');
-
-      expect(RNFS.unlink).toHaveBeenCalled();
-    });
-
-    it('downloads mmproj file when present', async () => {
-      const visionFile = createModelFileWithMmProj({
-        name: 'vision-model.gguf',
-        size: 4000000000,
-        mmProjName: 'mmproj-vision.gguf',
-        mmProjSize: 500000000,
-      });
-
-      mockedRNFS.exists
-        .mockResolvedValueOnce(true)   // modelsDir
-        .mockResolvedValueOnce(true)   // imageModelsDir
-        .mockResolvedValueOnce(false)  // main doesn't exist
-        .mockResolvedValueOnce(false)  // mmproj doesn't exist
-        .mockResolvedValue(false);     // remaining checks
-
-      mockedRNFS.downloadFile.mockReturnValue({
-        jobId: 1,
-        promise: Promise.resolve({ statusCode: 200, bytesWritten: 4000000000 }),
-      } as any);
-      mockedAsyncStorage.getItem.mockResolvedValue('[]');
-
-      await modelManager.downloadModel('test-author/test-model', visionFile);
-
-      // Should have two downloadFile calls (main + mmproj)
-      expect(RNFS.downloadFile).toHaveBeenCalledTimes(2);
-    });
-
-    it('continues without mmproj on mmproj download failure', async () => {
-      const visionFile = createModelFileWithMmProj({
-        name: 'vision-model.gguf',
-        size: 4000000000,
-        mmProjName: 'mmproj-vision.gguf',
-        mmProjSize: 500000000,
-      });
-
-      mockedRNFS.exists
-        .mockResolvedValueOnce(true)   // modelsDir
-        .mockResolvedValueOnce(true)   // imageModelsDir
-        .mockResolvedValueOnce(false)  // main doesn't exist
-        .mockResolvedValueOnce(false)  // mmproj doesn't exist
-        .mockResolvedValue(false);
-
-      // Main succeeds, mmproj fails
-      mockedRNFS.downloadFile
-        .mockReturnValueOnce({
-          jobId: 1,
-          promise: Promise.resolve({ statusCode: 200, bytesWritten: 4000000000 }),
-        } as any)
-        .mockReturnValueOnce({
-          jobId: 2,
-          promise: Promise.resolve({ statusCode: 500, bytesWritten: 0 }),
-        } as any);
-      mockedAsyncStorage.getItem.mockResolvedValue('[]');
-
-      const onComplete = jest.fn();
-      // Should not throw - mmproj failure is not fatal
-      await modelManager.downloadModel('test-author/test-model', visionFile, undefined, onComplete);
-
-      expect(onComplete).toHaveBeenCalled();
-    });
-
-    it('calls onComplete with model when done', async () => {
-      mockedRNFS.exists
-        .mockResolvedValueOnce(true)   // modelsDir
-        .mockResolvedValueOnce(true)   // imageModelsDir
-        .mockResolvedValueOnce(false)  // main doesn't exist
-        .mockResolvedValue(false);
-
-      mockedRNFS.downloadFile.mockReturnValue({
-        jobId: 1,
-        promise: Promise.resolve({ statusCode: 200, bytesWritten: 4000000000 }),
-      } as any);
-      mockedAsyncStorage.getItem.mockResolvedValue('[]');
-
-      const onComplete = jest.fn();
-      await modelManager.downloadModel('test-author/test-model', file, undefined, onComplete);
-
-      expect(onComplete).toHaveBeenCalledWith(
-        expect.objectContaining({
-          fileName: 'test-model-q4.gguf',
-          quantization: 'Q4_K_M',
-        })
-      );
-    });
-  });
-
-  // ========================================================================
-  // cancelDownload
-  // ========================================================================
-  describe('cancelDownload', () => {
-    it('cancels active download job', async () => {
-      const cancelFn = jest.fn();
-      (modelManager as any).downloadJobs.set('test-model/test-file.gguf', {
-        jobId: 1,
-        cancel: cancelFn,
-      });
-
-      await modelManager.cancelDownload('test-model', 'test-file.gguf');
-
-      expect(cancelFn).toHaveBeenCalled();
-    });
-
-    it('cleans up partial file', async () => {
-      (modelManager as any).downloadJobs.set('test-model/test-file.gguf', {
-        jobId: 1,
-        cancel: jest.fn(),
-      });
-
-      await modelManager.cancelDownload('test-model', 'test-file.gguf');
-
-      expect(RNFS.unlink).toHaveBeenCalled();
-    });
-
-    it('does nothing when no active download for key', async () => {
-      await modelManager.cancelDownload('nonexistent', 'file.gguf');
-
-      expect(RNFS.unlink).not.toHaveBeenCalled();
-    });
-  });
-
-  // ========================================================================
   // deleteModel
   // ========================================================================
   describe('deleteModel', () => {
     it('deletes file and updates storage', async () => {
       const storedModels = [
-        { id: 'model1', name: 'Model 1', filePath: '/models/m1.gguf', fileSize: 100 },
+        { id: 'model1', name: 'Model 1', filePath: '/mock/documents/models/m1.gguf', fileSize: 100 },
       ];
       mockedAsyncStorage.getItem.mockResolvedValue(JSON.stringify(storedModels));
       mockedRNFS.exists.mockResolvedValue(true);
 
       await modelManager.deleteModel('model1');
 
-      expect(RNFS.unlink).toHaveBeenCalledWith('/models/m1.gguf');
+      expect(RNFS.unlink).toHaveBeenCalledWith('/mock/documents/models/m1.gguf');
       // Storage should be updated with empty list
       expect(AsyncStorage.setItem).toHaveBeenCalledWith(
         MODELS_STORAGE_KEY,
@@ -432,9 +209,9 @@ describe('ModelManager', () => {
         {
           id: 'model1',
           name: 'Model 1',
-          filePath: '/models/m1.gguf',
+          filePath: '/mock/documents/models/m1.gguf',
           fileSize: 100,
-          mmProjPath: '/models/mmproj.gguf',
+          mmProjPath: '/mock/documents/models/mmproj.gguf',
         },
       ];
       mockedAsyncStorage.getItem.mockResolvedValue(JSON.stringify(storedModels));
@@ -442,8 +219,8 @@ describe('ModelManager', () => {
 
       await modelManager.deleteModel('model1');
 
-      expect(RNFS.unlink).toHaveBeenCalledWith('/models/m1.gguf');
-      expect(RNFS.unlink).toHaveBeenCalledWith('/models/mmproj.gguf');
+      expect(RNFS.unlink).toHaveBeenCalledWith('/mock/documents/models/m1.gguf');
+      expect(RNFS.unlink).toHaveBeenCalledWith('/mock/documents/models/mmproj.gguf');
     });
 
     it('throws when model not found', async () => {
@@ -582,7 +359,7 @@ describe('ModelManager', () => {
   });
 
   // ========================================================================
-  // determineCredibility (private, tested via downloadModel -> addDownloadedModel)
+  // determineCredibility (private)
   // ========================================================================
   describe('determineCredibility', () => {
     // Access private method
@@ -639,7 +416,8 @@ describe('ModelManager', () => {
       mockedAsyncStorage.getItem.mockResolvedValue('[]');
 
       const onComplete = jest.fn();
-      const result = await modelManager.downloadModelBackground('test/model', file, undefined, onComplete);
+      const result = await modelManager.downloadModelBackground('test/model', file);
+      modelManager.watchDownload(result.downloadId, onComplete);
 
       expect(result.status).toBe('completed');
       expect(onComplete).toHaveBeenCalled();
@@ -670,7 +448,7 @@ describe('ModelManager', () => {
       expect(result.downloadId).toBe(42);
     });
 
-    it('sets up progress/complete/error listeners', async () => {
+    it('sets up progress listener during start and complete/error via watchDownload', async () => {
       mockedBackgroundDownloadService.isAvailable.mockReturnValue(true);
       mockedRNFS.exists
         .mockResolvedValueOnce(true)
@@ -688,7 +466,8 @@ describe('ModelManager', () => {
         startedAt: Date.now(),
       } as any);
 
-      await modelManager.downloadModelBackground('test/model', file);
+      const info = await modelManager.downloadModelBackground('test/model', file);
+      modelManager.watchDownload(info.downloadId, jest.fn(), jest.fn());
 
       expect(mockedBackgroundDownloadService.onProgress).toHaveBeenCalledWith(42, expect.any(Function));
       expect(mockedBackgroundDownloadService.onComplete).toHaveBeenCalledWith(42, expect.any(Function));
@@ -724,7 +503,7 @@ describe('ModelManager', () => {
       }));
     });
 
-    it('downloads mmproj via foreground first when present', async () => {
+    it('downloads mmproj in parallel via startDownload when present', async () => {
       mockedBackgroundDownloadService.isAvailable.mockReturnValue(true);
 
       const visionFile = createModelFileWithMmProj({
@@ -740,28 +519,39 @@ describe('ModelManager', () => {
         .mockResolvedValueOnce(false)  // main doesn't exist
         .mockResolvedValueOnce(false); // mmproj doesn't exist
 
-      // mmproj foreground download
-      mockedRNFS.downloadFile.mockReturnValue({
-        jobId: 1,
-        promise: Promise.resolve({ statusCode: 200, bytesWritten: 500000000 }),
-      } as any);
-
-      mockedBackgroundDownloadService.startDownload.mockResolvedValue({
-        downloadId: 42,
-        fileName: 'vision.gguf',
-        modelId: 'test/model',
-        status: 'pending',
-        bytesDownloaded: 0,
-        totalBytes: 4000000000,
-        startedAt: Date.now(),
-      } as any);
+      mockedBackgroundDownloadService.startDownload
+        .mockResolvedValueOnce({
+          downloadId: 42,
+          fileName: 'vision.gguf',
+          modelId: 'test/model',
+          status: 'pending',
+          bytesDownloaded: 0,
+          totalBytes: 4000000000,
+          startedAt: Date.now(),
+        } as any)
+        .mockResolvedValueOnce({
+          downloadId: 43,
+          fileName: 'mmproj.gguf',
+          modelId: 'test/model',
+          status: 'pending',
+          bytesDownloaded: 0,
+          totalBytes: 500000000,
+          startedAt: Date.now(),
+        } as any);
 
       await modelManager.downloadModelBackground('test/model', visionFile);
 
-      // mmproj should be downloaded via RNFS (foreground)
-      expect(RNFS.downloadFile).toHaveBeenCalled();
-      // Main model via background
-      expect(mockedBackgroundDownloadService.startDownload).toHaveBeenCalled();
+      // Both main and mmproj should be started via startDownload (parallel)
+      expect(RNFS.downloadFile).not.toHaveBeenCalled();
+      expect(mockedBackgroundDownloadService.startDownload).toHaveBeenCalledTimes(2);
+      expect(mockedBackgroundDownloadService.startDownload).toHaveBeenCalledWith(
+        expect.objectContaining({ fileName: 'vision.gguf' }),
+      );
+      expect(mockedBackgroundDownloadService.startDownload).toHaveBeenCalledWith(
+        expect.objectContaining({ fileName: 'mmproj.gguf' }),
+      );
+      // mmproj download should be marked silent
+      expect(mockedBackgroundDownloadService.markSilent).toHaveBeenCalledWith(43);
     });
   });
 
@@ -1087,21 +877,6 @@ describe('ModelManager', () => {
       const discovered = await modelManager.scanForUntrackedImageModels();
 
       expect(discovered).toEqual([]);
-    });
-  });
-
-  // ========================================================================
-  // isDownloading
-  // ========================================================================
-  describe('isDownloading', () => {
-    it('returns true when download is active', () => {
-      (modelManager as any).downloadJobs.set('test/model.gguf', { jobId: 1, cancel: jest.fn() });
-
-      expect(modelManager.isDownloading('test', 'model.gguf')).toBe(true);
-    });
-
-    it('returns false when no active download', () => {
-      expect(modelManager.isDownloading('test', 'model.gguf')).toBe(false);
     });
   });
 
@@ -1442,13 +1217,9 @@ describe('ModelManager', () => {
       ];
       mockedAsyncStorage.getItem.mockResolvedValue(JSON.stringify(storedModels));
       mockedRNFS.exists.mockResolvedValue(true);
+      mockedRNFS.stat.mockResolvedValue({ size: 300000000 } as any);
 
-      await modelManager.saveModelWithMmproj(
-        'model1',
-        '/models/mmproj.gguf',
-        'mmproj.gguf',
-        300000000
-      );
+      await modelManager.saveModelWithMmproj('model1', '/models/mmproj.gguf');
 
       const savedCall = mockedAsyncStorage.setItem.mock.calls.find(
         (call) => call[0] === MODELS_STORAGE_KEY
@@ -1459,14 +1230,15 @@ describe('ModelManager', () => {
       expect(savedModels[0].isVisionModel).toBe(true);
     });
 
-    it('handles string mmProjFileSize', async () => {
+    it('derives mmProjFileSize from RNFS.stat', async () => {
       const storedModels = [
         { id: 'model1', name: 'Test', filePath: '/models/m1.gguf', fileName: 'm1.gguf', fileSize: 1000 },
       ];
       mockedAsyncStorage.getItem.mockResolvedValue(JSON.stringify(storedModels));
       mockedRNFS.exists.mockResolvedValue(true);
+      mockedRNFS.stat.mockResolvedValue({ size: 300000000 } as any);
 
-      await modelManager.saveModelWithMmproj('model1', '/models/mmproj.gguf', 'mmproj.gguf', '300000000' as any);
+      await modelManager.saveModelWithMmproj('model1', '/models/mmproj.gguf');
 
       const savedCall = mockedAsyncStorage.setItem.mock.calls.find(
         (call) => call[0] === MODELS_STORAGE_KEY
@@ -1543,9 +1315,9 @@ describe('ModelManager', () => {
         {
           id: 'model1',
           name: 'Model 1',
-          filePath: '/models/m1.gguf',
+          filePath: '/mock/documents/models/m1.gguf',
           fileSize: 100,
-          mmProjPath: '/models/mmproj.gguf',
+          mmProjPath: '/mock/documents/models/mmproj.gguf',
         },
       ];
       mockedAsyncStorage.getItem.mockResolvedValue(JSON.stringify(storedModels));
@@ -1560,7 +1332,7 @@ describe('ModelManager', () => {
       await modelManager.deleteModel('model1');
 
       // Main file should have been unlinked
-      expect(RNFS.unlink).toHaveBeenCalledWith('/models/m1.gguf');
+      expect(RNFS.unlink).toHaveBeenCalledWith('/mock/documents/models/m1.gguf');
     });
   });
 
@@ -1774,41 +1546,55 @@ describe('ModelManager', () => {
         .mockResolvedValueOnce(false)  // main doesn't exist
         .mockResolvedValueOnce(false); // mmproj doesn't exist
 
-      // mmproj foreground download
-      mockedRNFS.downloadFile.mockReturnValue({
-        jobId: 1,
-        promise: Promise.resolve({ statusCode: 200, bytesWritten: 500000000 }),
-      } as any);
+      mockedBackgroundDownloadService.startDownload
+        .mockResolvedValueOnce({
+          downloadId: 42,
+          fileName: 'bg-vision.gguf',
+          modelId: 'test/model',
+          status: 'pending',
+          bytesDownloaded: 0,
+          totalBytes: 4000000000,
+          startedAt: Date.now(),
+        } as any)
+        .mockResolvedValueOnce({
+          downloadId: 43,
+          fileName: 'bg-mmproj.gguf',
+          modelId: 'test/model',
+          status: 'pending',
+          bytesDownloaded: 0,
+          totalBytes: 500000000,
+          startedAt: Date.now(),
+        } as any);
 
-      mockedBackgroundDownloadService.startDownload.mockResolvedValue({
-        downloadId: 42,
-        fileName: 'bg-vision.gguf',
-        modelId: 'test/model',
-        status: 'pending',
-        bytesDownloaded: 0,
-        totalBytes: 4000000000,
-        startedAt: Date.now(),
-      } as any);
-
-      let completeCallback: any;
+      // Capture completion callbacks for both main (42) and mmproj (43)
+      const completeCallbacks: Record<number, any> = {};
       mockedBackgroundDownloadService.onComplete.mockImplementation((id: number, cb: any) => {
-        completeCallback = cb;
+        completeCallbacks[id] = cb;
         return jest.fn();
       });
 
       const onComplete = jest.fn();
-      await modelManager.downloadModelBackground('test/model', visionFile, undefined, onComplete);
+      const info = await modelManager.downloadModelBackground('test/model', visionFile);
+      modelManager.watchDownload(info.downloadId, onComplete);
 
-      // Simulate the complete event
-      if (completeCallback) {
-        mockedBackgroundDownloadService.moveCompletedDownload.mockResolvedValue('/models/bg-vision.gguf');
-        mockedRNFS.exists.mockResolvedValue(true); // mmproj exists after foreground download
-        mockedAsyncStorage.getItem.mockResolvedValue('[]');
+      // Simulate mmproj completing first, then main
+      mockedBackgroundDownloadService.moveCompletedDownload.mockResolvedValue('/models/bg-vision.gguf');
+      mockedRNFS.exists.mockResolvedValue(true); // mmproj exists after move
+      mockedAsyncStorage.getItem.mockResolvedValue('[]');
 
-        await completeCallback({ downloadId: 42, fileName: 'bg-vision.gguf' });
-
-        expect(onComplete).toHaveBeenCalled();
+      // mmproj completes
+      if (completeCallbacks[43]) {
+        await completeCallbacks[43]({ downloadId: 43, fileName: 'bg-mmproj.gguf' });
       }
+      // onComplete should NOT fire yet — main still running
+      expect(onComplete).not.toHaveBeenCalled();
+
+      // main completes
+      if (completeCallbacks[42]) {
+        await completeCallbacks[42]({ downloadId: 42, fileName: 'bg-vision.gguf' });
+      }
+      // Now both are done, onComplete should fire
+      expect(onComplete).toHaveBeenCalled();
     });
   });
 
@@ -1845,7 +1631,8 @@ describe('ModelManager', () => {
       });
 
       const onError = jest.fn();
-      await modelManager.downloadModelBackground('test/model', file, undefined, undefined, onError);
+      const info = await modelManager.downloadModelBackground('test/model', file);
+      modelManager.watchDownload(info.downloadId, undefined, onError);
 
       // Simulate the error event
       if (errorCallback) {
@@ -1855,34 +1642,43 @@ describe('ModelManager', () => {
     });
   });
 
-  describe('downloadModel onError callback', () => {
-    it('calls onError when download fails', async () => {
-      const file = createModelFile({
-        name: 'error-model.gguf',
-        size: 4000000000,
-        quantization: 'Q4_K_M',
-        downloadUrl: 'https://huggingface.co/test/model/resolve/main/error-model.gguf',
-      });
+  describe('repairMmProj', () => {
+    it('emits onDownloadIdReady when download id resolves asynchronously', async () => {
+      const saveSpy = jest.spyOn(modelManager, 'saveModelWithMmproj').mockResolvedValue(undefined);
+      const initSpy = jest.spyOn(modelManager, 'initialize').mockResolvedValue(undefined);
+      try {
+        let resolveDownloadId!: (id: number) => void;
+        const downloadIdPromise = new Promise<number>((resolve) => {
+          resolveDownloadId = resolve;
+        });
+        let resolveDownload!: () => void;
+        const completionPromise = new Promise<void>((resolve) => {
+          resolveDownload = resolve;
+        });
+        mockedBackgroundDownloadService.downloadFileTo.mockReturnValue({
+          downloadId: 0,
+          downloadIdPromise,
+          promise: completionPromise,
+        } as any);
 
-      mockedRNFS.exists
-        .mockResolvedValueOnce(true)   // modelsDir
-        .mockResolvedValueOnce(true)   // imageModelsDir
-        .mockResolvedValueOnce(false)  // main doesn't exist
-        .mockResolvedValue(false);
+        const onDownloadIdReady = jest.fn();
+        const file = createModelFileWithMmProj({ name: 'vision-model.gguf', mmProjName: 'vision-model-mmproj.gguf' });
+        const repairPromise = modelManager.repairMmProj('test/model', file, { onDownloadIdReady });
 
-      mockedRNFS.downloadFile.mockReturnValue({
-        jobId: 1,
-        promise: Promise.reject(new Error('Network failure')),
-      } as any);
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(mockedBackgroundDownloadService.downloadFileTo).toHaveBeenCalled();
+        resolveDownloadId(321);
+        await Promise.resolve();
+        expect(onDownloadIdReady).toHaveBeenCalledWith(321);
 
-      const onError = jest.fn();
-
-      await expect(
-        modelManager.downloadModel('test/model', file, undefined, undefined, onError)
-      ).rejects.toThrow();
-
-      // onError should have been called
-      expect(onError).toHaveBeenCalled();
+        resolveDownload();
+        await repairPromise;
+      } finally {
+        initSpy.mockRestore();
+        saveSpy.mockRestore();
+      }
     });
   });
 
@@ -1970,7 +1766,7 @@ describe('ModelManager', () => {
         id: 'img-delete',
         name: 'Delete Me',
         description: 'Test',
-        modelPath: '/mock/image_models/delete-model',
+        modelPath: '/mock/documents/image_models/delete-model',
         size: 2000000000,
         downloadedAt: new Date().toISOString(),
         backend: 'mnn',
@@ -1980,7 +1776,9 @@ describe('ModelManager', () => {
 
       await modelManager.deleteImageModel('img-delete');
 
-      expect(mockedRNFS.unlink).toHaveBeenCalledWith(imageModel.modelPath);
+      // deleteImageModel now deletes the top-level model directory, not model.modelPath
+      // (for CoreML models, modelPath is a nested subdir; top-level dir also has tokenizer files)
+      expect(mockedRNFS.unlink).toHaveBeenCalledWith('/mock/documents/image_models/img-delete');
       expect(mockedAsyncStorage.setItem).toHaveBeenCalled();
     });
 
@@ -1989,7 +1787,7 @@ describe('ModelManager', () => {
         id: 'img-no-file',
         name: 'No File',
         description: 'Test',
-        modelPath: '/mock/image_models/missing',
+        modelPath: '/mock/documents/image_models/missing',
         size: 1000,
         downloadedAt: new Date().toISOString(),
         backend: 'mnn',
@@ -2116,9 +1914,9 @@ describe('ModelManager', () => {
   });
 
   // ========================================================================
-  // scanForUntrackedTextModels
+  // scanForUntrackedTextModels — edge cases
   // ========================================================================
-  describe('scanForUntrackedTextModels', () => {
+  describe('scanForUntrackedTextModels edge cases', () => {
     it('returns empty when directory does not exist', async () => {
       mockedAsyncStorage.getItem.mockResolvedValue(null);
       mockedRNFS.exists.mockResolvedValue(false);
@@ -2262,9 +2060,9 @@ describe('ModelManager', () => {
   });
 
   // ========================================================================
-  // scanForUntrackedImageModels
+  // scanForUntrackedImageModels — edge cases
   // ========================================================================
-  describe('scanForUntrackedImageModels', () => {
+  describe('scanForUntrackedImageModels edge cases', () => {
     it('returns empty when directory does not exist', async () => {
       mockedAsyncStorage.getItem.mockResolvedValue(null);
       mockedRNFS.exists

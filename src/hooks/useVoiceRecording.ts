@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { voiceService } from '../services/voiceService';
+import logger from '../utils/logger';
 
 export interface UseVoiceRecordingResult {
   isRecording: boolean;
@@ -23,21 +24,21 @@ export const useVoiceRecording = (): UseVoiceRecordingResult => {
 
   useEffect(() => {
     const initVoice = async () => {
-      console.log('[Voice] Starting initialization...');
+      logger.log('[Voice] Starting initialization...');
 
       const hasPermission = await voiceService.requestPermissions();
-      console.log('[Voice] Permission granted:', hasPermission);
+      logger.log('[Voice] Permission granted:', hasPermission);
 
       if (hasPermission) {
         const initialized = await voiceService.initialize();
-        console.log('[Voice] Initialized:', initialized);
+        logger.log('[Voice] Initialized:', initialized);
         setIsAvailable(initialized);
 
         if (!initialized) {
           setError('Voice recognition not available on this device. Check if Google app is installed.');
         }
       } else {
-        console.log('[Voice] Permission denied');
+        logger.log('[Voice] Permission denied');
         setIsAvailable(false);
         setError('Microphone permission denied');
       }

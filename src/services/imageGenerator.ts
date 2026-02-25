@@ -9,13 +9,11 @@ const { ImageGeneratorModule } = NativeModules;
 
 type ProgressCallback = (progress: ImageGenerationProgress) => void;
 type CompleteCallback = (image: GeneratedImage) => void;
-type ErrorCallback = (error: Error) => void;
 
 class ImageGeneratorService {
   private eventEmitter: NativeEventEmitter | null = null;
   private progressListener: any = null;
   private completeListener: any = null;
-  private errorListener: any = null;
 
   constructor() {
     if (Platform.OS === 'android' && ImageGeneratorModule) {
@@ -57,47 +55,33 @@ class ImageGeneratorService {
     return await ImageGeneratorModule.unloadModel();
   }
 
+  private attachEventListeners(onProgress?: ProgressCallback, onComplete?: CompleteCallback): void {
+    if (!this.eventEmitter) return;
+    if (onProgress) {
+      this.progressListener = this.eventEmitter.addListener(
+        'ImageGenerationProgress',
+        (data: ImageGenerationProgress) => { onProgress(data); },
+      );
+    }
+    if (onComplete) {
+      this.completeListener = this.eventEmitter.addListener(
+        'ImageGenerationComplete',
+        (data: GeneratedImage) => { onComplete(data); },
+      );
+    }
+  }
+
   async generateImage(
     params: ImageGenerationParams,
     onProgress?: ProgressCallback,
     onComplete?: CompleteCallback,
-    onError?: ErrorCallback
   ): Promise<GeneratedImage> {
     if (!this.isAvailable()) {
       throw new Error('Image generation is not available on this platform');
     }
 
-    // Set up event listeners
     this.removeListeners();
-
-    if (this.eventEmitter) {
-      if (onProgress) {
-        this.progressListener = this.eventEmitter.addListener(
-          'ImageGenerationProgress',
-          (data: ImageGenerationProgress) => {
-            onProgress(data);
-          }
-        );
-      }
-
-      if (onComplete) {
-        this.completeListener = this.eventEmitter.addListener(
-          'ImageGenerationComplete',
-          (data: GeneratedImage) => {
-            onComplete(data);
-          }
-        );
-      }
-
-      if (onError) {
-        this.errorListener = this.eventEmitter.addListener(
-          'ImageGenerationError',
-          (data: { error: string }) => {
-            onError(new Error(data.error));
-          }
-        );
-      }
-    }
+    this.attachEventListeners(onProgress, onComplete);
 
     try {
       const result = await ImageGeneratorModule.generateImage({
@@ -185,10 +169,6 @@ class ImageGeneratorService {
     if (this.completeListener) {
       this.completeListener.remove();
       this.completeListener = null;
-    }
-    if (this.errorListener) {
-      this.errorListener.remove();
-      this.errorListener = null;
     }
   }
 }

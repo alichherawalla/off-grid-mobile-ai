@@ -1,4 +1,5 @@
 import * as Keychain from 'react-native-keychain';
+import logger from '../utils/logger';
 
 const SERVICE_NAME = 'ai.offgridmobile.auth';
 const PASSPHRASE_KEY = 'passphrase_hash';
@@ -37,7 +38,7 @@ class AuthService {
       });
       return true;
     } catch (error) {
-      console.error('Failed to set passphrase:', error);
+      logger.error('Failed to set passphrase:', error);
       return false;
     }
   }
@@ -55,7 +56,7 @@ class AuthService {
       const inputHash = this.hashPassphrase(passphrase);
       return inputHash === credentials.password;
     } catch (error) {
-      console.error('Failed to verify passphrase:', error);
+      logger.error('Failed to verify passphrase:', error);
       return false;
     }
   }
@@ -67,7 +68,7 @@ class AuthService {
       });
       return credentials !== false;
     } catch (error) {
-      console.error('Failed to check passphrase:', error);
+      logger.error('Failed to check passphrase:', error);
       return false;
     }
   }
@@ -79,7 +80,7 @@ class AuthService {
       });
       return true;
     } catch (error) {
-      console.error('Failed to remove passphrase:', error);
+      logger.error('Failed to remove passphrase:', error);
       return false;
     }
   }

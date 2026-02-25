@@ -596,30 +596,21 @@ describe('LocalDreamGeneratorService', () => {
       await first;
     });
 
-    it('calls onError callback on native failure', async () => {
+    it('rejects with error on native failure', async () => {
       mockLocalDreamModule.generateImage.mockRejectedValue(new Error('Core ML failed'));
 
-      const onError = jest.fn();
-
-      await service.generateImage({ prompt: 'test' }, undefined, undefined, undefined, onError)
-        .catch(() => {});
-
-      expect(onError).toHaveBeenCalledWith(expect.any(Error));
-      expect(onError.mock.calls[0][0].message).toBe('Core ML failed');
+      await expect(service.generateImage({ prompt: 'test' }))
+        .rejects.toThrow('Core ML failed');
     });
 
-    it('calls onComplete callback on success', async () => {
+    it('resolves with GeneratedImage on success', async () => {
       mockLocalDreamModule.generateImage.mockResolvedValue({
         id: 'img-ok', imagePath: '/ok.png', width: 512, height: 512, seed: 7,
       });
 
-      const onComplete = jest.fn();
+      const result = await service.generateImage({ prompt: 'test' });
 
-      await service.generateImage({ prompt: 'test' }, undefined, undefined, onComplete);
-
-      expect(onComplete).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'img-ok' }),
-      );
+      expect(result).toEqual(expect.objectContaining({ id: 'img-ok' }));
     });
 
     it('forwards progress events from emitter', async () => {

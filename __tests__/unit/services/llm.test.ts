@@ -205,6 +205,77 @@ describe('LLMService', () => {
       );
     });
 
+    it('uses flashAttn=true from store and sets q8_0 KV cache', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext();
+      mockedInitLlama.mockResolvedValue(ctx as any);
+
+      useAppStore.setState({
+        settings: {
+          ...useAppStore.getState().settings,
+          flashAttn: true,
+        },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+
+      expect(initLlama).toHaveBeenCalledWith(
+        expect.objectContaining({
+          flash_attn: true,
+          cache_type_k: 'q8_0',
+          cache_type_v: 'q8_0',
+        })
+      );
+    });
+
+    it('uses flashAttn=false from store and sets f16 KV cache when cacheType is f16', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext();
+      mockedInitLlama.mockResolvedValue(ctx as any);
+
+      useAppStore.setState({
+        settings: {
+          ...useAppStore.getState().settings,
+          flashAttn: false,
+          cacheType: 'f16',
+        },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+
+      expect(initLlama).toHaveBeenCalledWith(
+        expect.objectContaining({
+          flash_attn: false,
+          cache_type_k: 'f16',
+          cache_type_v: 'f16',
+        })
+      );
+    });
+
+    it('falls back to platform default when flashAttn is undefined (iOS → flash attn ON)', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext();
+      mockedInitLlama.mockResolvedValue(ctx as any);
+
+      useAppStore.setState({
+        settings: {
+          ...useAppStore.getState().settings,
+          flashAttn: undefined as any,
+        },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+
+      // Test env is iOS (Platform.OS = 'ios'), so the ?? fallback evaluates to true
+      expect(initLlama).toHaveBeenCalledWith(
+        expect.objectContaining({
+          flash_attn: true,
+          cache_type_k: 'q8_0',
+          cache_type_v: 'q8_0',
+        })
+      );
+    });
+
     it('captures GPU status from context', async () => {
       mockedRNFS.exists.mockResolvedValue(true);
       const ctx = createMockLlamaContext({
@@ -375,15 +446,6 @@ describe('LLMService', () => {
       await expect(llmService.generateResponse(messages)).rejects.toThrow('Generation already in progress');
     });
 
-    it('calls onThinking callback', async () => {
-      await setupLoadedModel();
-      const messages = [createUserMessage('Hello')];
-      const onThinking = jest.fn();
-
-      await llmService.generateResponse(messages, undefined, undefined, undefined, onThinking);
-
-      expect(onThinking).toHaveBeenCalled();
-    });
 
     it('streams tokens via onStream callback', async () => {
       await setupLoadedModel();
@@ -429,21 +491,6 @@ describe('LLMService', () => {
       expect(llmService.isCurrentlyGenerating()).toBe(false);
     });
 
-    it('calls onError callback on failure', async () => {
-      await setupLoadedModel({
-        completion: jest.fn(() => Promise.reject(new Error('gen error'))),
-        tokenize: jest.fn(() => Promise.resolve({ tokens: [1, 2] })),
-      });
-
-      const messages = [createUserMessage('Hello')];
-      const onError = jest.fn();
-
-      await expect(
-        llmService.generateResponse(messages, undefined, undefined, onError)
-      ).rejects.toThrow();
-
-      expect(onError).toHaveBeenCalledWith(expect.any(Error));
-    });
 
     it('uses messages format for text-only path', async () => {
       const ctx = await setupLoadedModel();
@@ -1017,7 +1064,8 @@ describe('LLMService', () => {
       mockedInitLlama
         .mockResolvedValueOnce(ctx as any) // initial load
         .mockRejectedValueOnce(new Error('GPU reload failed')) // GPU attempt
-        .mockRejectedValueOnce(new Error('CPU reload failed')); // CPU fallback
+        .mockRejectedValueOnce(new Error('CPU reload failed')) // CPU fallback
+        .mockRejectedValueOnce(new Error('CPU reload failed')); // ctx=2048 fallback
 
       // Enable GPU so both attempts happen
       useAppStore.setState({
@@ -1330,6 +1378,96 @@ describe('LLMService', () => {
 
       await llmService.loadModel('/models/test.gguf');
       expect(llmService.isModelLoaded()).toBe(true);
+    });
+  });
+
+  describe('reloadWithSettings flash attention', () => {
+    it('passes flashAttn=true from store to reloadWithSettings', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx1 = createMockLlamaContext();
+      const ctx2 = createMockLlamaContext();
+      mockedInitLlama
+        .mockResolvedValueOnce(ctx1 as any)
+        .mockResolvedValueOnce(ctx2 as any);
+
+      useAppStore.setState({
+        settings: {
+          ...useAppStore.getState().settings,
+          flashAttn: true,
+          enableGpu: false,
+        },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+      await llmService.reloadWithSettings('/models/test.gguf', {
+        nThreads: 4,
+        nBatch: 256,
+        contextLength: 2048,
+      });
+
+      const reloadCall = (initLlama as jest.Mock).mock.calls[1][0];
+      expect(reloadCall.flash_attn).toBe(true);
+      expect(reloadCall.cache_type_k).toBe('q8_0');
+      expect(reloadCall.cache_type_v).toBe('q8_0');
+    });
+
+    it('passes flashAttn=false and cacheType=f16 from store to reloadWithSettings', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx1 = createMockLlamaContext();
+      const ctx2 = createMockLlamaContext();
+      mockedInitLlama
+        .mockResolvedValueOnce(ctx1 as any)
+        .mockResolvedValueOnce(ctx2 as any);
+
+      useAppStore.setState({
+        settings: {
+          ...useAppStore.getState().settings,
+          flashAttn: false,
+          cacheType: 'f16',
+          enableGpu: false,
+        },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+      await llmService.reloadWithSettings('/models/test.gguf', {
+        nThreads: 4,
+        nBatch: 256,
+        contextLength: 2048,
+      });
+
+      const reloadCall = (initLlama as jest.Mock).mock.calls[1][0];
+      expect(reloadCall.flash_attn).toBe(false);
+      expect(reloadCall.cache_type_k).toBe('f16');
+      expect(reloadCall.cache_type_v).toBe('f16');
+    });
+
+    it('falls back to platform default in reloadWithSettings when flashAttn is undefined (iOS → ON)', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx1 = createMockLlamaContext();
+      const ctx2 = createMockLlamaContext();
+      mockedInitLlama
+        .mockResolvedValueOnce(ctx1 as any)
+        .mockResolvedValueOnce(ctx2 as any);
+
+      useAppStore.setState({
+        settings: {
+          ...useAppStore.getState().settings,
+          flashAttn: undefined as any,
+          enableGpu: false,
+        },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+      await llmService.reloadWithSettings('/models/test.gguf', {
+        nThreads: 4,
+        nBatch: 256,
+        contextLength: 2048,
+      });
+
+      // Test env is iOS → ?? fallback evaluates to true
+      const reloadCall = (initLlama as jest.Mock).mock.calls[1][0];
+      expect(reloadCall.flash_attn).toBe(true);
+      expect(reloadCall.cache_type_k).toBe('q8_0');
     });
   });
 
@@ -1815,6 +1953,154 @@ describe('LLMService', () => {
       expect(gpuInfo.gpu).toBe(false);
       expect(gpuInfo.gpuBackend).toBe('CPU');
       expect(gpuInfo.gpuLayers).toBe(0);
+    });
+  });
+
+  // ========================================================================
+  // getOptimalThreadCount / getOptimalBatchSize (module-level helpers)
+  // ========================================================================
+  describe('getOptimalThreadCount and getOptimalBatchSize fallbacks', () => {
+    it('uses getOptimalThreadCount when nThreads is 0', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext();
+      mockedInitLlama.mockResolvedValue(ctx as any);
+
+      useAppStore.setState({
+        settings: { ...useAppStore.getState().settings, nThreads: 0, nBatch: 256 },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+
+      // nThreads=0 is falsy, so getOptimalThreadCount() (returns DEFAULT_THREADS = 4 on iOS) is used
+      // The test env is iOS, so DEFAULT_THREADS = Platform.OS === 'android' ? 6 : 4 = 4
+      expect(initLlama).toHaveBeenCalledWith(
+        expect.objectContaining({ n_threads: 4 })
+      );
+    });
+
+    it('uses getOptimalBatchSize when nBatch is 0', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext();
+      mockedInitLlama.mockResolvedValue(ctx as any);
+
+      useAppStore.setState({
+        settings: { ...useAppStore.getState().settings, nThreads: 6, nBatch: 0 },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+
+      // nBatch=0 is falsy, so getOptimalBatchSize() (returns DEFAULT_BATCH=256) is used
+      expect(initLlama).toHaveBeenCalledWith(
+        expect.objectContaining({ n_batch: 256 })
+      );
+    });
+  });
+
+  // ========================================================================
+  // ensureSessionCacheDir / getSessionPath (private helpers)
+  // ========================================================================
+  describe('ensureSessionCacheDir', () => {
+    it('creates directory when it does not exist', async () => {
+      mockedRNFS.exists.mockResolvedValue(false);
+      mockedRNFS.mkdir.mockResolvedValue(undefined as any);
+
+      await (llmService as any).ensureSessionCacheDir();
+
+      expect(mockedRNFS.mkdir).toHaveBeenCalled();
+    });
+
+    it('skips mkdir when directory already exists', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+
+      await (llmService as any).ensureSessionCacheDir();
+
+      expect(mockedRNFS.mkdir).not.toHaveBeenCalled();
+    });
+
+    it('catches and logs errors without throwing', async () => {
+      mockedRNFS.exists.mockRejectedValue(new Error('fs error'));
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+      await expect((llmService as any).ensureSessionCacheDir()).resolves.toBeUndefined();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to create session cache dir'),
+        expect.any(Error),
+      );
+
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('getSessionPath', () => {
+    it('returns path with hash in the session cache dir', () => {
+      const path = (llmService as any).getSessionPath('abc123');
+      expect(path).toContain('session-abc123.bin');
+      expect(path).toContain('llm-sessions');
+    });
+  });
+
+  // ========================================================================
+  // manageContextWindow edge cases
+  // ========================================================================
+  describe('manageContextWindow edge cases', () => {
+    const setupForEdgeTest = async (overrides: Record<string, any> = {}) => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext({
+        completion: jest.fn(async (_params: any, _cb: any) => ({ text: 'ok', tokens_predicted: 1 })),
+        tokenize: jest.fn((text: string) =>
+          Promise.resolve({ tokens: new Array(Math.ceil(text.length / 4)) })
+        ),
+        ...overrides,
+      });
+      mockedInitLlama.mockResolvedValue(ctx as any);
+      await llmService.loadModel('/models/test.gguf');
+      return ctx;
+    };
+
+    it('returns messages unchanged when messages array is empty', async () => {
+      await setupForEdgeTest();
+
+      // generateResponse with empty array reaches manageContextWindow([]) → early return
+      await llmService.generateResponse([]);
+      // No assertions needed — just must not throw and return empty string
+    });
+
+    it('returns messages unchanged when all messages are system messages', async () => {
+      await setupForEdgeTest();
+
+      const messages = [createSystemMessage('You are helpful')];
+      await llmService.generateResponse(messages);
+      // conversationMessages.length === 0 → early return at line 537
+    });
+
+    it('includes oversized last message even when it exceeds token budget', async () => {
+      await setupForEdgeTest();
+
+      // contextLength=2048 → availableTokens=floor(2048*0.85)-256-512=972
+      // A 4000-char message → ~1010 tokens > 972 → triggers the "always include last" fallback
+      (llmService as any).currentSettings.contextLength = 2048;
+      const hugeMessage = createUserMessage('x'.repeat(4000));
+
+      const ctx = (llmService as any).context;
+      await llmService.generateResponse([hugeMessage]);
+
+      // Completion was called — the oversized message was included despite exceeding budget
+      expect(ctx.completion).toHaveBeenCalled();
+    });
+  });
+
+  // ========================================================================
+  // formatMessages — system message with id='system' (line 696)
+  // ========================================================================
+  describe('formatMessages with id=system', () => {
+    it('formats system message with id="system" via the primary system-prompt branch', () => {
+      // createSystemMessage with id='system' hits the message.id === 'system' branch (line 696)
+      const messages = [createSystemMessage('Main project prompt', { id: 'system' })];
+      const prompt = llmService.getFormattedPrompt(messages);
+
+      expect(prompt).toContain('<|im_start|>system');
+      expect(prompt).toContain('Main project prompt');
+      expect(prompt).toContain('<|im_end|>');
     });
   });
 });

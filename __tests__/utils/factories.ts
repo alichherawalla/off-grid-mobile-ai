@@ -42,7 +42,7 @@ export const resetIdCounter = (): void => {
 
 export interface MessageFactoryOptions {
   id?: string;
-  role?: 'user' | 'assistant' | 'system';
+  role?: 'user' | 'assistant' | 'system' | 'tool';
   content?: string;
   timestamp?: number;
   isStreaming?: boolean;
@@ -51,6 +51,9 @@ export interface MessageFactoryOptions {
   attachments?: MediaAttachment[];
   generationTimeMs?: number;
   generationMeta?: GenerationMeta;
+  toolCallId?: string;
+  toolCalls?: Array<{ id?: string; name: string; arguments: string }>;
+  toolName?: string;
 }
 
 export const createMessage = (options: MessageFactoryOptions = {}): Message => ({
@@ -64,6 +67,9 @@ export const createMessage = (options: MessageFactoryOptions = {}): Message => (
   attachments: options.attachments,
   generationTimeMs: options.generationTimeMs,
   generationMeta: options.generationMeta,
+  toolCallId: options.toolCallId,
+  toolCalls: options.toolCalls,
+  toolName: options.toolName,
 });
 
 export const createUserMessage = (content: string, options: Omit<MessageFactoryOptions, 'role' | 'content'> = {}): Message =>
@@ -74,6 +80,9 @@ export const createAssistantMessage = (content: string, options: Omit<MessageFac
 
 export const createSystemMessage = (content: string, options: Omit<MessageFactoryOptions, 'role' | 'content'> = {}): Message =>
   createMessage({ ...options, role: 'system', content });
+
+export const createToolResultMessage = (toolName: string, content: string, options: Omit<MessageFactoryOptions, 'role' | 'content' | 'toolName'> = {}): Message =>
+  createMessage({ ...options, role: 'tool', content, toolName });
 
 // ============================================================================
 // Conversation Factory

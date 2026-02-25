@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Project } from '../types';
+import { generateId } from '../utils/generateId';
 
 interface ProjectState {
   projects: Project[];
@@ -13,8 +14,6 @@ interface ProjectState {
   getProject: (id: string) => Project | undefined;
   duplicateProject: (id: string) => Project | null;
 }
-
-const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 // Default projects as examples
 const DEFAULT_PROJECTS: Project[] = [

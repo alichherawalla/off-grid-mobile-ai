@@ -189,7 +189,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
 
   return (
     <SafeAreaView style={styles.container}>
-      <View testID="onboarding-screen" style={{flex: 1}}>
+      <View testID="onboarding-screen" style={styles.container}>
       <View style={styles.header}>
         {!isLastSlide && (
           <Button

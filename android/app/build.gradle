@@ -83,8 +83,8 @@ android {
         applicationId "ai.offgridmobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1771279335
-        versionName "0.0.52"
+        versionCode 1771958439
+        versionName "0.0.58"
     }
     signingConfigs {
         debug {
@@ -102,13 +102,12 @@ android {
             }
         }
     }
-    flavorDimensions "store"
-    productFlavors {
-        standard {
-            dimension "store"
-        }
-        fdroid {
-            dimension "store"
+    lint {
+        baseline = file("lint-baseline.xml")
+    }
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
         }
     }
     buildTypes {
@@ -120,6 +119,15 @@ android {
             signingConfig signingConfigs.release.storeFile ? signingConfigs.release : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+    packaging {
+        jniLibs {
+            // Force compressed .so storage so Play Store extracts libs to nativeLibraryDir
+            // as real filesystem files. Without this, AGP's default "uncompressed native libs"
+            // stores .so files inside the APK zip — File.exists() returns false for them and
+            // exec() fails with EACCES (error=13) because you can't fork-exec from a zip entry.
+            useLegacyPackaging = true
         }
     }
 }
@@ -139,9 +147,10 @@ dependencies {
 
     // PDF text extraction (used by PDFExtractorModule)
     implementation("io.legere:pdfiumandroid:1.0.35")
-}
 
-// Exclude Google Play Install Referrer only for F-Droid builds (non-free, flagged by F-Droid)
-configurations.matching { it.name.startsWith("fdroid") }.all {
-    exclude group: 'com.android.installreferrer', module: 'installreferrer'
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.13")
+    testImplementation("org.mockito:mockito-core:5.11.0")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
+    testImplementation("androidx.test:core:1.6.1")
 }

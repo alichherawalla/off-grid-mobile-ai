@@ -16,11 +16,11 @@ import { useAppStore } from '../stores';
 import { hardwareService, huggingFaceService, modelManager } from '../services';
 import { ModelFile, DownloadedModel } from '../types';
 import { RootStackParamList } from '../navigation/types';
+import logger from '../utils/logger';
 
 type ModelDownloadScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'ModelDownload'>;
 };
-
 export const ModelDownloadScreen: React.FC<ModelDownloadScreenProps> = ({
   navigation,
 }) => {
@@ -65,8 +65,8 @@ export const ModelDownloadScreen: React.FC<ModelDownloadScreenProps> = ({
       );
       setRecommendedModels(compatibleModels);
 
-      // Fetch files for the first few compatible models
-      const filesToFetch = compatibleModels.slice(0, 3);
+      // Fetch files for all compatible models
+      const filesToFetch = compatibleModels;
       const filesMap: Record<string, ModelFile[]> = {};
 
       await Promise.all(
@@ -81,14 +81,14 @@ export const ModelDownloadScreen: React.FC<ModelDownloadScreenProps> = ({
             );
             filesMap[model.id] = recommendedFiles.length > 0 ? recommendedFiles : files.slice(0, 2);
           } catch (error) {
-            console.error(`Error fetching files for ${model.id}:`, error);
+            logger.error(`Error fetching files for ${model.id}:`, error);
           }
         })
       );
 
       setModelFiles(filesMap);
     } catch (error) {
-      console.error('Error initializing:', error);
+      logger.error('Error initializing:', error);
       setAlertState(showAlert('Error', 'Failed to initialize. Please try again.'));
     } finally {
       setIsLoading(false);
@@ -112,6 +112,7 @@ export const ModelDownloadScreen: React.FC<ModelDownloadScreenProps> = ({
   const handleDownload = async (modelId: string, file: ModelFile) => {
     setSelectedFile(file);
     const downloadKey = `${modelId}/${file.name}`;
+    setDownloadProgress(downloadKey, { progress: 0, bytesDownloaded: 0, totalBytes: file.size || 0 });
 
     const onProgress = (progress: {progress: number; bytesDownloaded: number; totalBytes: number}) => {
       setDownloadProgress(downloadKey, {
@@ -143,13 +144,10 @@ export const ModelDownloadScreen: React.FC<ModelDownloadScreenProps> = ({
     };
 
     try {
-      if (modelManager.isBackgroundDownloadSupported()) {
-        await modelManager.downloadModelBackground(modelId, file, onProgress, onComplete, onError);
-      } else {
-        await modelManager.downloadModel(modelId, file, onProgress, onComplete, onError);
-      }
+      const info = await modelManager.downloadModelBackground(modelId, file, onProgress);
+      modelManager.watchDownload(info.downloadId, onComplete, onError);
     } catch (error) {
-      setAlertState(showAlert('Download Failed', (error as Error).message));
+      onError(error as Error);
     }
   };
 
@@ -172,7 +170,7 @@ export const ModelDownloadScreen: React.FC<ModelDownloadScreenProps> = ({
 
   return (
     <SafeAreaView style={styles.container}>
-      <View testID="model-download-screen" style={{flex: 1}}>
+      <View testID="model-download-screen" style={styles.container}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <Text style={styles.title}>Download Your First Model</Text>
@@ -244,7 +242,6 @@ export const ModelDownloadScreen: React.FC<ModelDownloadScreenProps> = ({
           </Card>
         )}
       </ScrollView>
-
       <View style={styles.footer}>
         <Button
           title="Skip for Now"
@@ -264,7 +261,6 @@ export const ModelDownloadScreen: React.FC<ModelDownloadScreenProps> = ({
     </SafeAreaView>
   );
 };
-
 const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
   container: {
     flex: 1,
@@ -323,7 +319,7 @@ const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
     marginBottom: 16,
   },
   warningCard: {
-    backgroundColor: colors.warning + '20',
+    backgroundColor: `${colors.warning  }20`,
     borderWidth: 1,
     borderColor: colors.warning,
   },

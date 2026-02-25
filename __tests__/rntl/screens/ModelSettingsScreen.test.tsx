@@ -11,6 +11,7 @@
  * - Detection method buttons
  * - Enhance image prompts toggle
  * - Context length slider
+ * - Accordion expand/collapse behavior
  */
 
 import React from 'react';
@@ -45,6 +46,21 @@ const renderScreen = () => {
   );
 };
 
+/** Render screen with specific accordions expanded */
+const renderWithSections = (...sections: ('prompt' | 'image' | 'text' | 'performance')[]) => {
+  const result = renderScreen();
+  const testIDMap: Record<string, string> = {
+    prompt: 'system-prompt-accordion',
+    image: 'image-generation-accordion',
+    text: 'text-generation-accordion',
+    performance: 'performance-accordion',
+  };
+  for (const section of sections) {
+    fireEvent.press(result.getByTestId(testIDMap[section]));
+  }
+  return result;
+};
+
 describe('ModelSettingsScreen', () => {
   beforeEach(() => {
     resetStores();
@@ -60,7 +76,7 @@ describe('ModelSettingsScreen', () => {
       expect(getByText('Model Settings')).toBeTruthy();
     });
 
-    it('shows all section titles', () => {
+    it('shows all section titles as accordion headers', () => {
       const { getByText } = renderScreen();
       expect(getByText('Default System Prompt')).toBeTruthy();
       expect(getByText('Image Generation')).toBeTruthy();
@@ -68,24 +84,77 @@ describe('ModelSettingsScreen', () => {
       expect(getByText('Performance')).toBeTruthy();
     });
 
-    it('shows section help text for system prompt', () => {
-      const { getByText } = renderScreen();
+    it('shows section help text for system prompt when expanded', () => {
+      const { getByText } = renderWithSections('prompt');
       expect(getByText(/Instructions given to the model/)).toBeTruthy();
     });
 
-    it('shows section help text for image generation', () => {
-      const { getByText } = renderScreen();
+    it('sections are collapsed by default', () => {
+      const { queryByText } = renderScreen();
+      // Content inside collapsed sections should not be visible
+      expect(queryByText('Temperature')).toBeNull();
+      expect(queryByText('CPU Threads')).toBeNull();
+      expect(queryByText(/Instructions given to the model/)).toBeNull();
+    });
+
+    it('shows section help text for image generation when expanded', () => {
+      const { getByText } = renderWithSections('image');
       expect(getByText(/Control how image generation/)).toBeTruthy();
     });
 
-    it('shows section help text for text generation', () => {
-      const { getByText } = renderScreen();
+    it('shows section help text for text generation when expanded', () => {
+      const { getByText } = renderWithSections('text');
       expect(getByText(/Configure LLM behavior/)).toBeTruthy();
     });
 
-    it('shows section help text for performance', () => {
-      const { getByText } = renderScreen();
+    it('shows section help text for performance when expanded', () => {
+      const { getByText } = renderWithSections('performance');
       expect(getByText(/Tune inference speed/)).toBeTruthy();
+    });
+  });
+
+  // ============================================================================
+  // Accordion Behavior
+  // ============================================================================
+  describe('accordion behavior', () => {
+    it('expands image generation section when header is pressed', () => {
+      const { getByTestId, queryByText } = renderScreen();
+      expect(queryByText('Automatic Detection')).toBeNull();
+
+      fireEvent.press(getByTestId('image-generation-accordion'));
+      expect(queryByText('Automatic Detection')).toBeTruthy();
+    });
+
+    it('collapses image generation section when header is pressed again', () => {
+      const { getByTestId, queryByText } = renderScreen();
+
+      fireEvent.press(getByTestId('image-generation-accordion'));
+      expect(queryByText('Automatic Detection')).toBeTruthy();
+
+      fireEvent.press(getByTestId('image-generation-accordion'));
+      expect(queryByText('Automatic Detection')).toBeNull();
+    });
+
+    it('expands text generation section when header is pressed', () => {
+      const { getByTestId, queryByText } = renderScreen();
+      expect(queryByText('Temperature')).toBeNull();
+
+      fireEvent.press(getByTestId('text-generation-accordion'));
+      expect(queryByText('Temperature')).toBeTruthy();
+    });
+
+    it('expands performance section when header is pressed', () => {
+      const { getByTestId, queryByText } = renderScreen();
+      expect(queryByText('CPU Threads')).toBeNull();
+
+      fireEvent.press(getByTestId('performance-accordion'));
+      expect(queryByText('CPU Threads')).toBeTruthy();
+    });
+
+    it('allows multiple sections to be open simultaneously', () => {
+      const { queryByText } = renderWithSections('text', 'performance');
+      expect(queryByText('Temperature')).toBeTruthy();
+      expect(queryByText('CPU Threads')).toBeTruthy();
     });
   });
 
@@ -94,12 +163,12 @@ describe('ModelSettingsScreen', () => {
   // ============================================================================
   describe('system prompt', () => {
     it('shows default system prompt text', () => {
-      const { getByDisplayValue } = renderScreen();
+      const { getByDisplayValue } = renderWithSections('prompt');
       expect(getByDisplayValue(/helpful AI assistant/)).toBeTruthy();
     });
 
     it('updates system prompt when text changes', () => {
-      const { getByDisplayValue } = renderScreen();
+      const { getByDisplayValue } = renderWithSections('prompt');
       const input = getByDisplayValue(/helpful AI assistant/);
 
       fireEvent.changeText(input, 'You are a coding assistant.');
@@ -113,7 +182,7 @@ describe('ModelSettingsScreen', () => {
   // ============================================================================
   describe('show generation details toggle', () => {
     it('renders the toggle with label and description', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('text');
       expect(getByText('Show Generation Details')).toBeTruthy();
       expect(getByText('Display tokens/sec, timing, and memory usage on responses')).toBeTruthy();
     });
@@ -124,7 +193,7 @@ describe('ModelSettingsScreen', () => {
     });
 
     it('updates store to true when toggled on', () => {
-      const { getAllByRole } = renderScreen();
+      const { getAllByRole } = renderWithSections('text');
       const switches = getAllByRole('switch');
 
       // Find the Show Generation Details switch by toggling and checking
@@ -146,7 +215,7 @@ describe('ModelSettingsScreen', () => {
     it('updates store to false when toggled off', () => {
       useAppStore.getState().updateSettings({ showGenerationDetails: true });
 
-      const { getAllByRole } = renderScreen();
+      const { getAllByRole } = renderWithSections('text');
       const switches = getAllByRole('switch');
 
       for (const sw of switches) {
@@ -166,10 +235,39 @@ describe('ModelSettingsScreen', () => {
     it('syncs with store when showGenerationDetails is already true', () => {
       useAppStore.getState().updateSettings({ showGenerationDetails: true });
 
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('text');
       expect(getByText('Show Generation Details')).toBeTruthy();
       expect(useAppStore.getState().settings.showGenerationDetails).toBe(true);
     });
+  });
+
+  // ============================================================================
+  // Flash Attention Toggle
+  // ============================================================================
+  describe('flash attention toggle', () => {
+    it('renders Flash Attention label', () => {
+      const { getByText } = renderWithSections('performance');
+      expect(getByText('Flash Attention')).toBeTruthy();
+    });
+
+    it('updates store to true when Flash Attention switch is turned on', () => {
+      useAppStore.getState().updateSettings({ flashAttn: false });
+      const { getByTestId } = renderWithSections('performance');
+
+      fireEvent(getByTestId('flash-attn-switch'), 'valueChange', true);
+
+      expect(useAppStore.getState().settings.flashAttn).toBe(true);
+    });
+
+    it('updates store to false when Flash Attention switch is turned off', () => {
+      useAppStore.getState().updateSettings({ flashAttn: true });
+      const { getByTestId } = renderWithSections('performance');
+
+      fireEvent(getByTestId('flash-attn-switch'), 'valueChange', false);
+
+      expect(useAppStore.getState().settings.flashAttn).toBe(false);
+    });
+
   });
 
   // ============================================================================
@@ -177,25 +275,25 @@ describe('ModelSettingsScreen', () => {
   // ============================================================================
   describe('image generation settings', () => {
     it('shows Automatic Detection toggle', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
       expect(getByText('Automatic Detection')).toBeTruthy();
     });
 
     it('shows auto mode description when enabled', () => {
       useAppStore.getState().updateSettings({ imageGenerationMode: 'auto' });
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
       expect(getByText(/LLM will classify/)).toBeTruthy();
     });
 
     it('shows manual mode description when disabled', () => {
       useAppStore.getState().updateSettings({ imageGenerationMode: 'manual' });
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
       expect(getByText(/Only generate images when you tap/)).toBeTruthy();
     });
 
     it('toggles image generation mode', () => {
       useAppStore.getState().updateSettings({ imageGenerationMode: 'manual' });
-      const { getAllByRole } = renderScreen();
+      const { getAllByRole } = renderWithSections('image');
       const switches = getAllByRole('switch');
 
       // Find the Automatic Detection switch
@@ -212,42 +310,42 @@ describe('ModelSettingsScreen', () => {
 
     it('shows auto mode note', () => {
       useAppStore.getState().updateSettings({ imageGenerationMode: 'auto' });
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
       expect(getByText(/In Auto mode/)).toBeTruthy();
     });
 
     it('shows manual mode note', () => {
       useAppStore.getState().updateSettings({ imageGenerationMode: 'manual' });
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
       expect(getByText(/In Manual mode/)).toBeTruthy();
     });
 
     it('shows Image Steps slider label and value', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
       expect(getByText('Image Steps')).toBeTruthy();
       // Default value
       expect(getByText('20')).toBeTruthy();
     });
 
     it('shows Guidance Scale slider label and value', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
       expect(getByText('Guidance Scale')).toBeTruthy();
       expect(getByText('7.5')).toBeTruthy();
     });
 
     it('shows Image Threads slider label', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
       expect(getByText('Image Threads')).toBeTruthy();
     });
 
     it('shows Image Size slider label', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
       expect(getByText('Image Size')).toBeTruthy();
     });
 
     it('shows Detection Method buttons when auto mode enabled', () => {
       useAppStore.getState().updateSettings({ imageGenerationMode: 'auto' });
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
       expect(getByText('Detection Method')).toBeTruthy();
       expect(getByText('Pattern')).toBeTruthy();
       expect(getByText('LLM')).toBeTruthy();
@@ -255,19 +353,19 @@ describe('ModelSettingsScreen', () => {
 
     it('hides Detection Method when manual mode', () => {
       useAppStore.getState().updateSettings({ imageGenerationMode: 'manual' });
-      const { queryByText } = renderScreen();
+      const { queryByText } = renderWithSections('image');
       expect(queryByText('Detection Method')).toBeNull();
     });
 
     it('shows Enhance Image Prompts toggle', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
       expect(getByText('Enhance Image Prompts')).toBeTruthy();
     });
 
     it('toggles enhance image prompts', () => {
       expect(useAppStore.getState().settings.enhanceImagePrompts).toBe(false);
 
-      const { getAllByRole } = renderScreen();
+      const { getAllByRole } = renderWithSections('image');
       const switches = getAllByRole('switch');
 
       for (const sw of switches) {
@@ -283,13 +381,13 @@ describe('ModelSettingsScreen', () => {
 
     it('shows enhance prompts on description', () => {
       useAppStore.getState().updateSettings({ enhanceImagePrompts: true });
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
       expect(getByText(/Text model refines your prompt/)).toBeTruthy();
     });
 
     it('shows enhance prompts off description', () => {
       useAppStore.getState().updateSettings({ enhanceImagePrompts: false });
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
       expect(getByText(/Use your prompt directly/)).toBeTruthy();
     });
   });
@@ -299,42 +397,42 @@ describe('ModelSettingsScreen', () => {
   // ============================================================================
   describe('text generation settings', () => {
     it('shows Temperature slider label and default value', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('text');
       expect(getByText('Temperature')).toBeTruthy();
       expect(getByText('0.70')).toBeTruthy();
     });
 
     it('shows Temperature description', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('text');
       expect(getByText(/Higher = more creative/)).toBeTruthy();
     });
 
     it('shows Max Tokens slider label and default value', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('text');
       expect(getByText('Max Tokens')).toBeTruthy();
       expect(getByText('1.0K')).toBeTruthy(); // 1024 -> 1.0K
     });
 
     it('shows Top P slider label and default value', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('text');
       expect(getByText('Top P')).toBeTruthy();
       expect(getByText('0.90')).toBeTruthy();
     });
 
     it('shows Repeat Penalty slider label and default value', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('text');
       expect(getByText('Repeat Penalty')).toBeTruthy();
       expect(getByText('1.10')).toBeTruthy();
     });
 
     it('shows Context Length slider label and default value', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('text');
       expect(getByText('Context Length')).toBeTruthy();
       expect(getByText('2.0K')).toBeTruthy(); // 2048 -> 2.0K
     });
 
     it('shows context length description', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('text');
       expect(getByText(/Max conversation memory/)).toBeTruthy();
     });
   });
@@ -344,37 +442,37 @@ describe('ModelSettingsScreen', () => {
   // ============================================================================
   describe('performance settings', () => {
     it('shows CPU Threads slider label and default value', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('performance');
       expect(getByText('CPU Threads')).toBeTruthy();
       expect(getByText('6')).toBeTruthy();
     });
 
     it('shows Batch Size slider label and default value', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('performance');
       expect(getByText('Batch Size')).toBeTruthy();
       expect(getByText('256')).toBeTruthy();
     });
 
     it('shows Model Loading Strategy label', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('performance');
       expect(getByText('Model Loading Strategy')).toBeTruthy();
     });
 
     it('shows Save Memory and Fast buttons', () => {
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('performance');
       expect(getByText('Save Memory')).toBeTruthy();
       expect(getByText('Fast')).toBeTruthy();
     });
 
     it('shows memory strategy description when memory mode', () => {
       useAppStore.getState().updateSettings({ modelLoadingStrategy: 'memory' });
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('performance');
       expect(getByText(/Load models on demand/)).toBeTruthy();
     });
 
     it('shows performance strategy description when performance mode', () => {
       useAppStore.getState().updateSettings({ modelLoadingStrategy: 'performance' });
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('performance');
       expect(getByText(/Keep models loaded/)).toBeTruthy();
     });
   });
@@ -384,13 +482,11 @@ describe('ModelSettingsScreen', () => {
   // ============================================================================
   describe('settings updates via sliders', () => {
     it('updates temperature when slider completes', () => {
-      const { UNSAFE_getAllByType } = renderScreen();
+      const { UNSAFE_getAllByType } = renderWithSections('text');
       const { View } = require('react-native');
-      // Find all slider-like components
       const allViews = UNSAFE_getAllByType(View);
       const sliders = allViews.filter((v: any) => v.props.onSlidingComplete && v.props.testID?.startsWith('slider-'));
 
-      // Find temperature slider (default value 0.7)
       const tempSlider = sliders.find((s: any) => s.props.value === 0.7);
       if (tempSlider) {
         fireEvent(tempSlider, 'slidingComplete', 1.5);
@@ -399,7 +495,7 @@ describe('ModelSettingsScreen', () => {
     });
 
     it('updates maxTokens when slider completes', () => {
-      const { UNSAFE_getAllByType } = renderScreen();
+      const { UNSAFE_getAllByType } = renderWithSections('text');
       const { View } = require('react-native');
       const allViews = UNSAFE_getAllByType(View);
       const sliders = allViews.filter((v: any) => v.props.onSlidingComplete && v.props.testID?.startsWith('slider-'));
@@ -412,7 +508,7 @@ describe('ModelSettingsScreen', () => {
     });
 
     it('updates imageSteps when slider completes', () => {
-      const { UNSAFE_getAllByType } = renderScreen();
+      const { UNSAFE_getAllByType } = renderWithSections('image');
       const { View } = require('react-native');
       const allViews = UNSAFE_getAllByType(View);
       const sliders = allViews.filter((v: any) => v.props.onSlidingComplete && v.props.testID?.startsWith('slider-'));
@@ -425,7 +521,7 @@ describe('ModelSettingsScreen', () => {
     });
 
     it('updates nThreads when slider completes', () => {
-      const { UNSAFE_getAllByType } = renderScreen();
+      const { UNSAFE_getAllByType } = renderWithSections('performance');
       const { View } = require('react-native');
       const allViews = UNSAFE_getAllByType(View);
       const sliders = allViews.filter((v: any) => v.props.onSlidingComplete && v.props.testID?.startsWith('slider-'));
@@ -438,7 +534,7 @@ describe('ModelSettingsScreen', () => {
     });
 
     it('updates contextLength when slider completes', () => {
-      const { UNSAFE_getAllByType } = renderScreen();
+      const { UNSAFE_getAllByType } = renderWithSections('text');
       const { View } = require('react-native');
       const allViews = UNSAFE_getAllByType(View);
       const sliders = allViews.filter((v: any) => v.props.onSlidingComplete && v.props.testID?.startsWith('slider-'));
@@ -457,17 +553,17 @@ describe('ModelSettingsScreen', () => {
   describe('model loading strategy buttons', () => {
     it('updates to memory strategy when "Save Memory" is pressed', () => {
       useAppStore.getState().updateSettings({ modelLoadingStrategy: 'performance' });
-      const { getByText } = renderScreen();
+      const { getByTestId } = renderWithSections('performance');
 
-      fireEvent.press(getByText('Save Memory'));
+      fireEvent.press(getByTestId('strategy-memory-button'));
       expect(useAppStore.getState().settings.modelLoadingStrategy).toBe('memory');
     });
 
     it('updates to performance strategy when "Fast" is pressed', () => {
       useAppStore.getState().updateSettings({ modelLoadingStrategy: 'memory' });
-      const { getByText } = renderScreen();
+      const { getByTestId } = renderWithSections('performance');
 
-      fireEvent.press(getByText('Fast'));
+      fireEvent.press(getByTestId('strategy-performance-button'));
       expect(useAppStore.getState().settings.modelLoadingStrategy).toBe('performance');
     });
   });
@@ -499,13 +595,72 @@ describe('ModelSettingsScreen', () => {
   describe('GPU settings', () => {
     // Platform.OS is 'ios' in the test environment, so GPU section is hidden
     it('does not show GPU Acceleration on iOS', () => {
-      const { queryByText } = renderScreen();
+      const { queryByText } = renderWithSections('performance');
       expect(queryByText('GPU Acceleration')).toBeNull();
     });
 
     it('does not show GPU Layers on iOS', () => {
-      const { queryByText } = renderScreen();
+      const { queryByText } = renderWithSections('performance');
       expect(queryByText('GPU Layers')).toBeNull();
+    });
+
+    // Android-specific GPU tests: mock Platform.OS before each, restore after
+    describe('on Android platform', () => {
+      let originalOS: string;
+      const { Platform } = require('react-native');
+
+      beforeEach(() => {
+        originalOS = Platform.OS;
+        Object.defineProperty(Platform, 'OS', { get: () => 'android', configurable: true });
+      });
+
+      afterEach(() => {
+        Object.defineProperty(Platform, 'OS', { get: () => originalOS, configurable: true });
+      });
+
+      it('shows GPU Acceleration and GPU Layers slider when GPU enabled', () => {
+        useAppStore.getState().updateSettings({ enableGpu: true, gpuLayers: 6 });
+        const { getByText } = renderWithSections('performance');
+        expect(getByText('GPU Acceleration')).toBeTruthy();
+        expect(getByText('GPU Layers')).toBeTruthy();
+      });
+
+      it('does not clamp gpuLayers when flashAttn turned on with layers > 1', () => {
+        useAppStore.getState().updateSettings({ enableGpu: true, flashAttn: false, gpuLayers: 8 });
+        const { getByTestId } = renderWithSections('performance');
+        fireEvent(getByTestId('flash-attn-switch'), 'valueChange', true);
+        expect(useAppStore.getState().settings.flashAttn).toBe(true);
+        // GPU layers are no longer clamped when enabling flash attention
+        expect(useAppStore.getState().settings.gpuLayers).toBe(8);
+      });
+
+      it('updates enableGpu to false when GPU Acceleration switch is toggled off', () => {
+        useAppStore.getState().updateSettings({ enableGpu: true, gpuLayers: 6 });
+        const { getByTestId } = renderWithSections('performance');
+
+        fireEvent(getByTestId('gpu-acceleration-switch'), 'valueChange', false);
+
+        expect(useAppStore.getState().settings.enableGpu).toBe(false);
+      });
+
+      it('updates enableGpu to true when GPU Acceleration switch is toggled on', () => {
+        useAppStore.getState().updateSettings({ enableGpu: false });
+        const { getByTestId } = renderWithSections('performance');
+
+        fireEvent(getByTestId('gpu-acceleration-switch'), 'valueChange', true);
+
+        expect(useAppStore.getState().settings.enableGpu).toBe(true);
+      });
+
+      it('updates gpuLayers when GPU Layers slider completes', () => {
+        useAppStore.getState().updateSettings({ enableGpu: true, flashAttn: false, gpuLayers: 6 });
+        const { getByTestId } = renderWithSections('performance');
+
+        const slider = getByTestId('gpu-layers-slider');
+        fireEvent(slider, 'slidingComplete', 12);
+
+        expect(useAppStore.getState().settings.gpuLayers).toBe(12);
+      });
     });
   });
 
@@ -514,7 +669,7 @@ describe('ModelSettingsScreen', () => {
   // ============================================================================
   describe('additional slider updates', () => {
     it('updates topP when slider completes', () => {
-      const { UNSAFE_getAllByType } = renderScreen();
+      const { UNSAFE_getAllByType } = renderWithSections('text');
       const { View } = require('react-native');
       const allViews = UNSAFE_getAllByType(View);
       const sliders = allViews.filter((v: any) => v.props.onSlidingComplete && v.props.testID?.startsWith('slider-'));
@@ -527,7 +682,7 @@ describe('ModelSettingsScreen', () => {
     });
 
     it('updates repeatPenalty when slider completes', () => {
-      const { UNSAFE_getAllByType } = renderScreen();
+      const { UNSAFE_getAllByType } = renderWithSections('text');
       const { View } = require('react-native');
       const allViews = UNSAFE_getAllByType(View);
       const sliders = allViews.filter((v: any) => v.props.onSlidingComplete && v.props.testID?.startsWith('slider-'));
@@ -540,7 +695,7 @@ describe('ModelSettingsScreen', () => {
     });
 
     it('updates nBatch when slider completes', () => {
-      const { UNSAFE_getAllByType } = renderScreen();
+      const { UNSAFE_getAllByType } = renderWithSections('performance');
       const { View } = require('react-native');
       const allViews = UNSAFE_getAllByType(View);
       const sliders = allViews.filter((v: any) => v.props.onSlidingComplete && v.props.testID?.startsWith('slider-'));
@@ -553,7 +708,7 @@ describe('ModelSettingsScreen', () => {
     });
 
     it('updates guidanceScale when slider completes', () => {
-      const { UNSAFE_getAllByType } = renderScreen();
+      const { UNSAFE_getAllByType } = renderWithSections('image');
       const { View } = require('react-native');
       const allViews = UNSAFE_getAllByType(View);
       const sliders = allViews.filter((v: any) => v.props.onSlidingComplete && v.props.testID?.startsWith('slider-'));
@@ -566,7 +721,7 @@ describe('ModelSettingsScreen', () => {
     });
 
     it('updates imageThreads when slider completes', () => {
-      const { UNSAFE_getAllByType } = renderScreen();
+      const { UNSAFE_getAllByType } = renderWithSections('image');
       const { View } = require('react-native');
       const allViews = UNSAFE_getAllByType(View);
       const sliders = allViews.filter((v: any) => v.props.onSlidingComplete && v.props.testID?.startsWith('slider-'));
@@ -579,7 +734,7 @@ describe('ModelSettingsScreen', () => {
     });
 
     it('updates imageWidth and imageHeight when image size slider completes', () => {
-      const { UNSAFE_getAllByType } = renderScreen();
+      const { UNSAFE_getAllByType } = renderWithSections('image');
       const { View } = require('react-native');
       const allViews = UNSAFE_getAllByType(View);
       const sliders = allViews.filter((v: any) => v.props.onSlidingComplete && v.props.testID?.startsWith('slider-'));
@@ -599,7 +754,7 @@ describe('ModelSettingsScreen', () => {
   describe('image generation mode toggle off', () => {
     it('toggles auto detection off', () => {
       useAppStore.getState().updateSettings({ imageGenerationMode: 'auto' });
-      const { getAllByRole } = renderScreen();
+      const { getAllByRole } = renderWithSections('image');
       const switches = getAllByRole('switch');
 
       for (const sw of switches) {
@@ -623,13 +778,13 @@ describe('ModelSettingsScreen', () => {
   describe('max tokens display formatting', () => {
     it('shows raw number when maxTokens < 1024', () => {
       useAppStore.getState().updateSettings({ maxTokens: 512 });
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('text');
       expect(getByText('512')).toBeTruthy();
     });
 
     it('shows K format when maxTokens >= 1024', () => {
       useAppStore.getState().updateSettings({ maxTokens: 2048 });
-      const { getAllByText } = renderScreen();
+      const { getAllByText } = renderWithSections('text');
       // 2.0K appears for both maxTokens and contextLength (both 2048)
       expect(getAllByText('2.0K').length).toBeGreaterThanOrEqual(1);
     });
@@ -641,7 +796,7 @@ describe('ModelSettingsScreen', () => {
   describe('context length display formatting', () => {
     it('shows raw number when contextLength < 1024', () => {
       useAppStore.getState().updateSettings({ contextLength: 512 });
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('text');
       expect(getByText('512')).toBeTruthy();
     });
   });
@@ -673,12 +828,15 @@ describe('ModelSettingsScreen', () => {
           modelLoadingStrategy: undefined as any,
           enableGpu: undefined as any,
           gpuLayers: undefined as any,
+          flashAttn: undefined as any,
+          cacheType: undefined as any,
           showGenerationDetails: undefined as any,
           enhanceImagePrompts: undefined as any,
+          enabledTools: undefined as any,
         },
       });
 
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image', 'text', 'performance');
       // Verify fallback values are used
       expect(getByText('0.70')).toBeTruthy(); // temperature || 0.7
       expect(getByText('0.90')).toBeTruthy(); // topP || 0.9
@@ -696,14 +854,66 @@ describe('ModelSettingsScreen', () => {
         },
       });
 
-      const { getByDisplayValue } = renderScreen();
+      const { getByDisplayValue } = renderWithSections('prompt');
       expect(getByDisplayValue(/helpful AI assistant/)).toBeTruthy();
     });
 
     it('shows manual mode text when imageGenerationMode is not auto', () => {
       useAppStore.getState().updateSettings({ imageGenerationMode: undefined as any });
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
       expect(getByText(/Only generate images when you tap/)).toBeTruthy();
+    });
+  });
+
+  // ============================================================================
+  // KV Cache Type Buttons
+  // ============================================================================
+  describe('KV cache type buttons', () => {
+    it('renders KV Cache Type label', () => {
+      const { getByText } = renderWithSections('performance');
+      expect(getByText('KV Cache Type')).toBeTruthy();
+    });
+
+    it('renders all three cache type buttons', () => {
+      const { getByText } = renderWithSections('performance');
+      expect(getByText('f16')).toBeTruthy();
+      expect(getByText('q8_0')).toBeTruthy();
+      expect(getByText('q4_0')).toBeTruthy();
+    });
+
+    it('defaults to q8_0', () => {
+      const state = useAppStore.getState();
+      expect(state.settings.cacheType).toBe('q8_0');
+    });
+
+    it('updates store when f16 is pressed', () => {
+      const { getByText } = renderWithSections('performance');
+      fireEvent.press(getByText('f16'));
+      expect(useAppStore.getState().settings.cacheType).toBe('f16');
+    });
+
+    it('updates store when q4_0 is pressed', () => {
+      const { getByText } = renderWithSections('performance');
+      fireEvent.press(getByText('q4_0'));
+      expect(useAppStore.getState().settings.cacheType).toBe('q4_0');
+    });
+
+    it('shows correct description for f16', () => {
+      useAppStore.getState().updateSettings({ cacheType: 'f16' });
+      const { getByText } = renderWithSections('performance');
+      expect(getByText(/Full precision/)).toBeTruthy();
+    });
+
+    it('shows correct description for q8_0', () => {
+      useAppStore.getState().updateSettings({ cacheType: 'q8_0' });
+      const { getByText } = renderWithSections('performance');
+      expect(getByText(/8-bit quantized/)).toBeTruthy();
+    });
+
+    it('shows correct description for q4_0', () => {
+      useAppStore.getState().updateSettings({ cacheType: 'q4_0' });
+      const { getByText } = renderWithSections('performance');
+      expect(getByText(/4-bit quantized/)).toBeTruthy();
     });
   });
 
@@ -717,7 +927,7 @@ describe('ModelSettingsScreen', () => {
 
     it('updates to pattern detection when Pattern is pressed', () => {
       useAppStore.getState().updateSettings({ autoDetectMethod: 'llm' });
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
 
       fireEvent.press(getByText('Pattern'));
       expect(useAppStore.getState().settings.autoDetectMethod).toBe('pattern');
@@ -725,7 +935,7 @@ describe('ModelSettingsScreen', () => {
 
     it('updates to LLM detection when LLM is pressed', () => {
       useAppStore.getState().updateSettings({ autoDetectMethod: 'pattern' });
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
 
       fireEvent.press(getByText('LLM'));
       expect(useAppStore.getState().settings.autoDetectMethod).toBe('llm');
@@ -733,14 +943,57 @@ describe('ModelSettingsScreen', () => {
 
     it('shows pattern description when pattern is selected', () => {
       useAppStore.getState().updateSettings({ autoDetectMethod: 'pattern' });
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
       expect(getByText('Fast keyword matching')).toBeTruthy();
     });
 
     it('shows LLM description when LLM is selected', () => {
       useAppStore.getState().updateSettings({ autoDetectMethod: 'llm' });
-      const { getByText } = renderScreen();
+      const { getByText } = renderWithSections('image');
       expect(getByText('Uses text model for classification')).toBeTruthy();
+    });
+  });
+
+  // ============================================================================
+  // Reset to Defaults
+  // ============================================================================
+  describe('reset to defaults', () => {
+    it('renders reset button', () => {
+      const { getByTestId } = renderScreen();
+      expect(getByTestId('reset-settings-button')).toBeTruthy();
+    });
+
+    it('shows confirmation alert when pressed', () => {
+      const { getByTestId, getByText } = renderScreen();
+      fireEvent.press(getByTestId('reset-settings-button'));
+      expect(getByText('Reset All Settings')).toBeTruthy();
+    });
+
+    it('resets all settings to defaults when confirmed', () => {
+      useAppStore.getState().updateSettings({
+        temperature: 1.5,
+        maxTokens: 4096,
+        nThreads: 2,
+        nBatch: 64,
+        cacheType: 'f16',
+        flashAttn: false,
+        enableGpu: true,
+        gpuLayers: 20,
+      });
+
+      const { getByTestId, getByText } = renderScreen();
+      fireEvent.press(getByTestId('reset-settings-button'));
+      fireEvent.press(getByText('Reset'));
+
+      const s = useAppStore.getState().settings;
+      expect(s.temperature).toBe(0.7);
+      expect(s.maxTokens).toBe(1024);
+      expect(s.nThreads).toBe(6);
+      expect(s.nBatch).toBe(256);
+      expect(s.cacheType).toBe('q8_0');
+      expect(s.flashAttn).toBe(true);
+      expect(s.enableGpu).toBe(false);
+      expect(s.gpuLayers).toBe(1);
     });
   });
 });

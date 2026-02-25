@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
+import { Linking } from 'react-native';
 import Markdown from '@ronradtke/react-native-markdown-display';
 import { useTheme } from '../theme';
 import type { ThemeColors } from '../theme';
@@ -16,8 +17,13 @@ export function MarkdownText({ children, dimmed }: MarkdownTextProps) {
     [colors, dimmed],
   );
 
+  const handleLinkPress = useCallback((url: string) => {
+    Linking.openURL(url);
+    return false;
+  }, []);
+
   return (
-    <Markdown style={markdownStyles}>{children}</Markdown>
+    <Markdown style={markdownStyles} onLinkPress={handleLinkPress}>{children}</Markdown>
   );
 }
 

@@ -80,7 +80,7 @@ export const ProjectsScreen: React.FC = () => {
       <Swipeable
         renderRightActions={() => renderRightActions(item)}
         overshootRight={false}
-        containerStyle={{ overflow: 'visible' }}
+        containerStyle={styles.swipeableContainer}
       >
         <AnimatedListItem
           index={index}
@@ -170,6 +170,9 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  swipeableContainer: {
+    overflow: 'visible' as const,
   },
   header: {
     flexDirection: 'row' as const,

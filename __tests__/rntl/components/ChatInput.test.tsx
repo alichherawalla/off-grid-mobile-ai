@@ -103,11 +103,7 @@ describe('ChatInput', () => {
       downloadedModelId: null,
     });
 
-    mockUseAppStore.mockReturnValue({
-      settings: {
-        imageGenerationMode: 'manual',
-      },
-    });
+    mockUseAppStore.mockReturnValue({});
 
     mockUseWhisperTranscription.mockReturnValue({
       isRecording: false,
@@ -136,7 +132,7 @@ describe('ChatInput', () => {
     it('renders text input with default placeholder', () => {
       const { getByPlaceholderText } = render(<ChatInput {...defaultProps} />);
 
-      expect(getByPlaceholderText('Type a message...')).toBeTruthy();
+      expect(getByPlaceholderText('Message')).toBeTruthy();
     });
 
     it('updates input value on text change', () => {
@@ -180,7 +176,7 @@ describe('ChatInput', () => {
       expect(onSend).toHaveBeenCalledWith(
         'Test message',
         undefined,
-        false
+        'auto'
       );
     });
 
@@ -258,7 +254,7 @@ describe('ChatInput', () => {
       fireEvent.press(sendButton);
 
       // Message should be sent and input cleared
-      expect(onSend).toHaveBeenCalledWith('Test message', undefined, false);
+      expect(onSend).toHaveBeenCalledWith('Test message', undefined, 'auto');
       expect(input.props.value).toBe('');
 
       // Keyboard.dismiss should NOT have been called (keyboard stays open)
@@ -334,14 +330,15 @@ describe('ChatInput', () => {
       expect(onStop).toHaveBeenCalled();
     });
 
-    it('shows both stop and send buttons during generation when text entered', () => {
-      const { getByTestId } = render(
+    it('shows send button (not stop) during generation when text entered for queuing', () => {
+      const { getByTestId, queryByTestId } = render(
         <ChatInput {...defaultProps} isGenerating={true} onStop={jest.fn()} />
       );
 
       fireEvent.changeText(getByTestId('chat-input'), 'queued message');
-      expect(getByTestId('stop-button')).toBeTruthy();
+      // Send button takes priority over stop — allows queuing while generating
       expect(getByTestId('send-button')).toBeTruthy();
+      expect(queryByTestId('stop-button')).toBeNull();
     });
 
     it('hides voice button during generation', () => {
@@ -349,7 +346,7 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} isGenerating={true} onStop={jest.fn()} />
       );
 
-      // Voice button hidden during generation — stop button takes its place
+      // Voice button hidden during generation — stop button takes its place (when no text entered)
       expect(queryByTestId('voice-record-button')).toBeNull();
     });
   });
@@ -367,13 +364,13 @@ describe('ChatInput', () => {
       expect(getByTestId('image-mode-toggle')).toBeTruthy();
     });
 
-    it('hides image mode toggle when imageModelLoaded is false', () => {
-      const { queryByTestId } = render(
+    it('shows image mode toggle even when imageModelLoaded is false', () => {
+      const { getByTestId } = render(
         <ChatInput {...defaultProps} imageModelLoaded={false} />
       );
 
-      // Image toggle should be hidden
-      expect(queryByTestId('image-mode-toggle')).toBeNull();
+      // Image toggle is always shown (shows alert if no model loaded)
+      expect(getByTestId('image-mode-toggle')).toBeTruthy();
     });
 
     it('toggles image mode when toggle is pressed', () => {
@@ -391,8 +388,8 @@ describe('ChatInput', () => {
 
       expect(onImageModeChange).toHaveBeenCalledWith('force');
 
-      // ON badge should appear
-      expect(queryByTestId('image-mode-on-badge')).toBeTruthy();
+      // Force badge should appear
+      expect(queryByTestId('image-mode-force-badge')).toBeTruthy();
     });
 
     it('shows ON badge when image mode is forced', () => {
@@ -404,11 +401,11 @@ describe('ChatInput', () => {
       const toggle = getByTestId('image-mode-toggle');
       fireEvent.press(toggle);
 
-      // Should show "ON" badge
-      expect(queryByTestId('image-mode-on-badge')).toBeTruthy();
+      // Should show force badge with "ON" text
+      expect(queryByTestId('image-mode-force-badge')).toBeTruthy();
     });
 
-    it('passes forceImageMode=true to onSend when in force mode', () => {
+    it('passes imageMode=force to onSend when in force mode', () => {
       const onSend = jest.fn();
       const { getByTestId } = render(
         <ChatInput
@@ -429,11 +426,11 @@ describe('ChatInput', () => {
       const sendButton = getByTestId('send-button');
       fireEvent.press(sendButton);
 
-      // onSend should receive true for forceImageMode
+      // onSend should receive 'force' for imageMode
       expect(onSend).toHaveBeenCalledWith(
         'Generate an image',
         undefined,
-        true
+        'force'
       );
     });
 
@@ -460,46 +457,54 @@ describe('ChatInput', () => {
 
       // Should have reset to auto
       expect(onImageModeChange).toHaveBeenCalledWith('auto');
-      // ON badge should be gone
-      expect(queryByTestId('image-mode-on-badge')).toBeNull();
+      // Force badge should be gone, auto badge should be present
+      expect(queryByTestId('image-mode-force-badge')).toBeNull();
+      expect(queryByTestId('image-mode-auto-badge')).toBeTruthy();
     });
 
-    it('hides toggle when no image model is loaded', () => {
-      const { queryByTestId } = render(
+    it('shows alert when toggling without image model loaded', () => {
+      const { getByTestId, getByText } = render(
         <ChatInput {...defaultProps} imageModelLoaded={false} />
       );
 
-      // Toggle is hidden when no model loaded
-      expect(queryByTestId('image-mode-toggle')).toBeNull();
+      // Toggle is always visible but shows alert when no model loaded
+      const toggle = getByTestId('image-mode-toggle');
+      fireEvent.press(toggle);
+
+      expect(getByText('No Image Model')).toBeTruthy();
     });
 
-    it('ON badge disappears when toggling back to auto', () => {
+    it('cycles through auto -> force -> disabled -> auto', () => {
+      const onImageModeChange = jest.fn();
       const { getByTestId, queryByTestId } = render(
-        <ChatInput {...defaultProps} imageModelLoaded={true} />
+        <ChatInput {...defaultProps} imageModelLoaded={true} onImageModeChange={onImageModeChange} />
       );
 
       const toggle = getByTestId('image-mode-toggle');
-      // Toggle to force
+
+      // Start at auto, toggle to force
       fireEvent.press(toggle);
-      expect(queryByTestId('image-mode-on-badge')).toBeTruthy();
+      expect(queryByTestId('image-mode-force-badge')).toBeTruthy();
+      expect(onImageModeChange).toHaveBeenCalledWith('force');
+
+      // Toggle to disabled
+      fireEvent.press(toggle);
+      expect(queryByTestId('image-mode-disabled-badge')).toBeTruthy();
+      expect(onImageModeChange).toHaveBeenCalledWith('disabled');
 
       // Toggle back to auto
       fireEvent.press(toggle);
-      expect(queryByTestId('image-mode-on-badge')).toBeNull();
+      expect(queryByTestId('image-mode-auto-badge')).toBeTruthy();
+      expect(onImageModeChange).toHaveBeenCalledWith('auto');
     });
 
-    it('hides image mode toggle when settings.imageGenerationMode is not manual', () => {
-      mockUseAppStore.mockReturnValue({
-        settings: {
-          imageGenerationMode: 'auto',
-        },
-      });
-
-      const { queryByTestId } = render(
+    it('image mode toggle is always visible regardless of props', () => {
+      const { getByTestId } = render(
         <ChatInput {...defaultProps} imageModelLoaded={true} />
       );
 
-      expect(queryByTestId('image-mode-toggle')).toBeNull();
+      // Toggle is always shown - no settings dependency
+      expect(getByTestId('image-mode-toggle')).toBeTruthy();
     });
   });
 
@@ -516,38 +521,43 @@ describe('ChatInput', () => {
       expect(getByTestId('camera-button')).toBeTruthy();
     });
 
-    it('hides camera button when supportsVision is false', () => {
-      const { queryByTestId } = render(
+    it('shows camera button even when supportsVision is false', () => {
+      const { getByTestId } = render(
         <ChatInput {...defaultProps} supportsVision={false} />
       );
 
-      // Camera button should be hidden
-      expect(queryByTestId('camera-button')).toBeNull();
+      // Camera button is always shown (shows alert if vision not supported)
+      expect(getByTestId('camera-button')).toBeTruthy();
     });
 
-    it('shows Vision indicator when vision is supported', () => {
+    it('shows alert when pressing camera button without vision support', () => {
+      const { getByTestId, getByText } = render(
+        <ChatInput {...defaultProps} supportsVision={false} />
+      );
+
+      fireEvent.press(getByTestId('camera-button'));
+
+      expect(getByText('Vision Not Supported')).toBeTruthy();
+    });
+
+    it('opens image picker when pressing camera button with vision support', () => {
+      const { getByTestId, getByText } = render(
+        <ChatInput {...defaultProps} supportsVision={true} />
+      );
+
+      fireEvent.press(getByTestId('camera-button'));
+
+      // Should show the Add Image alert with camera/library options
+      expect(getByText('Add Image')).toBeTruthy();
+    });
+
+    it('camera button has active style when vision is supported', () => {
       const { getByTestId } = render(
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      // Should show "Vision" badge
-      expect(getByTestId('vision-indicator')).toBeTruthy();
-    });
-
-    it('hides Vision indicator when vision is not supported', () => {
-      const { queryByTestId } = render(
-        <ChatInput {...defaultProps} supportsVision={false} />
-      );
-
-      expect(queryByTestId('vision-indicator')).toBeNull();
-    });
-
-    it('Vision badge contains correct text', () => {
-      const { getByText } = render(
-        <ChatInput {...defaultProps} supportsVision={true} />
-      );
-
-      expect(getByText('Vision')).toBeTruthy();
+      // Camera button should be present with active styling
+      expect(getByTestId('camera-button')).toBeTruthy();
     });
   });
 
@@ -645,7 +655,7 @@ describe('ChatInput', () => {
             uri: 'file:///test-image.jpg',
           }),
         ]),
-        false
+        'auto'
       );
     });
 
@@ -792,7 +802,7 @@ describe('ChatInput', () => {
             fileName: 'notes.txt',
           }),
         ]),
-        false
+        'auto'
       );
     });
 
@@ -1045,7 +1055,7 @@ describe('ChatInput', () => {
       fireEvent.press(sendButton);
 
       // onSend should receive trimmed message
-      expect(onSend).toHaveBeenCalledWith('Hello', undefined, false);
+      expect(onSend).toHaveBeenCalledWith('Hello', undefined, 'auto');
     });
 
     it('handles special characters', () => {
@@ -1064,7 +1074,7 @@ describe('ChatInput', () => {
       expect(onSend).toHaveBeenCalledWith(
         '<script>alert("test")</script>',
         undefined,
-        false
+        'auto'
       );
     });
 
@@ -1118,23 +1128,22 @@ describe('ChatInput', () => {
       fireEvent.press(sendButton);
 
       // onSend should be called (message is queued)
-      expect(onSend).toHaveBeenCalledWith('Queued message', undefined, false);
+      expect(onSend).toHaveBeenCalledWith('Queued message', undefined, 'auto');
     });
   });
 
   describe('image mode toggle without loaded model', () => {
-    it('hides toggle when imageModelLoaded is false even with manual mode', () => {
-      mockUseAppStore.mockReturnValue({
-        settings: {
-          imageGenerationMode: 'manual',
-        },
-      });
-
-      const { queryByTestId } = render(
+    it('shows toggle but displays alert when imageModelLoaded is false', () => {
+      const { getByTestId, getByText } = render(
         <ChatInput {...defaultProps} imageModelLoaded={false} />
       );
 
-      expect(queryByTestId('image-mode-toggle')).toBeNull();
+      // Toggle is always visible
+      const toggle = getByTestId('image-mode-toggle');
+      fireEvent.press(toggle);
+
+      // Shows alert instead of cycling
+      expect(getByText('No Image Model')).toBeTruthy();
     });
   });
 
@@ -1256,7 +1265,7 @@ describe('ChatInput', () => {
         expect.arrayContaining([
           expect.objectContaining({ type: 'image' }),
         ]),
-        false
+        'auto'
       );
     });
   });
@@ -1819,6 +1828,96 @@ describe('ChatInput', () => {
       expect(queryByTestId('attachments-container')).toBeNull();
 
       jest.useRealTimers();
+    });
+  });
+
+  // ============================================================================
+  // Icon collapse animation (triggered by text content)
+  // ============================================================================
+  describe('icon collapse animation', () => {
+    it('starts Animated.timing to collapse when text is entered', () => {
+      const timingSpy = jest.spyOn(require('react-native').Animated, 'timing');
+      const { getByTestId } = render(<ChatInput {...defaultProps} />);
+
+      fireEvent.changeText(getByTestId('chat-input'), 'a');
+
+      expect(timingSpy).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ toValue: 1 }),
+      );
+      timingSpy.mockRestore();
+    });
+
+    it('starts Animated.timing to expand when text is cleared', () => {
+      const timingSpy = jest.spyOn(require('react-native').Animated, 'timing');
+      const { getByTestId } = render(<ChatInput {...defaultProps} />);
+
+      fireEvent.changeText(getByTestId('chat-input'), 'a');
+      timingSpy.mockClear();
+      fireEvent.changeText(getByTestId('chat-input'), '');
+
+      expect(timingSpy).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ toValue: 0 }),
+      );
+      timingSpy.mockRestore();
+    });
+
+    it('disables pointer events on pill icons when text is present', () => {
+      const { getByTestId, UNSAFE_queryAllByProps } = render(
+        <ChatInput {...defaultProps} />
+      );
+
+      // Before typing, icons should be interactive
+      expect(getByTestId('document-picker-button')).toBeTruthy();
+
+      fireEvent.changeText(getByTestId('chat-input'), 'hello');
+
+      // After typing, the Animated.View wrapping icons should have pointerEvents='none'
+      const pointerNoneViews = UNSAFE_queryAllByProps({ pointerEvents: 'none' });
+      expect(pointerNoneViews.length).toBeGreaterThan(0);
+    });
+
+    it('re-enables pointer events on pill icons when text is cleared', () => {
+      const { getByTestId, UNSAFE_queryAllByProps } = render(
+        <ChatInput {...defaultProps} />
+      );
+
+      fireEvent.changeText(getByTestId('chat-input'), 'hello');
+      fireEvent.changeText(getByTestId('chat-input'), '');
+
+      const pointerNoneViews = UNSAFE_queryAllByProps({ pointerEvents: 'none' });
+      expect(pointerNoneViews.length).toBe(0);
+    });
+
+    it('icons remain accessible when input is empty', () => {
+      const { getByTestId } = render(
+        <ChatInput {...defaultProps} supportsVision={true} imageModelLoaded={true} />
+      );
+
+      // All three icons should be pressable when no text
+      expect(getByTestId('document-picker-button')).toBeTruthy();
+      expect(getByTestId('camera-button')).toBeTruthy();
+      expect(getByTestId('image-mode-toggle')).toBeTruthy();
+    });
+
+    it('send button remains visible when text is entered', () => {
+      const { getByTestId } = render(
+        <ChatInput {...defaultProps} />
+      );
+
+      fireEvent.changeText(getByTestId('chat-input'), 'Hello');
+
+      // Send button should be accessible while typing
+      expect(getByTestId('send-button')).toBeTruthy();
+    });
+
+    it('stop button remains visible when generating with no text', () => {
+      const { getByTestId } = render(
+        <ChatInput {...defaultProps} isGenerating={true} onStop={jest.fn()} />
+      );
+
+      expect(getByTestId('stop-button')).toBeTruthy();
     });
   });
 });

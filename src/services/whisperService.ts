@@ -1,6 +1,7 @@
 import { initWhisper, WhisperContext, RealtimeTranscribeEvent, AudioSessionIos } from 'whisper.rn';
 import { Platform, PermissionsAndroid } from 'react-native';
 import RNFS from 'react-native-fs';
+import logger from '../utils/logger';
 
 export interface TranscriptionResult {
   text: string;
@@ -94,7 +95,7 @@ class WhisperService {
       return destPath;
     }
 
-    console.log(`[Whisper] Downloading ${model.name}...`);
+    logger.log(`[Whisper] Downloading ${model.name}...`);
 
     const download = RNFS.downloadFile({
       fromUrl: model.url,
@@ -113,7 +114,7 @@ class WhisperService {
       throw new Error(`Download failed with status ${result.statusCode}`);
     }
 
-    console.log(`[Whisper] Downloaded to ${destPath}`);
+    logger.log(`[Whisper] Downloaded to ${destPath}`);
     return destPath;
   }
 
@@ -135,16 +136,16 @@ class WhisperService {
       return;
     }
 
-    console.log(`[Whisper] Loading model: ${modelPath}`);
+    logger.log(`[Whisper] Loading model: ${modelPath}`);
 
     try {
       this.context = await initWhisper({
         filePath: modelPath,
       });
       this.currentModelPath = modelPath;
-      console.log('[Whisper] Model loaded successfully');
+      logger.log('[Whisper] Model loaded successfully');
     } catch (error) {
-      console.error('[Whisper] Failed to load model:', error);
+      logger.error('[Whisper] Failed to load model:', error);
       throw error;
     }
   }
@@ -179,7 +180,7 @@ class WhisperService {
         );
         return granted === PermissionsAndroid.RESULTS.GRANTED;
       } catch (error) {
-        console.error('[Whisper] Failed to request permission:', error);
+        logger.error('[Whisper] Failed to request permission:', error);
         return false;
       }
     }
@@ -191,7 +192,7 @@ class WhisperService {
         await AudioSessionIos.setActive(true);
         return true;
       } catch (error) {
-        console.error('[Whisper] iOS audio session/permission error:', error);
+        logger.error('[Whisper] iOS audio session/permission error:', error);
         return false;
       }
     }
@@ -205,9 +206,9 @@ class WhisperService {
       maxLen?: number;
     }
   ): Promise<void> {
-    console.log('[WhisperService] startRealtimeTranscription called');
-    console.log('[WhisperService] Context exists:', !!this.context);
-    console.log('[WhisperService] isTranscribing:', this.isTranscribing);
+    logger.log('[WhisperService] startRealtimeTranscription called');
+    logger.log('[WhisperService] Context exists:', !!this.context);
+    logger.log('[WhisperService] isTranscribing:', this.isTranscribing);
 
     if (!this.context) {
       throw new Error('No Whisper model loaded');
@@ -215,15 +216,15 @@ class WhisperService {
 
     // If already transcribing, force stop before starting new
     if (this.isTranscribing || this.stopFn) {
-      console.log('[WhisperService] Stopping previous transcription before starting new one');
+      logger.log('[WhisperService] Stopping previous transcription before starting new one');
       await this.stopTranscription();
       // Small delay to ensure cleanup
       await new Promise<void>(resolve => setTimeout(resolve, 100));
     }
 
-    console.log('[WhisperService] Requesting permissions...');
+    logger.log('[WhisperService] Requesting permissions...');
     const hasPermission = await this.requestPermissions();
-    console.log('[WhisperService] Permission granted:', hasPermission);
+    logger.log('[WhisperService] Permission granted:', hasPermission);
 
     if (!hasPermission) {
       throw new Error('Microphone permission denied');
@@ -232,7 +233,7 @@ class WhisperService {
     this.isTranscribing = true;
 
     try {
-      console.log('[WhisperService] Calling transcribeRealtime...');
+      logger.log('[WhisperService] Calling transcribeRealtime...');
       // Use the transcribeRealtime API
       const { stop, subscribe } = await this.context.transcribeRealtime({
         language: options?.language || 'en',
@@ -249,11 +250,11 @@ class WhisperService {
         }),
       });
 
-      console.log('[WhisperService] transcribeRealtime started successfully');
+      logger.log('[WhisperService] transcribeRealtime started successfully');
       this.stopFn = stop;
 
       subscribe((evt: RealtimeTranscribeEvent) => {
-        console.log('[WhisperService] Event received:', {
+        logger.log('[WhisperService] Event received:', {
           isCapturing: evt.isCapturing,
           hasData: !!evt.data,
           text: evt.data?.result?.slice(0, 50),
@@ -268,13 +269,13 @@ class WhisperService {
         });
 
         if (!isCapturing) {
-          console.log('[WhisperService] Recording finished');
+          logger.log('[WhisperService] Recording finished');
           this.isTranscribing = false;
           this.stopFn = null;
         }
       });
     } catch (error) {
-      console.error('[WhisperService] transcribeRealtime error:', error);
+      logger.error('[WhisperService] transcribeRealtime error:', error);
       this.isTranscribing = false;
       this.stopFn = null;
       throw error;
@@ -282,14 +283,14 @@ class WhisperService {
   }
 
   async stopTranscription(): Promise<void> {
-    console.log('[WhisperService] stopTranscription called');
+    logger.log('[WhisperService] stopTranscription called');
     try {
       if (this.stopFn) {
         this.stopFn();
         this.stopFn = null;
       }
     } catch (error) {
-      console.error('[WhisperService] Error stopping transcription:', error);
+      logger.error('[WhisperService] Error stopping transcription:', error);
     } finally {
       this.isTranscribing = false;
     }
@@ -297,7 +298,7 @@ class WhisperService {
 
   // Force reset state - use when state gets stuck
   forceReset(): void {
-    console.log('[WhisperService] Force resetting state');
+    logger.log('[WhisperService] Force resetting state');
     this.isTranscribing = false;
     this.stopFn = null;
   }

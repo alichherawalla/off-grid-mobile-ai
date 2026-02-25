@@ -797,4 +797,140 @@ describe('AppSheet', () => {
       jest.restoreAllMocks();
     });
   });
+
+  // ============================================================================
+  // backdropEnabled guard (first-tap-swallowed fix)
+  // ============================================================================
+  describe('backdropEnabled guard', () => {
+    it('backdrop press is ignored while animateIn is running (backdropEnabled=false)', () => {
+      // Freeze Animated.parallel so the .start() callback never fires.
+      // This simulates the sheet mid-animation where backdropEnabled=false.
+      const { Animated: RNAnimated } = require('react-native');
+      const startMock = jest.fn(); // callback deliberately NOT called
+      jest.spyOn(RNAnimated, 'parallel').mockReturnValue({ start: startMock } as any);
+
+      const onClose = jest.fn();
+      const { UNSAFE_getByType } = render(
+        <AppSheet visible={true} onClose={onClose} title="Guard Test">
+          <Text>Content</Text>
+        </AppSheet>
+      );
+
+      // Trigger animateIn (sets backdropEnabled=false, callback never fires)
+      const modal = UNSAFE_getByType(Modal);
+      act(() => { modal.props.onShow(); });
+
+      // Backdrop press while animation is still running — must be ignored
+      const backdrop = UNSAFE_getByType(TouchableWithoutFeedback);
+      fireEvent.press(backdrop);
+
+      expect(onClose).not.toHaveBeenCalled();
+
+      jest.restoreAllMocks();
+    });
+
+    it('backdrop press works once animateIn completes (backdropEnabled=true)', async () => {
+      // Fire the .start() callback synchronously so backdropEnabled becomes true.
+      const { Animated: RNAnimated } = require('react-native');
+      const startMock = jest.fn((cb?: (result: { finished: boolean }) => void) => {
+        cb?.({ finished: true });
+      });
+      jest.spyOn(RNAnimated, 'parallel').mockReturnValue({ start: startMock } as any);
+
+      const onClose = jest.fn();
+      const { UNSAFE_getByType } = render(
+        <AppSheet visible={true} onClose={onClose} title="Guard Test">
+          <Text>Content</Text>
+        </AppSheet>
+      );
+
+      // Trigger animateIn — callback fires synchronously → backdropEnabled=true
+      const modal = UNSAFE_getByType(Modal);
+      act(() => { modal.props.onShow(); });
+
+      // Backdrop press after animation completes — must dismiss
+      const backdrop = UNSAFE_getByType(TouchableWithoutFeedback);
+      fireEvent.press(backdrop);
+
+      await waitFor(() => {
+        expect(onClose).toHaveBeenCalled();
+      }, { timeout: 2000 });
+
+      jest.restoreAllMocks();
+    });
+
+    it('backdropEnabled resets to false when animateOut starts', async () => {
+      // Allow animateIn to complete, then verify animateOut disables backdrop.
+      const { Animated: RNAnimated } = require('react-native');
+      let callCount = 0;
+      const startMock = jest.fn((cb?: (result: { finished: boolean }) => void) => {
+        callCount++;
+        if (callCount === 1) {
+          // First call is animateIn — fire immediately so backdropEnabled=true
+          cb?.({ finished: true });
+        }
+        // Second call is animateOut — do NOT fire, simulating mid-dismiss state
+      });
+      jest.spyOn(RNAnimated, 'parallel').mockReturnValue({ start: startMock } as any);
+
+      const onClose = jest.fn();
+      const { UNSAFE_getByType } = render(
+        <AppSheet visible={true} onClose={onClose} title="Guard Test">
+          <Text>Content</Text>
+        </AppSheet>
+      );
+
+      const modal = UNSAFE_getByType(Modal);
+      act(() => { modal.props.onShow(); }); // animateIn completes → backdropEnabled=true
+
+      const backdrop = UNSAFE_getByType(TouchableWithoutFeedback);
+
+      // First press triggers dismiss → animateOut starts → backdropEnabled=false
+      fireEvent.press(backdrop);
+
+      // Second press while animateOut is still running — must be ignored
+      fireEvent.press(backdrop);
+
+      // onClose called at most once (the animateOut callback never fired here,
+      // so it may be 0; the key assertion is it is NOT called twice)
+      expect(onClose.mock.calls.length).toBeLessThanOrEqual(1);
+
+      jest.restoreAllMocks();
+    });
+  });
+
+  // ============================================================================
+  // animateIn uses Animated.timing (guaranteed callback, not spring)
+  // ============================================================================
+  describe('animateIn uses timing animation', () => {
+    it('calls Animated.timing (not Animated.spring) for the slide-in', () => {
+      const { Animated: RNAnimated } = require('react-native');
+      const timingSpy = jest.spyOn(RNAnimated, 'timing');
+      const springSpy = jest.spyOn(RNAnimated, 'spring');
+
+      const { UNSAFE_getByType } = render(
+        <AppSheet visible={true} onClose={jest.fn()} title="Timing Test">
+          <Text>Content</Text>
+        </AppSheet>
+      );
+
+      const modal = UNSAFE_getByType(Modal);
+      act(() => { modal.props.onShow(); });
+
+      // animateIn should use timing (for guaranteed callback) not spring
+      expect(timingSpy).toHaveBeenCalled();
+      // The translateY call should have toValue: 0 (slide in)
+      const slideInCall = timingSpy.mock.calls.find(
+        ([, config]: any[]) => config?.toValue === 0
+      );
+      expect(slideInCall).toBeTruthy();
+      // Spring should NOT be used for the entry animation
+      const springToZero = springSpy.mock.calls.find(
+        ([, config]: any[]) => config?.toValue === 0
+      );
+      expect(springToZero).toBeFalsy();
+
+      jest.restoreAllMocks();
+    });
+  });
 });

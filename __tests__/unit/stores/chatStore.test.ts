@@ -279,8 +279,7 @@ describe('chatStore', () => {
       const attachment = createMediaAttachment({ type: 'image' });
       const message = addMessage(
         convId,
-        { role: 'user', content: 'Check this image' },
-        [attachment]
+        { role: 'user', content: 'Check this image', attachments: [attachment] },
       );
 
       expect(message.attachments).toHaveLength(1);
@@ -293,9 +292,7 @@ describe('chatStore', () => {
       const convId = createConversation('test-model');
       const message = addMessage(
         convId,
-        { role: 'assistant', content: 'Response' },
-        undefined,
-        1500
+        { role: 'assistant', content: 'Response', generationTimeMs: 1500 },
       );
 
       expect(message.generationTimeMs).toBe(1500);
@@ -308,10 +305,7 @@ describe('chatStore', () => {
       const meta = createGenerationMeta({ gpu: true, tokensPerSecond: 25.5 });
       const message = addMessage(
         convId,
-        { role: 'assistant', content: 'Response' },
-        undefined,
-        1000,
-        meta
+        { role: 'assistant', content: 'Response', generationTimeMs: 1000, generationMeta: meta },
       );
 
       expect(message.generationMeta?.gpu).toBe(true);
@@ -331,26 +325,26 @@ describe('chatStore', () => {
     });
   });
 
-  describe('updateMessage', () => {
+  describe('updateMessageContent', () => {
     it('updates message content', () => {
-      const { createConversation, addMessage, updateMessage } = useChatStore.getState();
+      const { createConversation, addMessage, updateMessageContent } = useChatStore.getState();
 
       const convId = createConversation('test-model');
       const message = addMessage(convId, { role: 'user', content: 'Original' });
 
-      updateMessage(convId, message.id, 'Updated');
+      updateMessageContent(convId, message.id, 'Updated');
 
       expect(getChatState().conversations[0].messages[0].content).toBe('Updated');
     });
 
     it('preserves other message properties', () => {
-      const { createConversation, addMessage, updateMessage } = useChatStore.getState();
+      const { createConversation, addMessage, updateMessageContent } = useChatStore.getState();
 
       const convId = createConversation('test-model');
       const message = addMessage(convId, { role: 'user', content: 'Original' });
       const originalTimestamp = message.timestamp;
 
-      updateMessage(convId, message.id, 'Updated');
+      updateMessageContent(convId, message.id, 'Updated');
 
       const updatedMessage = getChatState().conversations[0].messages[0];
       expect(updatedMessage.id).toBe(message.id);
@@ -737,8 +731,7 @@ describe('chatStore', () => {
 
       const message = store.addMessage(
         convId,
-        { role: 'user', content: 'Look at these' },
-        attachments,
+        { role: 'user', content: 'Look at these', attachments },
       );
 
       expect(message.attachments).toHaveLength(3);
@@ -748,29 +741,29 @@ describe('chatStore', () => {
   });
 
   // ============================================================================
-  // updateMessage Edge Cases
+  // updateMessageThinking Edge Cases
   // ============================================================================
-  describe('updateMessage edge cases', () => {
-    it('sets isThinking flag when provided', () => {
+  describe('updateMessageThinking edge cases', () => {
+    it('sets isThinking flag to true', () => {
       const store = useChatStore.getState();
       const convId = store.createConversation('test-model');
       const msg = store.addMessage(convId, { role: 'assistant', content: 'Thinking...' });
 
-      store.updateMessage(convId, msg.id, 'Still thinking...', true);
+      store.updateMessageThinking(convId, msg.id, true);
 
       const updated = getChatState().conversations[0].messages[0];
       expect(updated.isThinking).toBe(true);
     });
 
-    it('does not add isThinking when not provided', () => {
+    it('sets isThinking flag to false', () => {
       const store = useChatStore.getState();
       const convId = store.createConversation('test-model');
-      const msg = store.addMessage(convId, { role: 'assistant', content: 'Original' });
+      const msg = store.addMessage(convId, { role: 'assistant', content: 'Original', isThinking: true });
 
-      store.updateMessage(convId, msg.id, 'Updated');
+      store.updateMessageThinking(convId, msg.id, false);
 
       const updated = getChatState().conversations[0].messages[0];
-      expect(updated.isThinking).toBeUndefined();
+      expect(updated.isThinking).toBe(false);
     });
   });
 

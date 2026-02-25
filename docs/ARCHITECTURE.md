@@ -14,6 +14,7 @@
 | Voice Transcription | whisper.cpp | whisper.cpp |
 | PDF Extraction | PdfRenderer (Kotlin) | PDFKit (Swift) |
 | Document Viewer | Intent.ACTION_VIEW | QuickLook |
+| Tool Calling | llama.rn (model-dependent) | llama.rn (model-dependent) |
 | Background Downloads | Native DownloadManager | RNFS / URLSession |
 
 ---
@@ -30,6 +31,10 @@ Multi-model LLM inference using llama.cpp compiled for ARM64 Android via llama.r
 - **Performance instrumentation** - Tracks tok/s (overall and decode-only), TTFT, token count
 - **Custom system prompts** via project-based conversation contexts
 - **KV cache management** with manual clear capability for memory optimization
+- **Configurable KV cache type** — Choose between f16 (default), q8_0, and q4_0 quantization for memory/quality tradeoffs
+- **Flash attention** — User-configurable toggle for faster inference (automatically disabled when GPU layers > 0 on Android due to llama.cpp compatibility)
+- **Markdown rendering** — Rich text output with syntax highlighting, lists, and formatting
+- **llama.cpp parameter constraints** — Automatic enforcement of GPU/flash attention/KV cache compatibility to prevent native crashes (SIGSEGV, SIGABRT)
 
 **Implementation:**
 - `llmService` (`src/services/llm.ts`) wraps llama.rn for model lifecycle and inference
@@ -181,6 +186,36 @@ Attach documents to chat messages for context-aware conversations. Documents are
 - iOS: Opens in QuickLook preview
 - Android: Opens with `Intent.ACTION_VIEW` using the appropriate system app
 
+### Tool Calling
+
+On-device function calling for models that support it. The system automatically detects tool calling capability from the model's jinja chat template at load time.
+
+**Available Tools:**
+- **Web Search** — Scrapes Brave Search for top 5 results (requires network). Clickable URLs in results open in the system browser.
+- **Calculator** — Safe recursive descent parser supporting `+, -, *, /, %, ^, ()`. No `eval()`.
+- **Date/Time** — Returns formatted date/time with optional timezone support.
+- **Device Info** — Battery level, storage usage, and memory stats via `react-native-device-info`.
+
+**Tool Loop:**
+- Max 3 iterations per generation (prevents runaway loops)
+- Max 5 total tool calls across all iterations
+- Flow: LLM generates → tool calls parsed → tools executed → results injected → LLM continues
+- Supports both structured tool calls (via llama.rn) and fallback XML tag parsing (`<tool_call>`) for smaller models
+- Empty web search queries fall back to the user's last message
+
+**Capability Gating:**
+- Tool calling support detected at model load time via jinja chat template introspection
+- Tools button disabled in UI when model doesn't support function calling
+- Tool system prompt hint only injected when model supports tools AND user has tools enabled
+- User can configure which tools are enabled in settings (default: calculator + date/time)
+
+**Implementation:**
+- `src/services/tools/registry.ts` — Tool definitions and OpenAI schema conversion
+- `src/services/tools/handlers.ts` — Tool execution dispatch
+- `src/services/generationToolLoop.ts` — Multi-turn tool loop orchestration
+- `src/services/llmToolGeneration.ts` — Low-level tool-aware LLM generation
+- `llmService.supportsToolCalling()` — Runtime capability check
+
 ### Message Queue
 
 Send messages while the LLM is still generating a response. Messages are queued and processed automatically after the current generation completes.
@@ -246,6 +281,9 @@ autoDetectMethod: 'pattern' | 'llm'
 - Batch size (32-512) - Processing chunk size
 - GPU layers (0-99) - GPU offload configuration
 - Enable GPU (on/off) - Toggle GPU acceleration
+- Flash attention (on/off) - Faster inference (auto-disabled with GPU layers > 0 on Android)
+- KV cache type (f16/q8_0/q4_0) - Cache quantization for memory/quality tradeoff
+- Enabled tools - Configure which tools are available for tool-calling models
 
 **Image Model Settings:**
 - Steps (4-50) - Quality vs speed (default: 20)

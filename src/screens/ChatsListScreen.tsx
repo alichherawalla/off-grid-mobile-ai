@@ -84,9 +84,9 @@ export const ChatsListScreen: React.FC = () => {
       return 'Yesterday';
     } else if (diffDays < 7) {
       return date.toLocaleDateString([], { weekday: 'short' });
-    } else {
+    } 
       return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    }
+    
   };
 
   const renderRightActions = (conversation: Conversation) => (
@@ -106,7 +106,7 @@ export const ChatsListScreen: React.FC = () => {
       <Swipeable
         renderRightActions={() => renderRightActions(item)}
         overshootRight={false}
-        containerStyle={{ overflow: 'visible' }}
+        containerStyle={styles.swipeableContainer}
       >
         <AnimatedListItem
           index={index}
@@ -207,6 +207,9 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  swipeableContainer: {
+    overflow: 'visible' as const,
   },
   header: {
     flexDirection: 'row' as const,

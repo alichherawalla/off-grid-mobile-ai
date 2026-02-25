@@ -36,7 +36,7 @@ class DocumentService {
    * Check if a file extension is supported
    */
   isSupported(fileName: string): boolean {
-    const extension = '.' + fileName.split('.').pop()?.toLowerCase();
+    const extension = `.${  fileName.split('.').pop()?.toLowerCase()}`;
     if (extension === PDF_EXTENSION && pdfExtractor.isAvailable()) {
       return true;
     }
@@ -57,91 +57,64 @@ class DocumentService {
     return tempPath;
   }
 
+  private validateFileType(extension: string, isPdf: boolean): void {
+    if (!isPdf && !TEXT_EXTENSIONS.includes(extension)) {
+      throw new Error(`Unsupported file type: ${extension}. Supported: txt, md, csv, json, pdf, code files`);
+    }
+    if (isPdf && !pdfExtractor.isAvailable()) {
+      throw new Error('PDF extraction is not available on this device');
+    }
+  }
+
+  private async readContent(resolvedPath: string, isPdf: boolean, maxChars: number): Promise<string> {
+    const raw = isPdf
+      ? await pdfExtractor.extractText(resolvedPath, maxChars)
+      : await RNFS.readFile(resolvedPath, 'utf8');
+    if (raw.length > maxChars) {
+      return `${raw.substring(0, maxChars)}\n\n... [Content truncated due to length]`;
+    }
+    return raw;
+  }
+
+  private async savePersistentCopy(resolvedPath: string, originalPath: string, name: string): Promise<{ id: string; uri: string }> {
+    await this.ensureAttachmentsDir();
+    const id = Date.now().toString();
+    const persistentPath = `${ATTACHMENTS_DIR}/${id}_${name}`;
+    let ok = false;
+    try {
+      await RNFS.copyFile(resolvedPath, persistentPath);
+      ok = await RNFS.exists(persistentPath);
+    } catch { /* fall back to original path */ }
+    if (resolvedPath !== originalPath && ok) {
+      RNFS.unlink(resolvedPath).catch(() => {});
+    }
+    return { id, uri: ok ? persistentPath : resolvedPath };
+  }
+
   /**
    * Process a document from a file path
    */
   async processDocumentFromPath(filePath: string, fileName?: string): Promise<MediaAttachment | null> {
     try {
       const name = fileName || filePath.split('/').pop() || 'document';
-      const extension = '.' + name.split('.').pop()?.toLowerCase();
-
-      // Check if we can handle this file type
+      const extension = `.${name.split('.').pop()?.toLowerCase()}`;
       const isPdf = extension === PDF_EXTENSION;
-      if (!isPdf && !TEXT_EXTENSIONS.includes(extension)) {
-        throw new Error(`Unsupported file type: ${extension}. Supported: txt, md, csv, json, pdf, code files`);
-      }
+      this.validateFileType(extension, isPdf);
 
-      if (isPdf && !pdfExtractor.isAvailable()) {
-        throw new Error('PDF extraction is not available on this device');
-      }
-
-      // Resolve content:// URIs on Android
       const resolvedPath = await this.resolveContentUri(filePath, name);
-
-      // Check if file exists
-      const exists = await RNFS.exists(resolvedPath);
-      if (!exists) {
-        throw new Error('File not found');
-      }
-
-      // Get file info
+      if (!await RNFS.exists(resolvedPath)) { throw new Error('File not found'); }
       const stat = await RNFS.stat(resolvedPath);
-
-      // Check file size
       if (stat.size > MAX_FILE_SIZE) {
         throw new Error(`File is too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
       }
 
-      // Derive max chars from model context length (~4 chars per token, use half
-      // the context so there's room for conversation + system prompt + response)
       const contextLength = useAppStore.getState().settings.contextLength || APP_CONFIG.maxContextLength;
       const maxChars = Math.floor(contextLength * 4 * 0.5);
+      const textContent = await this.readContent(resolvedPath, isPdf, maxChars);
+      const { id, uri } = await this.savePersistentCopy(resolvedPath, filePath, name);
 
-      // Read file content
-      let textContent: string;
-      if (isPdf) {
-        textContent = await pdfExtractor.extractText(resolvedPath, maxChars);
-      } else {
-        textContent = await RNFS.readFile(resolvedPath, 'utf8');
-      }
-
-      // Save a persistent copy so the file can be opened later from chat
-      await this.ensureAttachmentsDir();
-      const attachmentId = Date.now().toString();
-      const persistentPath = `${ATTACHMENTS_DIR}/${attachmentId}_${name}`;
-      let persistentCopyOk = false;
-      try {
-        await RNFS.copyFile(resolvedPath, persistentPath);
-        persistentCopyOk = await RNFS.exists(persistentPath);
-      } catch {
-        // Copy failed — will fall back to original path
-      }
-
-      // Only clean up temp file AFTER verifying persistent copy succeeded
-      if (resolvedPath !== filePath) {
-        if (persistentCopyOk) {
-          RNFS.unlink(resolvedPath).catch(() => {});
-        }
-        // If persistent copy failed, keep the temp file as fallback
-      }
-
-      // Truncate if too long (safety net — native should already limit)
-      if (textContent.length > maxChars) {
-        textContent = textContent.substring(0, maxChars) + '\n\n... [Content truncated due to length]';
-      }
-
-      const storedUri = persistentCopyOk ? persistentPath : resolvedPath;
-
-      return {
-        id: attachmentId,
-        type: 'document',
-        uri: storedUri,
-        fileName: name,
-        textContent,
-        fileSize: stat.size,
-      };
+      return { id, type: 'document', uri, fileName: name, textContent, fileSize: stat.size };
     } catch (error: any) {
-      console.error('[DocumentService] Error processing document:', error);
       throw error;
     }
   }
@@ -155,7 +128,7 @@ class DocumentService {
     const maxChars = Math.floor(contextLength * 4 * 0.5);
     let textContent = text;
     if (textContent.length > maxChars) {
-      textContent = textContent.substring(0, maxChars) + '\n\n... [Content truncated due to length]';
+      textContent = `${textContent.substring(0, maxChars)  }\n\n... [Content truncated due to length]`;
     }
 
     const id = Date.now().toString();
@@ -202,7 +175,7 @@ class DocumentService {
     }
 
     const preview = attachment.textContent.substring(0, maxLength).replace(/\n/g, ' ');
-    return preview.length < attachment.textContent.length ? preview + '...' : preview;
+    return preview.length < attachment.textContent.length ? `${preview  }...` : preview;
   }
 
   /**

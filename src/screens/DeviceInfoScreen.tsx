@@ -159,7 +159,7 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
   tierBadge: {
     ...TYPOGRAPHY.label,
     textTransform: 'uppercase' as const,
-    backgroundColor: colors.primary + '20',
+    backgroundColor: `${colors.primary  }20`,
     color: colors.primary,
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,

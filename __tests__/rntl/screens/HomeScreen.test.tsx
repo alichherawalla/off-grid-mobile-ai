@@ -179,9 +179,9 @@ jest.mock('../../../src/hooks/useFocusTrigger', () => ({
 
 // Mock Swipeable to render children AND renderRightActions
 jest.mock('react-native-gesture-handler/Swipeable', () => {
-  const React = require('react');
+  const { forwardRef } = require('react');
   const { View } = require('react-native');
-  return React.forwardRef(({ children, renderRightActions, containerStyle }: any, _ref: any) => (
+  return forwardRef(({ children, renderRightActions, containerStyle }: any, _ref: any) => (
     <View style={containerStyle}>
       {children}
       {renderRightActions && <View testID="swipeable-right-actions">{renderRightActions()}</View>}

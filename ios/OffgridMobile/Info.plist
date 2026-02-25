@@ -26,13 +26,6 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<false/>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app needs access to your microphone for voice-to-text transcription using Whisper.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
@@ -44,10 +37,7 @@
 	<key>UIAppFonts</key>
 	<array>
 		<string>Feather.ttf</string>
-	</array>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>audio</string>
+		<string>MaterialIcons.ttf</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>

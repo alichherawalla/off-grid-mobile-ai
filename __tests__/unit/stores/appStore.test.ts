@@ -316,7 +316,7 @@ describe('appStore', () => {
       expect(settings.topP).toBe(0.9);
       expect(settings.contextLength).toBe(2048);
       expect(settings.imageGenerationMode).toBe('auto');
-      expect(settings.enableGpu).toBe(true);
+      expect(settings.enableGpu).toBe(false);
     });
 
     it('updateSettings merges partial settings', () => {
@@ -860,6 +860,55 @@ describe('appStore', () => {
 
       expect(merged.imageModelDownloadIds).toEqual({});
     });
+
+    it('migrates persisted modelLoadingStrategy memory to performance', () => {
+      const persistedState = {
+        settings: { modelLoadingStrategy: 'memory' },
+      };
+      const currentState = useAppStore.getState();
+      const merged: any = { ...currentState, ...persistedState };
+
+      if (persistedState?.settings?.modelLoadingStrategy === 'memory') {
+        merged.settings = { ...merged.settings, modelLoadingStrategy: 'performance' };
+      }
+
+      expect(merged.settings.modelLoadingStrategy).toBe('performance');
+    });
+
+    it('does not override explicit performance setting during migration', () => {
+      const persistedState = {
+        settings: { modelLoadingStrategy: 'performance' },
+      };
+      const currentState = useAppStore.getState();
+      const merged: any = { ...currentState, ...persistedState };
+
+      if ((persistedState as any)?.settings?.modelLoadingStrategy === 'memory') {
+        merged.settings = { ...merged.settings, modelLoadingStrategy: 'performance' };
+      }
+
+      expect(merged.settings.modelLoadingStrategy).toBe('performance');
+    });
+
+    it('actual store merge function migrates modelLoadingStrategy memory→performance', async () => {
+      const AsyncStorage = require('@react-native-async-storage/async-storage');
+
+      // Write persisted state with old 'memory' default into AsyncStorage (as Zustand persist would)
+      const persistedPayload = JSON.stringify({
+        state: {
+          settings: { modelLoadingStrategy: 'memory' },
+        },
+        version: 0,
+      });
+      await AsyncStorage.setItem('local-llm-app-storage', persistedPayload);
+
+      // Trigger Zustand persist to rehydrate from storage — this calls the actual merge function
+      await (useAppStore as any).persist.rehydrate();
+
+      expect(useAppStore.getState().settings.modelLoadingStrategy).toBe('performance');
+
+      // Clean up storage mock
+      await AsyncStorage.removeItem('local-llm-app-storage');
+    });
   });
 
   // ============================================================================
@@ -1141,12 +1190,57 @@ describe('appStore', () => {
       expect(getAppState().settings.enhanceImagePrompts).toBe(false);
     });
 
-    it('has modelLoadingStrategy set to memory by default', () => {
-      expect(getAppState().settings.modelLoadingStrategy).toBe('memory');
+    it('has modelLoadingStrategy set to performance by default', () => {
+      expect(getAppState().settings.modelLoadingStrategy).toBe('performance');
     });
 
     it('has gpuLayers set to 6 by default', () => {
       expect(getAppState().settings.gpuLayers).toBe(6);
+    });
+
+    it('has flashAttn enabled by default on iOS (test env platform)', () => {
+      // The store initializes flashAttn as Platform.OS !== 'android'.
+      // The react-native preset sets defaultPlatform to 'ios', so without resetStores()
+      // the store should default to true. We verify by loading a fresh store instance.
+      jest.resetModules();
+      try {
+        // Fresh require — no resetStores() interference, so we see the real default
+        const { useAppStore: freshStore } = require('../../../src/stores/appStore');
+        // ios !== android → true
+        expect(freshStore.getState().settings.flashAttn).toBe(true);
+      } finally {
+        jest.resetModules();
+      }
+    });
+
+    it('flashAttn default formula: false on Android, true elsewhere', () => {
+      // The store default is Platform.OS !== 'android'. Verify the formula directly.
+      const formula = (os: string) => os !== 'android';
+      expect(formula('android')).toBe(false); // Android → flash attn off by default
+      expect(formula('ios')).toBe(true);      // iOS     → flash attn on by default
+    });
+
+    it('updateSettings can toggle flashAttn', () => {
+      const { updateSettings } = useAppStore.getState();
+      const initial = getAppState().settings.flashAttn;
+
+      updateSettings({ flashAttn: !initial });
+      expect(getAppState().settings.flashAttn).toBe(!initial);
+
+      updateSettings({ flashAttn: initial });
+      expect(getAppState().settings.flashAttn).toBe(initial);
+    });
+
+    it('updateSettings flashAttn does not affect other fields', () => {
+      const { updateSettings } = useAppStore.getState();
+      const before = getAppState().settings;
+
+      updateSettings({ flashAttn: true });
+
+      const after = getAppState().settings;
+      expect(after.temperature).toBe(before.temperature);
+      expect(after.gpuLayers).toBe(before.gpuLayers);
+      expect(after.enableGpu).toBe(before.enableGpu);
     });
 
     it('has showGenerationDetails disabled by default', () => {
@@ -1190,9 +1284,9 @@ describe('appStore', () => {
       setDownloadProgress('m1', { progress: 0.9, bytesDownloaded: 900, totalBytes: 1000 });
 
       const progress = getAppState().downloadProgress;
-      expect(progress['m1'].progress).toBe(0.9);
-      expect(progress['m2']).toBeUndefined();
-      expect(progress['m3'].progress).toBe(0.3);
+      expect(progress.m1.progress).toBe(0.9);
+      expect(progress.m2).toBeUndefined();
+      expect(progress.m3.progress).toBe(0.3);
     });
 
     it('handles model add and remove in sequence', () => {
@@ -1371,6 +1465,26 @@ describe('appStore', () => {
       clearBackgroundDownloads();
 
       expect(getAppState().activeBackgroundDownloads).toEqual({});
+    });
+  });
+
+  // ============================================================================
+  // Cache Type Nudge
+  // ============================================================================
+  describe('cacheTypeNudge', () => {
+    it('defaults to false', () => {
+      expect(getAppState().hasSeenCacheTypeNudge).toBe(false);
+    });
+
+    it('setHasSeenCacheTypeNudge(true) updates state', () => {
+      useAppStore.getState().setHasSeenCacheTypeNudge(true);
+      expect(getAppState().hasSeenCacheTypeNudge).toBe(true);
+    });
+
+    it('can be reset back to false', () => {
+      useAppStore.getState().setHasSeenCacheTypeNudge(true);
+      useAppStore.getState().setHasSeenCacheTypeNudge(false);
+      expect(getAppState().hasSeenCacheTypeNudge).toBe(false);
     });
   });
 });

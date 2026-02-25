@@ -61,11 +61,14 @@ export const resetStores = (): void => {
       imageThreads: 4,
       imageWidth: 512,
       imageHeight: 512,
-      modelLoadingStrategy: 'memory',
-      enableGpu: true,
+      modelLoadingStrategy: 'performance',
+      enableGpu: false,
       gpuLayers: 6,
+      flashAttn: false,
+      cacheType: 'q8_0',
       showGenerationDetails: false,
       enhanceImagePrompts: false,
+      enabledTools: ['calculator', 'get_current_datetime'],
     },
     downloadedImageModels: [],
     activeImageModelId: null,
@@ -76,6 +79,7 @@ export const resetStores = (): void => {
     imageGenerationStatus: null,
     imagePreviewPath: null,
     generatedImages: [],
+    hasSeenCacheTypeNudge: false,
   });
 
   // Reset chat store
@@ -374,7 +378,7 @@ export const simulateGeneration = async (
   const tokens = responseContent.split(' ');
   for (const token of tokens) {
     await flushPromises();
-    chatStore.appendToStreamingMessage(token + ' ');
+    chatStore.appendToStreamingMessage(`${token  } `);
   }
 
   // Finalize

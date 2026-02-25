@@ -4,6 +4,7 @@ const CONTROL_TOKEN_PATTERNS: RegExp[] = [
   /<\|end\|>/gi,
   /<\|eot_id\|>/gi,
   /<\/s>/gi,
+  /<tool_call>[\s\S]*?<\/tool_call>\s*/g,
 ];
 
 export function stripControlTokens(content: string): string {

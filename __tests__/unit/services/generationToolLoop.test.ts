@@ -1,0 +1,838 @@
+/**
+ * Generation Tool Loop Unit Tests
+ *
+ * Tests for the tool-calling generation loop that orchestrates
+ * LLM calls, tool execution, and result re-injection.
+ * Priority: P0 (Critical) - Core tool-calling functionality.
+ */
+
+import { runToolLoop, ToolLoopContext, parseToolCallsFromText } from '../../../src/services/generationToolLoop';
+import { llmService } from '../../../src/services/llm';
+import { Message } from '../../../src/types';
+import { createMessage } from '../../utils/factories';
+import type { ToolCall, ToolResult } from '../../../src/services/tools/types';
+
+// ---------------------------------------------------------------------------
+// Mocks
+// ---------------------------------------------------------------------------
+
+const mockAddMessage = jest.fn();
+
+jest.mock('../../../src/stores', () => ({
+  useChatStore: {
+    getState: () => ({
+      addMessage: mockAddMessage,
+    }),
+  },
+}));
+
+jest.mock('../../../src/services/llm', () => ({
+  llmService: {
+    generateResponseWithTools: jest.fn(),
+  },
+}));
+
+const mockGetToolsAsOpenAISchema = jest.fn((_ids?: string[]) => [{ type: 'function', function: { name: 'mock_tool' } }]);
+const mockExecuteToolCall = jest.fn();
+
+jest.mock('../../../src/services/tools', () => ({
+  getToolsAsOpenAISchema: (ids: string[]) => mockGetToolsAsOpenAISchema(ids),
+  executeToolCall: (call: Record<string, unknown>) => mockExecuteToolCall(call),
+}));
+
+const mockedGenerateResponseWithTools = llmService.generateResponseWithTools as jest.Mock;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function makeMessage(overrides: Partial<Message> = {}): Message {
+  return createMessage({ content: 'Hello', ...overrides } as any);
+}
+
+function makeToolCall(overrides: Partial<ToolCall> = {}): ToolCall {
+  return {
+    id: 'tc-1',
+    name: 'web_search',
+    arguments: { query: 'test' },
+    ...overrides,
+  };
+}
+
+function makeToolResult(overrides: Partial<ToolResult> = {}): ToolResult {
+  return {
+    toolCallId: 'tc-1',
+    name: 'web_search',
+    content: 'Search results here',
+    durationMs: 120,
+    ...overrides,
+  };
+}
+
+function createContext(overrides: Partial<ToolLoopContext> = {}): ToolLoopContext {
+  return {
+    conversationId: 'conv-1',
+    messages: [makeMessage()],
+    enabledToolIds: ['web_search'],
+    isAborted: () => false,
+    onThinkingDone: jest.fn(),
+    onFinalResponse: jest.fn(),
+    callbacks: undefined,
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('runToolLoop', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockExecuteToolCall.mockReset();
+    mockedGenerateResponseWithTools.mockReset();
+    mockGetToolsAsOpenAISchema.mockReturnValue([
+      { type: 'function', function: { name: 'web_search' } },
+    ]);
+  });
+
+  // ==========================================================================
+  // Final response (no tool calls)
+  // ==========================================================================
+  describe('final response with no tool calls', () => {
+    it('returns final response when model produces no tool calls', async () => {
+      mockedGenerateResponseWithTools.mockResolvedValue({
+        fullResponse: 'Here is the answer.',
+        toolCalls: [],
+      });
+
+      const ctx = createContext();
+      await runToolLoop(ctx);
+
+      expect(ctx.onThinkingDone).toHaveBeenCalledTimes(1);
+      expect(ctx.onFinalResponse).toHaveBeenCalledWith('Here is the answer.');
+    });
+
+    it('calls onFirstToken callback when final response is produced', async () => {
+      mockedGenerateResponseWithTools.mockResolvedValue({
+        fullResponse: 'Answer',
+        toolCalls: [],
+      });
+
+      const onFirstToken = jest.fn();
+      const ctx = createContext({ callbacks: { onFirstToken } });
+      await runToolLoop(ctx);
+
+      expect(onFirstToken).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not call onFinalResponse when fullResponse is empty and no tool calls', async () => {
+      mockedGenerateResponseWithTools.mockResolvedValue({
+        fullResponse: '',
+        toolCalls: [],
+      });
+
+      const ctx = createContext();
+      await runToolLoop(ctx);
+
+      expect(ctx.onFinalResponse).not.toHaveBeenCalled();
+      expect(ctx.onThinkingDone).not.toHaveBeenCalled();
+    });
+
+    it('does not add any messages to chat store when no tool calls', async () => {
+      mockedGenerateResponseWithTools.mockResolvedValue({
+        fullResponse: 'Direct answer',
+        toolCalls: [],
+      });
+
+      const ctx = createContext();
+      await runToolLoop(ctx);
+
+      expect(mockAddMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==========================================================================
+  // Tool execution loop
+  // ==========================================================================
+  describe('tool execution loop', () => {
+    it('executes a tool call and re-injects the result', async () => {
+      const toolResult = makeToolResult();
+      mockExecuteToolCall.mockResolvedValue(toolResult);
+
+      // First call: model requests a tool call
+      // Second call: model returns final response
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: 'Let me search for that.',
+          toolCalls: [makeToolCall()],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Based on the search results, here is the answer.',
+          toolCalls: [],
+        });
+
+      const ctx = createContext();
+      await runToolLoop(ctx);
+
+      // Tool was executed
+      expect(mockExecuteToolCall).toHaveBeenCalledTimes(1);
+      expect(mockExecuteToolCall).toHaveBeenCalledWith(makeToolCall());
+
+      // Final response was delivered
+      expect(ctx.onFinalResponse).toHaveBeenCalledWith(
+        'Based on the search results, here is the answer.',
+      );
+
+      // LLM was called twice (initial + after tool result)
+      expect(mockedGenerateResponseWithTools).toHaveBeenCalledTimes(2);
+    });
+
+    it('adds assistant and tool result messages to chat store', async () => {
+      mockExecuteToolCall.mockResolvedValue(makeToolResult());
+
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: 'Searching...',
+          toolCalls: [makeToolCall()],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Done.',
+          toolCalls: [],
+        });
+
+      const ctx = createContext();
+      await runToolLoop(ctx);
+
+      // Two messages added: assistant (with tool calls) + tool result
+      expect(mockAddMessage).toHaveBeenCalledTimes(2);
+
+      // First: assistant message with tool calls
+      const assistantMsg = mockAddMessage.mock.calls[0][1];
+      expect(assistantMsg.role).toBe('assistant');
+      expect(assistantMsg.content).toBe('Searching...');
+      expect(assistantMsg.toolCalls).toHaveLength(1);
+      expect(assistantMsg.toolCalls[0].name).toBe('web_search');
+      expect(assistantMsg.toolCalls[0].arguments).toBe(JSON.stringify({ query: 'test' }));
+
+      // Second: tool result message
+      const toolMsg = mockAddMessage.mock.calls[1][1];
+      expect(toolMsg.role).toBe('tool');
+      expect(toolMsg.content).toBe('Search results here');
+      expect(toolMsg.toolCallId).toBe('tc-1');
+      expect(toolMsg.toolName).toBe('web_search');
+      expect(toolMsg.generationTimeMs).toBe(120);
+    });
+
+    it('handles tool result with error', async () => {
+      mockExecuteToolCall.mockResolvedValue(
+        makeToolResult({ error: 'Network timeout', content: '' }),
+      );
+
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: '',
+          toolCalls: [makeToolCall()],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Sorry, the search failed.',
+          toolCalls: [],
+        });
+
+      const ctx = createContext();
+      await runToolLoop(ctx);
+
+      // Tool result message should contain the error
+      const toolMsg = mockAddMessage.mock.calls[1][1];
+      expect(toolMsg.content).toBe('Error: Network timeout');
+    });
+
+    it('executes multiple tool calls in a single iteration', async () => {
+      const tc1 = makeToolCall({ id: 'tc-1', name: 'web_search', arguments: { query: 'a' } });
+      const tc2 = makeToolCall({ id: 'tc-2', name: 'web_search', arguments: { query: 'b' } });
+
+      mockExecuteToolCall
+        .mockResolvedValueOnce(makeToolResult({ toolCallId: 'tc-1', name: 'web_search' }))
+        .mockResolvedValueOnce(makeToolResult({ toolCallId: 'tc-2', name: 'web_search' }));
+
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: 'Searching both...',
+          toolCalls: [tc1, tc2],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Here are both results.',
+          toolCalls: [],
+        });
+
+      const ctx = createContext();
+      await runToolLoop(ctx);
+
+      expect(mockExecuteToolCall).toHaveBeenCalledTimes(2);
+      // 1 assistant + 2 tool results = 3 messages
+      expect(mockAddMessage).toHaveBeenCalledTimes(3);
+    });
+
+    it('passes tool schemas from getToolsAsOpenAISchema to LLM', async () => {
+      const schemas = [{ type: 'function', function: { name: 'custom_tool' } }];
+      mockGetToolsAsOpenAISchema.mockReturnValue(schemas);
+
+      mockedGenerateResponseWithTools.mockResolvedValue({
+        fullResponse: 'Answer',
+        toolCalls: [],
+      });
+
+      const ctx = createContext({ enabledToolIds: ['custom_tool'] });
+      await runToolLoop(ctx);
+
+      expect(mockGetToolsAsOpenAISchema).toHaveBeenCalledWith(['custom_tool']);
+      expect(mockedGenerateResponseWithTools).toHaveBeenCalledWith(
+        expect.any(Array),
+        { tools: schemas },
+      );
+    });
+  });
+
+  // ==========================================================================
+  // MAX_TOOL_ITERATIONS limit
+  // ==========================================================================
+  describe('iteration limit', () => {
+    it('stops after MAX_TOOL_ITERATIONS (3) even if model keeps requesting tools', async () => {
+      const toolCall = makeToolCall();
+      mockExecuteToolCall.mockResolvedValue(makeToolResult());
+
+      // Model always requests tool calls, but on the 3rd iteration it should
+      // still return the final response
+      mockedGenerateResponseWithTools.mockResolvedValue({
+        fullResponse: 'Still thinking...',
+        toolCalls: [toolCall],
+      });
+
+      const ctx = createContext();
+      await runToolLoop(ctx);
+
+      // On iteration 2 (0-indexed), the condition
+      // `iteration === MAX_TOOL_ITERATIONS - 1` triggers the final response.
+      // So generateResponseWithTools is called 3 times total.
+      expect(mockedGenerateResponseWithTools).toHaveBeenCalledTimes(3);
+
+      // The last iteration should produce the final response
+      expect(ctx.onFinalResponse).toHaveBeenCalledWith('Still thinking...');
+      expect(ctx.onThinkingDone).toHaveBeenCalledTimes(1);
+    });
+
+    it('executes tools for iterations 0 through 1 but not on iteration 2', async () => {
+      const toolCall = makeToolCall();
+      mockExecuteToolCall.mockResolvedValue(makeToolResult());
+
+      mockedGenerateResponseWithTools.mockResolvedValue({
+        fullResponse: 'Thinking...',
+        toolCalls: [toolCall],
+      });
+
+      const ctx = createContext();
+      await runToolLoop(ctx);
+
+      // Tools are executed for iterations 0-1 (2 iterations), not on iteration 2
+      expect(mockExecuteToolCall).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // ==========================================================================
+  // Abort signal
+  // ==========================================================================
+  describe('abort handling', () => {
+    it('breaks out of loop immediately when aborted before first LLM call', async () => {
+      const ctx = createContext({ isAborted: () => true });
+      await runToolLoop(ctx);
+
+      expect(mockedGenerateResponseWithTools).not.toHaveBeenCalled();
+      expect(ctx.onFinalResponse).not.toHaveBeenCalled();
+    });
+
+    it('stops executing tool calls when aborted mid-iteration', async () => {
+      let aborted = false;
+      const tc1 = makeToolCall({ id: 'tc-1', name: 'tool_a' });
+      const tc2 = makeToolCall({ id: 'tc-2', name: 'tool_b' });
+
+      mockExecuteToolCall.mockImplementation(async (call: ToolCall) => {
+        if (call.id === 'tc-1') {
+          aborted = true; // Abort after first tool completes
+        }
+        return makeToolResult({ toolCallId: call.id, name: call.name });
+      });
+
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: '',
+          toolCalls: [tc1, tc2],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Should not reach.',
+          toolCalls: [],
+        });
+
+      const ctx = createContext({ isAborted: () => aborted });
+      await runToolLoop(ctx);
+
+      // Only first tool should be executed; second is skipped due to abort
+      expect(mockExecuteToolCall).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not produce a final response when aborted between iterations', async () => {
+      mockExecuteToolCall.mockResolvedValueOnce(makeToolResult());
+
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: '',
+          toolCalls: [makeToolCall()],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Should not reach.',
+          toolCalls: [],
+        });
+
+      let abortAfterFirstTool = false;
+      const ctx = createContext({
+        isAborted: () => abortAfterFirstTool,
+        callbacks: {
+          onToolCallComplete: () => {
+            abortAfterFirstTool = true;
+          },
+        },
+      });
+
+      await runToolLoop(ctx);
+
+      // The loop ran one iteration (LLM + tool execution), then abort
+      // prevented the second iteration, so no final response was produced.
+      expect(mockedGenerateResponseWithTools).toHaveBeenCalledTimes(1);
+      expect(mockExecuteToolCall).toHaveBeenCalledTimes(1);
+      expect(ctx.onFinalResponse).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==========================================================================
+  // Callbacks
+  // ==========================================================================
+  describe('callbacks', () => {
+    it('calls onToolCallStart before executing each tool call', async () => {
+      const onToolCallStart = jest.fn();
+      mockExecuteToolCall.mockResolvedValue(makeToolResult());
+
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: '',
+          toolCalls: [makeToolCall({ name: 'web_search', arguments: { query: 'test' } })],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Done.',
+          toolCalls: [],
+        });
+
+      const ctx = createContext({ callbacks: { onToolCallStart } });
+      await runToolLoop(ctx);
+
+      expect(onToolCallStart).toHaveBeenCalledTimes(1);
+      expect(onToolCallStart).toHaveBeenCalledWith('web_search', { query: 'test' });
+    });
+
+    it('calls onToolCallComplete after executing each tool call', async () => {
+      const onToolCallComplete = jest.fn();
+      const result = makeToolResult();
+      mockExecuteToolCall.mockResolvedValue(result);
+
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: '',
+          toolCalls: [makeToolCall()],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Done.',
+          toolCalls: [],
+        });
+
+      const ctx = createContext({ callbacks: { onToolCallComplete } });
+      await runToolLoop(ctx);
+
+      expect(onToolCallComplete).toHaveBeenCalledTimes(1);
+      expect(onToolCallComplete).toHaveBeenCalledWith('web_search', result);
+    });
+
+    it('calls onToolCallStart and onToolCallComplete for multiple tool calls', async () => {
+      const onToolCallStart = jest.fn();
+      const onToolCallComplete = jest.fn();
+
+      const tc1 = makeToolCall({ id: 'tc-1', name: 'tool_a', arguments: { x: 1 } });
+      const tc2 = makeToolCall({ id: 'tc-2', name: 'tool_b', arguments: { y: 2 } });
+
+      mockExecuteToolCall
+        .mockResolvedValueOnce(makeToolResult({ name: 'tool_a' }))
+        .mockResolvedValueOnce(makeToolResult({ name: 'tool_b' }));
+
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: '',
+          toolCalls: [tc1, tc2],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'All done.',
+          toolCalls: [],
+        });
+
+      const ctx = createContext({
+        callbacks: { onToolCallStart, onToolCallComplete },
+      });
+      await runToolLoop(ctx);
+
+      expect(onToolCallStart).toHaveBeenCalledTimes(2);
+      expect(onToolCallStart).toHaveBeenNthCalledWith(1, 'tool_a', { x: 1 });
+      expect(onToolCallStart).toHaveBeenNthCalledWith(2, 'tool_b', { y: 2 });
+
+      expect(onToolCallComplete).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not throw when callbacks are undefined', async () => {
+      mockExecuteToolCall.mockResolvedValue(makeToolResult());
+
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: '',
+          toolCalls: [makeToolCall()],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Done.',
+          toolCalls: [],
+        });
+
+      const ctx = createContext({ callbacks: undefined });
+
+      // Should not throw
+      await expect(runToolLoop(ctx)).resolves.toBeUndefined();
+    });
+
+    it('calls onFirstToken only on final response, not during tool iterations', async () => {
+      const onFirstToken = jest.fn();
+      mockExecuteToolCall.mockResolvedValue(makeToolResult());
+
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: 'Searching...',
+          toolCalls: [makeToolCall()],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Final answer.',
+          toolCalls: [],
+        });
+
+      const ctx = createContext({ callbacks: { onFirstToken } });
+      await runToolLoop(ctx);
+
+      expect(onFirstToken).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ==========================================================================
+  // Message construction
+  // ==========================================================================
+  describe('message construction', () => {
+    it('builds assistant message with serialized tool call arguments', async () => {
+      const args = { query: 'hello world', limit: 5 };
+      mockExecuteToolCall.mockResolvedValue(makeToolResult());
+
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: 'Thinking...',
+          toolCalls: [makeToolCall({ id: 'tc-x', name: 'search', arguments: args })],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Done.',
+          toolCalls: [],
+        });
+
+      const ctx = createContext();
+      await runToolLoop(ctx);
+
+      const assistantMsg = mockAddMessage.mock.calls[0][1];
+      expect(assistantMsg.toolCalls[0].arguments).toBe(JSON.stringify(args));
+    });
+
+    it('uses empty string for assistant content when fullResponse is empty', async () => {
+      mockExecuteToolCall.mockResolvedValue(makeToolResult());
+
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: '',
+          toolCalls: [makeToolCall()],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Done.',
+          toolCalls: [],
+        });
+
+      const ctx = createContext();
+      await runToolLoop(ctx);
+
+      const assistantMsg = mockAddMessage.mock.calls[0][1];
+      expect(assistantMsg.content).toBe('');
+    });
+
+    it('passes conversationId to addMessage for both assistant and tool messages', async () => {
+      mockExecuteToolCall.mockResolvedValue(makeToolResult());
+
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: '',
+          toolCalls: [makeToolCall()],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Done.',
+          toolCalls: [],
+        });
+
+      const ctx = createContext({ conversationId: 'my-conv-42' });
+      await runToolLoop(ctx);
+
+      expect(mockAddMessage).toHaveBeenCalledTimes(2);
+      expect(mockAddMessage.mock.calls[0][0]).toBe('my-conv-42');
+      expect(mockAddMessage.mock.calls[1][0]).toBe('my-conv-42');
+    });
+
+    it('tool result message uses tc.id for toolCallId when present', async () => {
+      mockExecuteToolCall.mockResolvedValue(makeToolResult());
+
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: '',
+          toolCalls: [makeToolCall({ id: 'call_abc123' })],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Done.',
+          toolCalls: [],
+        });
+
+      const ctx = createContext();
+      await runToolLoop(ctx);
+
+      const toolMsg = mockAddMessage.mock.calls[1][1];
+      expect(toolMsg.toolCallId).toBe('call_abc123');
+    });
+
+    it('messages are appended to loopMessages for subsequent LLM calls', async () => {
+      mockExecuteToolCall.mockResolvedValue(makeToolResult());
+
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: 'Let me check.',
+          toolCalls: [makeToolCall()],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Final.',
+          toolCalls: [],
+        });
+
+      const originalMessages = [makeMessage({ content: 'What is the weather?' })];
+      const ctx = createContext({ messages: originalMessages });
+      await runToolLoop(ctx);
+
+      // Second LLM call should receive original + assistant + tool result messages
+      const secondCallMessages = mockedGenerateResponseWithTools.mock.calls[1][0];
+      expect(secondCallMessages.length).toBe(3); // original + assistant + tool result
+      expect(secondCallMessages[0].content).toBe('What is the weather?');
+      expect(secondCallMessages[1].role).toBe('assistant');
+      expect(secondCallMessages[2].role).toBe('tool');
+    });
+  });
+
+  // ==========================================================================
+  // Multi-iteration scenarios
+  // ==========================================================================
+  describe('multi-iteration scenarios', () => {
+    it('handles two rounds of tool calls before final response', async () => {
+      mockExecuteToolCall.mockResolvedValue(makeToolResult());
+
+      mockedGenerateResponseWithTools
+        .mockResolvedValueOnce({
+          fullResponse: 'Searching...',
+          toolCalls: [makeToolCall({ id: 'tc-1' })],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Need more info...',
+          toolCalls: [makeToolCall({ id: 'tc-2' })],
+        })
+        .mockResolvedValueOnce({
+          fullResponse: 'Here is the complete answer.',
+          toolCalls: [],
+        });
+
+      const ctx = createContext();
+      await runToolLoop(ctx);
+
+      expect(mockedGenerateResponseWithTools).toHaveBeenCalledTimes(3);
+      expect(mockExecuteToolCall).toHaveBeenCalledTimes(2);
+      expect(ctx.onFinalResponse).toHaveBeenCalledWith('Here is the complete answer.');
+      // 2 assistant + 2 tool = 4 messages added
+      expect(mockAddMessage).toHaveBeenCalledTimes(4);
+    });
+  });
+});
+
+// ===========================================================================
+// parseToolCallsFromText
+// ===========================================================================
+
+describe('parseToolCallsFromText', () => {
+  it('parses a valid tool_call tag with name and arguments', () => {
+    const text = 'Some text <tool_call>{"name":"web_search","arguments":{"query":"test"}}</tool_call> more text';
+    const result = parseToolCallsFromText(text);
+
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0].name).toBe('web_search');
+    expect(result.toolCalls[0].arguments).toEqual({ query: 'test' });
+  });
+
+  it('returns cleaned text with tags removed', () => {
+    const text = 'Before <tool_call>{"name":"web_search","arguments":{"query":"test"}}</tool_call> After';
+    const result = parseToolCallsFromText(text);
+
+    expect(result.cleanText).toBe('Before  After');
+  });
+
+  it('handles multiple tool_call tags', () => {
+    const text = [
+      '<tool_call>{"name":"web_search","arguments":{"query":"first"}}</tool_call>',
+      'middle text',
+      '<tool_call>{"name":"web_search","arguments":{"query":"second"}}</tool_call>',
+    ].join(' ');
+
+    const result = parseToolCallsFromText(text);
+
+    expect(result.toolCalls).toHaveLength(2);
+    expect(result.toolCalls[0].arguments).toEqual({ query: 'first' });
+    expect(result.toolCalls[1].arguments).toEqual({ query: 'second' });
+    expect(result.cleanText).toBe('middle text');
+  });
+
+  it('handles malformed JSON gracefully (returns empty toolCalls for that tag)', () => {
+    const text = 'Hello <tool_call>{bad json here}</tool_call> world';
+    const result = parseToolCallsFromText(text);
+
+    expect(result.toolCalls).toHaveLength(0);
+    expect(result.cleanText).toBe('Hello  world');
+  });
+
+  it('returns original text when no tags are present', () => {
+    const text = 'Just a regular response with no tool calls.';
+    const result = parseToolCallsFromText(text);
+
+    expect(result.toolCalls).toHaveLength(0);
+    expect(result.cleanText).toBe(text);
+  });
+
+  it('supports "parameters" as alias for "arguments"', () => {
+    const text = '<tool_call>{"name":"web_search","parameters":{"query":"alias test"}}</tool_call>';
+    const result = parseToolCallsFromText(text);
+
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0].name).toBe('web_search');
+    expect(result.toolCalls[0].arguments).toEqual({ query: 'alias test' });
+  });
+});
+
+// ===========================================================================
+// MAX_TOTAL_TOOL_CALLS cap (integration with runToolLoop)
+// ===========================================================================
+
+describe('runToolLoop – MAX_TOTAL_TOOL_CALLS cap', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockExecuteToolCall.mockReset();
+    mockedGenerateResponseWithTools.mockReset();
+    mockGetToolsAsOpenAISchema.mockReturnValue([
+      { type: 'function', function: { name: 'web_search' } },
+    ]);
+  });
+
+  it('caps total tool calls across iterations at 5', async () => {
+    // Each iteration returns 3 tool calls. After 2 iterations that would be 6,
+    // but the cap should limit it to 5 total executeToolCall invocations.
+    const makeThreeToolCalls = (prefix: string): ToolCall[] => [
+      { id: `${prefix}-1`, name: 'web_search', arguments: { query: 'a' } },
+      { id: `${prefix}-2`, name: 'web_search', arguments: { query: 'b' } },
+      { id: `${prefix}-3`, name: 'web_search', arguments: { query: 'c' } },
+    ];
+
+    mockExecuteToolCall.mockResolvedValue({
+      toolCallId: 'any',
+      name: 'web_search',
+      content: 'result',
+      durationMs: 10,
+    });
+
+    // Iteration 0: 3 tool calls (all executed, total = 3)
+    // Iteration 1: 3 tool calls (only 2 executed due to cap, total = 5)
+    // Iteration 2: would have tool calls but hits final iteration limit
+    mockedGenerateResponseWithTools
+      .mockResolvedValueOnce({
+        fullResponse: '',
+        toolCalls: makeThreeToolCalls('iter0'),
+      })
+      .mockResolvedValueOnce({
+        fullResponse: '',
+        toolCalls: makeThreeToolCalls('iter1'),
+      })
+      .mockResolvedValueOnce({
+        fullResponse: 'Final answer after capped tools.',
+        toolCalls: [],
+      });
+
+    const ctx = createContext();
+    await runToolLoop(ctx);
+
+    // 3 from iteration 0 + 2 from iteration 1 (capped) = 5 total
+    expect(mockExecuteToolCall).toHaveBeenCalledTimes(5);
+  });
+});
+
+// ===========================================================================
+// Web search fallback query
+// ===========================================================================
+
+describe('runToolLoop – web search fallback query', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockExecuteToolCall.mockReset();
+    mockedGenerateResponseWithTools.mockReset();
+    mockGetToolsAsOpenAISchema.mockReturnValue([
+      { type: 'function', function: { name: 'web_search' } },
+    ]);
+  });
+
+  it('uses last user message as query when web_search is called with empty args', async () => {
+    mockExecuteToolCall.mockResolvedValue({
+      toolCallId: 'tc-empty',
+      name: 'web_search',
+      content: 'Search results',
+      durationMs: 50,
+    });
+
+    mockedGenerateResponseWithTools
+      .mockResolvedValueOnce({
+        fullResponse: 'Let me search.',
+        toolCalls: [{ id: 'tc-empty', name: 'web_search', arguments: {} }],
+      })
+      .mockResolvedValueOnce({
+        fullResponse: 'Here are the results.',
+        toolCalls: [],
+      });
+
+    const userMessage = makeMessage({ role: 'user', content: 'What is the weather in Tokyo?' });
+    const ctx = createContext({ messages: [userMessage] });
+    await runToolLoop(ctx);
+
+    // The tool call should have been executed with the user's message as fallback query
+    expect(mockExecuteToolCall).toHaveBeenCalledTimes(1);
+    const executedCall = mockExecuteToolCall.mock.calls[0][0];
+    expect(executedCall.arguments.query).toBe('What is the weather in Tokyo?');
+  });
+});

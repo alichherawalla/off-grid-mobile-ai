@@ -10,6 +10,7 @@ import { activeModelService } from './activeModelService';
 import { llmService } from './llm';
 import { useAppStore, useChatStore } from '../stores';
 import { GeneratedImage, GenerationMeta, Message } from '../types';
+import logger from '../utils/logger';
 
 export interface ImageGenerationState {
   isGenerating: boolean;
@@ -24,42 +25,106 @@ export interface ImageGenerationState {
 
 type ImageGenerationListener = (state: ImageGenerationState) => void;
 
+interface GenerateImageParams {
+  prompt: string;
+  conversationId?: string;
+  negativePrompt?: string;
+  steps?: number;
+  guidanceScale?: number;
+  seed?: number;
+  previewInterval?: number;
+}
+
+interface ActiveImageModel {
+  id: string;
+  name: string;
+  modelPath: string;
+  backend?: string;
+}
+
+interface RunGenerationOptions {
+  params: GenerateImageParams;
+  enhancedPrompt: string;
+  activeImageModel: ActiveImageModel;
+  steps: number;
+  guidanceScale: number;
+  imageWidth: number;
+  imageHeight: number;
+}
+
+interface UpdateEnhancementOptions {
+  conversationId: string | undefined;
+  tempMessageId: string | null;
+  enhancedPrompt: string;
+  originalPrompt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Module-level helpers
+// ---------------------------------------------------------------------------
+
+function buildEnhancementMessages(prompt: string, contextMessages: Message[]): Message[] {
+  const hasContext = contextMessages.length > 0;
+  const systemContent = hasContext
+    ? `You are an expert at creating detailed image generation prompts. The user is in a conversation and wants to generate an image. Use the conversation history to understand context and references (e.g. "make it darker", "same but at night"). Enhance the user's latest request into a detailed, descriptive prompt for an image generation model. Include artistic style, lighting, composition, and quality modifiers. Keep it under 75 words. Only respond with the enhanced prompt, no explanation.`
+    : `You are an expert at creating detailed image generation prompts. Take the user's request and enhance it into a detailed, descriptive prompt that will produce better results from an image generation model. Include artistic style, lighting, composition, and quality modifiers. Keep it under 75 words. Only respond with the enhanced prompt, no explanation.`;
+  return [
+    { id: 'system-enhance', role: 'system', content: systemContent, timestamp: Date.now() },
+    ...contextMessages,
+    { id: 'user-enhance', role: 'user', content: prompt, timestamp: Date.now() },
+  ];
+}
+
+function getConversationContext(conversationId: string): Message[] {
+  const conversation = useChatStore.getState().conversations.find(c => c.id === conversationId);
+  if (!conversation?.messages) return [];
+  return conversation.messages
+    .slice(-10)
+    .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+    .map(msg => ({ id: `ctx-${msg.id}`, role: msg.role, content: msg.content.slice(0, 500), timestamp: msg.timestamp }));
+}
+
+function cleanEnhancedPrompt(raw: string): string {
+  return raw.trim().replace(/(^["'])|(["']$)/g, '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+}
+
+function buildImageGenMeta(
+  model: ActiveImageModel,
+  opts: { steps: number; guidanceScale: number; result: GeneratedImage },
+): GenerationMeta {
+  const backend = model.backend ?? 'mnn';
+  const gpuBackend = Platform.OS === 'ios' ? 'Core ML (ANE)' : backend === 'qnn' ? 'QNN (NPU)' : 'MNN (CPU)';
+  return {
+    gpu: Platform.OS === 'ios' ? true : backend === 'qnn',
+    gpuBackend,
+    modelName: model.name,
+    steps: opts.steps,
+    guidanceScale: opts.guidanceScale,
+    resolution: `${opts.result.width}x${opts.result.height}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Service class
+// ---------------------------------------------------------------------------
+
 class ImageGenerationService {
   private state: ImageGenerationState = {
-    isGenerating: false,
-    progress: null,
-    status: null,
-    previewPath: null,
-    prompt: null,
-    conversationId: null,
-    error: null,
-    result: null,
+    isGenerating: false, progress: null, status: null, previewPath: null,
+    prompt: null, conversationId: null, error: null, result: null,
   };
 
   private listeners: Set<ImageGenerationListener> = new Set();
   private cancelRequested: boolean = false;
 
-  /**
-   * Get current generation state
-   */
-  getState(): ImageGenerationState {
-    return { ...this.state };
-  }
+  getState(): ImageGenerationState { return { ...this.state }; }
 
-  /**
-   * Check if generation is in progress for a specific conversation
-   */
   isGeneratingFor(conversationId: string): boolean {
     return this.state.isGenerating && this.state.conversationId === conversationId;
   }
 
-  /**
-   * Subscribe to generation state changes.
-   * Immediately calls listener with current state.
-   */
   subscribe(listener: ImageGenerationListener): () => void {
     this.listeners.add(listener);
-    // Immediately call with current state so reconnecting screens get progress
     listener(this.getState());
     return () => this.listeners.delete(listener);
   }
@@ -72,20 +137,149 @@ class ImageGenerationService {
   private updateState(partial: Partial<ImageGenerationState>): void {
     this.state = { ...this.state, ...partial };
     this.notifyListeners();
-
-    // Sync appStore flags for global UI indicators (tab bar badges, etc.)
     const appStore = useAppStore.getState();
-    if ('isGenerating' in partial) {
-      appStore.setIsGeneratingImage(this.state.isGenerating);
+    if ('isGenerating' in partial) appStore.setIsGeneratingImage(this.state.isGenerating);
+    if ('progress' in partial) appStore.setImageGenerationProgress(this.state.progress);
+    if ('status' in partial) appStore.setImageGenerationStatus(this.state.status);
+    if ('previewPath' in partial) appStore.setImagePreviewPath(this.state.previewPath);
+  }
+
+  private async _resetLlmAfterEnhancement(): Promise<void> {
+    logger.log('[ImageGen] 🔄 Starting cleanup - generating:', llmService.isCurrentlyGenerating());
+    try {
+      await llmService.stopGeneration();
+      logger.log('[ImageGen] ✓ stopGeneration() called');
+      logger.log('[ImageGen] ✅ LLM service reset complete - generating:', llmService.isCurrentlyGenerating());
+    } catch (resetError) {
+      logger.error('[ImageGen] ❌ Failed to reset LLM service:', resetError);
     }
-    if ('progress' in partial) {
-      appStore.setImageGenerationProgress(this.state.progress);
+  }
+
+  private async _updateEnhancementMessage(opts: UpdateEnhancementOptions): Promise<void> {
+    const { conversationId, tempMessageId, enhancedPrompt, originalPrompt } = opts;
+    if (!conversationId || !tempMessageId) return;
+    const chatStore = useChatStore.getState();
+    if (enhancedPrompt && enhancedPrompt !== originalPrompt) {
+      chatStore.updateMessageContent(conversationId, tempMessageId, `<think>__LABEL:Enhanced prompt__\n${enhancedPrompt}</think>`);
+      chatStore.updateMessageThinking(conversationId, tempMessageId, false);
+    } else {
+      logger.warn('[ImageGen] Enhancement produced no change, deleting thinking message');
+      chatStore.deleteMessage(conversationId, tempMessageId);
     }
-    if ('status' in partial) {
-      appStore.setImageGenerationStatus(this.state.status);
+  }
+
+  private async _enhancePrompt(params: GenerateImageParams, steps: number): Promise<string> {
+    const { settings } = useAppStore.getState();
+    if (!settings.enhanceImagePrompts) {
+      logger.log('[ImageGen] Enhancement disabled, using original prompt');
+      return params.prompt;
     }
-    if ('previewPath' in partial) {
-      appStore.setImagePreviewPath(this.state.previewPath);
+    const isTextModelLoaded = llmService.isModelLoaded();
+    const isLlmGenerating = llmService.isCurrentlyGenerating();
+    logger.log('[ImageGen] 🎨 Starting prompt enhancement - Model loaded:', isTextModelLoaded, 'LLM generating:', isLlmGenerating);
+    if (!isTextModelLoaded) {
+      logger.warn('[ImageGen] No text model loaded, skipping enhancement');
+      return params.prompt;
+    }
+    this.updateState({
+      isGenerating: true, prompt: params.prompt, conversationId: params.conversationId || null,
+      status: 'Enhancing prompt with AI...', previewPath: null,
+      progress: { step: 0, totalSteps: steps }, error: null, result: null,
+    });
+    const contextMessages = params.conversationId ? getConversationContext(params.conversationId) : [];
+    let tempMessageId: string | null = null;
+    if (params.conversationId) {
+      const tempMessage = useChatStore.getState().addMessage(params.conversationId, {
+        role: 'assistant', content: 'Enhancing your prompt...', isThinking: true,
+      });
+      tempMessageId = tempMessage.id;
+    }
+    try {
+      logger.log('[ImageGen] 📤 Calling llmService.generateResponse for enhancement...');
+      let raw = await llmService.generateResponse(buildEnhancementMessages(params.prompt, contextMessages), (_token) => {});
+      logger.log('[ImageGen] 📥 llmService.generateResponse returned');
+      logger.log('[ImageGen] LLM state after enhancement - generating:', llmService.isCurrentlyGenerating());
+      raw = cleanEnhancedPrompt(raw);
+      logger.log('[ImageGen] ✅ Original prompt:', params.prompt);
+      logger.log('[ImageGen] ✅ Enhanced prompt:', raw);
+      await this._resetLlmAfterEnhancement();
+      const enhancedPrompt = raw || params.prompt;
+      await this._updateEnhancementMessage({ conversationId: params.conversationId, tempMessageId, enhancedPrompt, originalPrompt: params.prompt });
+      return enhancedPrompt;
+    } catch (error: any) {
+      logger.error('[ImageGen] ❌ Prompt enhancement failed:', error);
+      logger.error('[ImageGen] Error details:', error?.message || 'Unknown error');
+      await this._resetLlmAfterEnhancement();
+      if (params.conversationId && tempMessageId) {
+        useChatStore.getState().deleteMessage(params.conversationId, tempMessageId);
+      }
+      return params.prompt;
+    }
+  }
+
+  private async _ensureImageModelLoaded(activeImageModelId: string | null, activeImageModel: ActiveImageModel, desiredThreads: number): Promise<boolean> {
+    const isImageModelLoaded = await onnxImageGeneratorService.isModelLoaded();
+    const loadedPath = await onnxImageGeneratorService.getLoadedModelPath();
+    const loadedThreads = onnxImageGeneratorService.getLoadedThreads();
+    const needsThreadReload = loadedThreads == null || loadedThreads !== desiredThreads;
+    if (isImageModelLoaded && loadedPath === activeImageModel.modelPath && !needsThreadReload) return true;
+    if (!activeImageModelId) {
+      this.updateState({ error: 'No image model selected', isGenerating: false });
+      return false;
+    }
+    try {
+      this.updateState({ status: `Loading ${activeImageModel.name}...` });
+      await activeModelService.loadImageModel(activeImageModelId);
+      return true;
+    } catch (error: any) {
+      this.updateState({ isGenerating: false, progress: null, status: null, error: `Failed to load image model: ${error?.message || 'Unknown error'}` });
+      return false;
+    }
+  }
+
+  private async _runGenerationAndSave(opts: RunGenerationOptions): Promise<GeneratedImage | null> {
+    const { params, enhancedPrompt, activeImageModel, steps, guidanceScale, imageWidth, imageHeight } = opts;
+    this.updateState({ status: 'Starting image generation...' });
+    const startTime = Date.now();
+    try {
+      const result = await onnxImageGeneratorService.generateImage(
+        { prompt: enhancedPrompt, negativePrompt: params.negativePrompt || '', steps, guidanceScale, seed: params.seed, width: imageWidth, height: imageHeight, previewInterval: params.previewInterval ?? 2 },
+        (progress) => {
+          if (this.cancelRequested) return;
+          const displayStep = Math.min(progress.step, steps);
+          this.updateState({ progress: { step: displayStep, totalSteps: steps }, status: `Generating image (${displayStep}/${steps})...` });
+        },
+        (preview) => {
+          if (this.cancelRequested) return;
+          const displayStep = Math.min(preview.step, steps);
+          this.updateState({ previewPath: `file://${preview.previewPath}?t=${Date.now()}`, status: `Refining image (${displayStep}/${steps})...` });
+        },
+      );
+      if (this.cancelRequested) { this.resetState(); return null; }
+      if (!result?.imagePath) { this.resetState(); return null; }
+      result.modelId = activeImageModel.id;
+      if (params.conversationId) result.conversationId = params.conversationId;
+      useAppStore.getState().addGeneratedImage(result);
+      if (params.conversationId) {
+        const genTime = Date.now() - startTime;
+        useChatStore.getState().addMessage(params.conversationId, {
+          role: 'assistant',
+          content: `Generated image for: "${params.prompt}"`,
+          attachments: [{ id: result.id, type: 'image', uri: `file://${result.imagePath}`, width: result.width, height: result.height }],
+          generationTimeMs: genTime,
+          generationMeta: buildImageGenMeta(activeImageModel, { steps, guidanceScale, result }),
+        });
+      }
+      this.updateState({ isGenerating: false, progress: null, status: null, previewPath: null, result, error: null });
+      return result;
+    } catch (error: any) {
+      if (!error?.message?.includes('cancelled')) {
+        logger.error('[ImageGenerationService] Generation error:', error);
+        this.updateState({ isGenerating: false, progress: null, status: null, previewPath: null, error: error?.message || 'Image generation failed' });
+      } else {
+        this.resetState();
+      }
+      return null;
     }
   }
 
@@ -93,421 +287,52 @@ class ImageGenerationService {
    * Generate an image. Runs independently of UI lifecycle.
    * If conversationId is provided, the result will be added as a chat message.
    */
-  async generateImage(params: {
-    prompt: string;
-    conversationId?: string;
-    negativePrompt?: string;
-    steps?: number;
-    guidanceScale?: number;
-    seed?: number;
-    previewInterval?: number;
-  }): Promise<GeneratedImage | null> {
-    // Guard against concurrent generation
+  async generateImage(params: GenerateImageParams): Promise<GeneratedImage | null> {
     if (this.state.isGenerating) {
-      console.log('[ImageGenerationService] Already generating, ignoring request');
+      logger.log('[ImageGenerationService] Already generating, ignoring request');
       return null;
     }
-
     const { settings, activeImageModelId, downloadedImageModels } = useAppStore.getState();
     const activeImageModel = downloadedImageModels.find(m => m.id === activeImageModelId);
-
-    if (!activeImageModel) {
-      this.updateState({ error: 'No image model selected' });
-      return null;
-    }
+    if (!activeImageModel) { this.updateState({ error: 'No image model selected' }); return null; }
 
     const steps = params.steps || settings.imageSteps || 8;
     const guidanceScale = params.guidanceScale || settings.imageGuidanceScale || 2.0;
     const imageWidth = settings.imageWidth || 256;
     const imageHeight = settings.imageHeight || 256;
 
-    // Enhance prompt using text LLM if enabled
-    let enhancedPrompt = params.prompt;
-    let tempMessageId: string | null = null;
-    console.log('[ImageGen] enhanceImagePrompts setting:', settings.enhanceImagePrompts);
-
-    if (settings.enhanceImagePrompts) {
-      const isTextModelLoaded = llmService.isModelLoaded();
-      const isLlmGenerating = llmService.isCurrentlyGenerating();
-      console.log('[ImageGen] 🎨 Starting prompt enhancement - Model loaded:', isTextModelLoaded, 'LLM generating:', isLlmGenerating);
-
-      if (!isTextModelLoaded) {
-        console.warn('[ImageGen] No text model loaded, skipping enhancement');
-
-        // Delete the thinking message
-        if (params.conversationId && tempMessageId) {
-          const chatStore = useChatStore.getState();
-          chatStore.deleteMessage(params.conversationId, tempMessageId);
-          tempMessageId = null;
-        }
-
-        enhancedPrompt = params.prompt;
-      } else {
-        this.updateState({
-          isGenerating: true,
-          prompt: params.prompt,
-          conversationId: params.conversationId || null,
-          status: 'Enhancing prompt with AI...',
-          previewPath: null,
-          progress: { step: 0, totalSteps: steps },
-          error: null,
-          result: null,
-        });
-
-        // Build conversation context BEFORE adding the temp thinking message
-        // so the context snapshot doesn't include the "Enhancing your prompt..." message
-        const contextMessages: Message[] = [];
-        if (params.conversationId) {
-          const chatStore = useChatStore.getState();
-          const conversation = chatStore.conversations.find(c => c.id === params.conversationId);
-          if (conversation?.messages) {
-            // Take last 10 messages for context
-            const recent = conversation.messages.slice(-10);
-            for (const msg of recent) {
-              if (msg.role === 'user' || msg.role === 'assistant') {
-                contextMessages.push({
-                  id: `ctx-${msg.id}`,
-                  role: msg.role,
-                  content: msg.content.slice(0, 500), // Truncate long messages
-                  timestamp: msg.timestamp,
-                });
-              }
-            }
-          }
-        }
-
-        // Add message to show enhancement in progress with thinking animation
-        if (params.conversationId) {
-          const chatStore = useChatStore.getState();
-          const tempMessage = chatStore.addMessage(
-            params.conversationId,
-            {
-              role: 'assistant',
-              content: 'Enhancing your prompt...',
-              isThinking: true,
-            }
-          );
-          tempMessageId = tempMessage.id;
-        }
-
-        try {
-
-        const hasContext = contextMessages.length > 0;
-        const systemContent = hasContext
-          ? `You are an expert at creating detailed image generation prompts. The user is in a conversation and wants to generate an image. Use the conversation history to understand context and references (e.g. "make it darker", "same but at night"). Enhance the user's latest request into a detailed, descriptive prompt for an image generation model. Include artistic style, lighting, composition, and quality modifiers. Keep it under 75 words. Only respond with the enhanced prompt, no explanation.`
-          : `You are an expert at creating detailed image generation prompts. Take the user's request and enhance it into a detailed, descriptive prompt that will produce better results from an image generation model. Include artistic style, lighting, composition, and quality modifiers. Keep it under 75 words. Only respond with the enhanced prompt, no explanation.`;
-
-        const enhancementMessages: Message[] = [
-          {
-            id: 'system-enhance',
-            role: 'system',
-            content: systemContent,
-            timestamp: Date.now(),
-          },
-          // Include conversation context so the model understands references
-          ...contextMessages,
-          {
-            id: 'user-enhance',
-            role: 'user',
-            content: params.prompt,
-            timestamp: Date.now(),
-          },
-        ];
-
-        console.log('[ImageGen] 📤 Calling llmService.generateResponse for enhancement...');
-        enhancedPrompt = await llmService.generateResponse(
-          enhancementMessages,
-          (_token) => {
-            // Token streaming callback - enhancement tracked via return value
-          },
-          (_complete) => {
-            // Complete callback - enhancement tracked via return value
-          },
-          (error) => {
-            console.error('[ImageGen] ❌ Enhancement error callback:', error);
-          }
-        );
-        console.log('[ImageGen] 📥 llmService.generateResponse returned, checking state...');
-        console.log('[ImageGen] LLM state after enhancement - generating:', llmService.isCurrentlyGenerating());
-
-          // Clean up the response - remove quotes, extra whitespace
-          enhancedPrompt = enhancedPrompt.trim().replace(/^["']|["']$/g, '');
-
-          // Strip <think> blocks from thinking models (e.g. Qwen3) before wrapping
-          enhancedPrompt = enhancedPrompt.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-
-          console.log('[ImageGen] ✅ Original prompt:', params.prompt);
-          console.log('[ImageGen] ✅ Enhanced prompt:', enhancedPrompt);
-
-          // CRITICAL: Reset LLM service after enhancement
-          // This ensures it's ready for normal text generation later
-          console.log('[ImageGen] 🔄 Starting cleanup - generating:', llmService.isCurrentlyGenerating());
-          try {
-            // Always call stop to ensure clean state
-            await llmService.stopGeneration();
-            console.log('[ImageGen] ✓ stopGeneration() called');
-            // NOTE: We DON'T clear KV cache here because:
-            // 1. It's already cleared during generation completion
-            // 2. Clearing it slows down subsequent vision inference significantly
-            console.log('[ImageGen] ✅ LLM service reset complete - generating:', llmService.isCurrentlyGenerating());
-          } catch (resetError) {
-            console.error('[ImageGen] ❌ Failed to reset LLM service:', resetError);
-          }
-
-          // Fall back to original prompt if enhancement produced empty result
-          if (!enhancedPrompt) {
-            enhancedPrompt = params.prompt;
-          }
-
-          // Update thinking message with enhanced prompt as a collapsible block
-          if (params.conversationId && tempMessageId) {
-            const chatStore = useChatStore.getState();
-
-            // If enhancement worked, show it as a collapsible block
-            if (enhancedPrompt && enhancedPrompt !== params.prompt) {
-              chatStore.updateMessage(
-                params.conversationId,
-                tempMessageId,
-                `<think>__LABEL:Enhanced prompt__\n${enhancedPrompt}</think>`,
-                false  // Clear the isThinking flag so it renders as a collapsible block
-              );
-            } else {
-              console.warn('[ImageGen] Enhancement produced no change, deleting thinking message');
-              chatStore.deleteMessage(params.conversationId, tempMessageId);
-              tempMessageId = null;
-            }
-          }
-        } catch (error: any) {
-          console.error('[ImageGen] ❌ Prompt enhancement failed:', error);
-          console.error('[ImageGen] Error details:', error?.message || 'Unknown error');
-
-          // CRITICAL: Reset LLM service after error
-          console.log('[ImageGen] 🔄 Starting cleanup after error - generating:', llmService.isCurrentlyGenerating());
-          try {
-            await llmService.stopGeneration();
-            console.log('[ImageGen] ✓ stopGeneration() called after error');
-            console.log('[ImageGen] ✅ LLM service reset after error - generating:', llmService.isCurrentlyGenerating());
-          } catch (resetError) {
-            console.error('[ImageGen] ❌ Failed to reset LLM service after error:', resetError);
-          }
-
-          // Update or remove the thinking message on error
-          if (params.conversationId && tempMessageId) {
-            const chatStore = useChatStore.getState();
-            chatStore.deleteMessage(params.conversationId, tempMessageId);
-            tempMessageId = null;
-          }
-
-          // Fall back to original prompt if enhancement fails
-          enhancedPrompt = params.prompt;
-        }
-      }
-    } else {
-      console.log('[ImageGen] Enhancement disabled, using original prompt');
-    }
-
+    const enhancedPrompt = await this._enhancePrompt(params, steps);
+    logger.log('[ImageGen] enhanceImagePrompts setting:', settings.enhanceImagePrompts);
     this.cancelRequested = false;
 
-    // Only set initial state if we didn't already set it during prompt enhancement
     if (!settings.enhanceImagePrompts) {
       this.updateState({
-        isGenerating: true,
-        prompt: params.prompt,
-        conversationId: params.conversationId || null,
-        status: 'Preparing image generation...',
-        previewPath: null,
-        progress: { step: 0, totalSteps: steps },
-        error: null,
-        result: null,
+        isGenerating: true, prompt: params.prompt, conversationId: params.conversationId || null,
+        status: 'Preparing image generation...', previewPath: null,
+        progress: { step: 0, totalSteps: steps }, error: null, result: null,
       });
     } else {
-      // Update status for next phase
       this.updateState({ status: 'Preparing image generation...' });
     }
 
-    // Ensure image model is loaded
-    const isImageModelLoaded = await onnxImageGeneratorService.isModelLoaded();
-    const loadedPath = await onnxImageGeneratorService.getLoadedModelPath();
-    const desiredThreads = settings.imageThreads ?? 4;
-    const loadedThreads = onnxImageGeneratorService.getLoadedThreads();
-    const needsThreadReload = loadedThreads == null || loadedThreads !== desiredThreads;
+    const loaded = await this._ensureImageModelLoaded(activeImageModelId, activeImageModel, settings.imageThreads ?? 4);
+    if (!loaded) return null;
+    if (this.cancelRequested) { this.resetState(); return null; }
 
-    if (!isImageModelLoaded || loadedPath !== activeImageModel.modelPath || needsThreadReload) {
-      if (!activeImageModelId) {
-        this.updateState({ error: 'No image model selected', isGenerating: false });
-        return null;
-      }
-      try {
-        this.updateState({ status: `Loading ${activeImageModel.name}...` });
-        await activeModelService.loadImageModel(activeImageModelId);
-      } catch (error: any) {
-        this.updateState({
-          isGenerating: false,
-          progress: null,
-          status: null,
-          error: `Failed to load image model: ${error?.message || 'Unknown error'}`,
-        });
-        return null;
-      }
-    }
-
-    if (this.cancelRequested) {
-      this.resetState();
-      return null;
-    }
-
-    this.updateState({ status: 'Starting image generation...' });
-    const startTime = Date.now();
-
-    try {
-      const result = await onnxImageGeneratorService.generateImage(
-        {
-          prompt: enhancedPrompt,
-          negativePrompt: params.negativePrompt || '',
-          steps,
-          guidanceScale,
-          seed: params.seed,
-          width: imageWidth,
-          height: imageHeight,
-          previewInterval: params.previewInterval ?? 2,
-        },
-        // onProgress - service-owned callback, never goes stale
-        // The server reports total_steps = requested_steps + 2 (CLIP + VAE overhead),
-        // so we use the requested `steps` value for display consistency.
-        (progress) => {
-          if (this.cancelRequested) return;
-          const displayStep = Math.min(progress.step, steps);
-          this.updateState({
-            progress: { step: displayStep, totalSteps: steps },
-            status: `Generating image (${displayStep}/${steps})...`,
-          });
-        },
-        // onPreview - service-owned callback
-        (preview) => {
-          if (this.cancelRequested) return;
-          const displayStep = Math.min(preview.step, steps);
-          this.updateState({
-            previewPath: `file://${preview.previewPath}?t=${Date.now()}`,
-            status: `Refining image (${displayStep}/${steps})...`,
-          });
-        },
-      );
-
-      if (this.cancelRequested) {
-        this.resetState();
-        return null;
-      }
-
-      const genTime = Date.now() - startTime;
-
-      if (result && result.imagePath) {
-        // Set modelId and conversationId on the result
-        result.modelId = activeImageModel.id;
-        if (params.conversationId) {
-          result.conversationId = params.conversationId;
-        }
-
-        // Add to gallery store
-        useAppStore.getState().addGeneratedImage(result);
-
-        // If triggered from a conversation, add assistant message with the image
-        if (params.conversationId) {
-          const backend = activeImageModel.backend ?? 'mnn';
-          const gpuBackend = Platform.OS === 'ios'
-            ? 'Core ML (ANE)'
-            : backend === 'qnn'
-              ? 'QNN (NPU)'
-              : 'MNN (CPU)';
-
-          const imageMeta: GenerationMeta = {
-            gpu: Platform.OS === 'ios' ? true : backend === 'qnn',
-            gpuBackend,
-            modelName: activeImageModel.name,
-            steps,
-            guidanceScale,
-            resolution: `${result.width}x${result.height}`,
-          };
-
-          const chatStore = useChatStore.getState();
-
-          // Keep the enhanced prompt message (don't delete it)
-          // It's already shown as a collapsible block in the chat
-
-          // Add image message with only the original prompt
-          const messageContent = `Generated image for: "${params.prompt}"`;
-
-          chatStore.addMessage(
-            params.conversationId,
-            {
-              role: 'assistant',
-              content: messageContent,
-            },
-            [{
-              id: result.id,
-              type: 'image',
-              uri: `file://${result.imagePath}`,
-              width: result.width,
-              height: result.height,
-            }],
-            genTime,
-            imageMeta
-          );
-        }
-
-        this.updateState({
-          isGenerating: false,
-          progress: null,
-          status: null,
-          previewPath: null,
-          result,
-          error: null,
-        });
-
-        return result;
-      }
-
-      this.resetState();
-      return null;
-    } catch (error: any) {
-      if (!error?.message?.includes('cancelled')) {
-        console.error('[ImageGenerationService] Generation error:', error);
-        this.updateState({
-          isGenerating: false,
-          progress: null,
-          status: null,
-          previewPath: null,
-          error: error?.message || 'Image generation failed',
-        });
-      } else {
-        this.resetState();
-      }
-      return null;
-    }
+    return this._runGenerationAndSave({ params, enhancedPrompt, activeImageModel, steps, guidanceScale, imageWidth, imageHeight });
   }
 
-  /**
-   * Cancel the current generation
-   */
   async cancelGeneration(): Promise<void> {
     if (!this.state.isGenerating) return;
     this.cancelRequested = true;
-    try {
-      await onnxImageGeneratorService.cancelGeneration();
-    } catch {
-      // Ignore cancellation errors
-    }
+    try { await onnxImageGeneratorService.cancelGeneration(); } catch { /* Ignore */ }
     this.resetState();
   }
 
   private resetState(): void {
     this.updateState({
-      isGenerating: false,
-      progress: null,
-      status: null,
-      previewPath: null,
-      prompt: null,
-      conversationId: null,
-      error: null,
+      isGenerating: false, progress: null, status: null, previewPath: null,
+      prompt: null, conversationId: null, error: null,
       // Keep result so the last generated image is still accessible
     });
   }

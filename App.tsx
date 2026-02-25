@@ -12,6 +12,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { AppNavigator } from './src/navigation';
 import { useTheme } from './src/theme';
 import { hardwareService, modelManager, authService } from './src/services';
+import logger from './src/utils/logger';
 import { useAppStore, useAuthStore } from './src/stores';
 import { LockScreen } from './src/screens';
 import { useAppState } from './src/hooks/useAppState';
@@ -25,6 +26,7 @@ function App() {
   const setModelRecommendation = useAppStore((s) => s.setModelRecommendation);
   const setDownloadedModels = useAppStore((s) => s.setDownloadedModels);
   const setDownloadedImageModels = useAppStore((s) => s.setDownloadedImageModels);
+  const clearImageModelDownloading = useAppStore((s) => s.clearImageModelDownloading);
 
   const { colors, isDark } = useTheme();
 
@@ -54,8 +56,25 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const ensureAppStoreHydrated = async () => {
+    const storeWithPersist = useAppStore as typeof useAppStore & {
+      persist?: {
+        hasHydrated?: () => boolean;
+        rehydrate?: () => Promise<void>;
+      };
+    };
+    const persistApi = storeWithPersist.persist;
+    if (!persistApi?.hasHydrated || !persistApi.rehydrate) return;
+    if (!persistApi.hasHydrated()) {
+      await persistApi.rehydrate();
+    }
+  };
+
   const initializeApp = async () => {
     try {
+      // Ensure persisted download metadata is loaded before restore logic reads it.
+      await ensureAppStoreHydrated();
+
       // Phase 1: Quick initialization - get app ready to show UI
       // Initialize hardware detection
       const deviceInfo = await hardwareService.getDeviceInfo();
@@ -71,7 +90,12 @@ function App() {
       await modelManager.cleanupMMProjEntries();
 
       // Wire up background download metadata persistence
-      const { setBackgroundDownload, activeBackgroundDownloads, addDownloadedModel } = useAppStore.getState();
+      const {
+        setBackgroundDownload,
+        activeBackgroundDownloads,
+        addDownloadedModel,
+        setDownloadProgress,
+      } = useAppStore.getState();
       modelManager.setBackgroundDownloadMetadataCallback((downloadId, info) => {
         setBackgroundDownload(downloadId, info);
       });
@@ -84,11 +108,62 @@ function App() {
         );
         for (const model of recoveredModels) {
           addDownloadedModel(model);
-          console.log('[App] Recovered background download:', model.name);
+          logger.log('[App] Recovered background download:', model.name);
         }
       } catch (err) {
-        console.error('[App] Failed to sync background downloads:', err);
+        logger.error('[App] Failed to sync background downloads:', err);
       }
+
+      // Recover completed image downloads (zip unzip / multifile finalization)
+      try {
+        const recoveredImageModels = await modelManager.syncCompletedImageDownloads(
+          activeBackgroundDownloads,
+          (downloadId) => setBackgroundDownload(downloadId, null),
+        );
+        for (const model of recoveredImageModels) {
+          logger.log('[App] Recovered image download:', model.name);
+        }
+      } catch (err) {
+        logger.error('[App] Failed to sync completed image downloads:', err);
+      }
+
+      // Re-wire event listeners for downloads that were still running when the
+      // app was killed (running/pending status in Android DownloadManager).
+      try {
+        const restoredDownloadIds = await modelManager.restoreInProgressDownloads(
+          activeBackgroundDownloads,
+          (progress) => {
+            const key = `${progress.modelId}/${progress.fileName}`;
+            setDownloadProgress(key, {
+              progress: progress.progress,
+              bytesDownloaded: progress.bytesDownloaded,
+              totalBytes: progress.totalBytes,
+            });
+          },
+        );
+        for (const downloadId of restoredDownloadIds) {
+          const metadata = activeBackgroundDownloads[downloadId];
+          const progressKey = metadata ? `${metadata.modelId}/${metadata.fileName}` : null;
+          modelManager.watchDownload(
+            downloadId,
+            (model) => {
+              if (progressKey) setDownloadProgress(progressKey, null);
+              addDownloadedModel(model);
+              logger.log('[App] Restored in-progress download completed:', model.name);
+            },
+            (error) => {
+              if (progressKey) setDownloadProgress(progressKey, null);
+              logger.error('[App] Restored in-progress download failed:', error);
+            },
+          );
+        }
+      } catch (err) {
+        logger.error('[App] Failed to restore in-progress downloads:', err);
+      }
+
+      // Clear any stale imageModelDownloading entries — if the app was killed
+      // mid-download these would be persisted as "downloading" forever.
+      clearImageModelDownloading();
 
       // Scan for any models that may have been downloaded externally or
       // when app was killed before JS callback fired
@@ -108,7 +183,7 @@ function App() {
       // Models are loaded on-demand when the user opens a chat,
       // not eagerly on startup, to avoid freezing the UI.
     } catch (error) {
-      console.error('Error initializing app:', error);
+      logger.error('[App] Error initializing app:', error);
       setIsInitializing(false);
     }
   };

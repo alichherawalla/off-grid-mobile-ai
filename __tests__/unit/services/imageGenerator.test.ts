@@ -348,7 +348,7 @@ describe('ImageGeneratorService', () => {
       });
     });
 
-    it('sets up error listener when onError provided', async () => {
+    it('does not set up error listener (errors propagate via thrown exception)', async () => {
       jest.isolateModules(async () => {
         const rn = require('react-native');
         rn.Platform.OS = 'android';
@@ -358,10 +358,9 @@ describe('ImageGeneratorService', () => {
         });
         const { imageGeneratorService } = require('../../../src/services/imageGenerator');
 
-        const onError = jest.fn();
-        await imageGeneratorService.generateImage({ prompt: 'test' }, undefined, undefined, onError);
+        await imageGeneratorService.generateImage({ prompt: 'test' });
 
-        expect(mockAddListener).toHaveBeenCalledWith(
+        expect(mockAddListener).not.toHaveBeenCalledWith(
           'ImageGenerationError',
           expect.any(Function),
         );
@@ -405,32 +404,15 @@ describe('ImageGeneratorService', () => {
       });
     });
 
-    it('invokes onError callback with Error object when error event fires', async () => {
-      let errorHandler: any;
-      mockAddListener.mockImplementation((event: string, handler: any) => {
-        if (event === 'ImageGenerationError') {
-          errorHandler = handler;
-        }
-        return { remove: jest.fn() };
-      });
-
+    it('propagates native rejection as a rejected promise', async () => {
       jest.isolateModules(async () => {
         const rn = require('react-native');
         rn.Platform.OS = 'android';
-        mockImageGeneratorModule.generateImage.mockImplementation(async () => {
-          errorHandler?.({ error: 'GPU memory exceeded' });
-          return {
-            id: 'img-1', prompt: 'test', negativePrompt: '', imagePath: '/p.png',
-            width: 512, height: 512, steps: 20, seed: 1, createdAt: '2026-01-01',
-          };
-        });
+        mockImageGeneratorModule.generateImage.mockRejectedValue(new Error('GPU memory exceeded'));
         const { imageGeneratorService } = require('../../../src/services/imageGenerator');
 
-        const onError = jest.fn();
-        await imageGeneratorService.generateImage({ prompt: 'test' }, undefined, undefined, onError);
-
-        expect(onError).toHaveBeenCalledWith(expect.any(Error));
-        expect(onError.mock.calls[0][0].message).toBe('GPU memory exceeded');
+        await expect(imageGeneratorService.generateImage({ prompt: 'test' }))
+          .rejects.toThrow('GPU memory exceeded');
       });
     });
   });

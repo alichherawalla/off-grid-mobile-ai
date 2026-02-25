@@ -585,7 +585,7 @@ describe('DocumentService', () => {
       // DocumentService would truncate this:
       const maxChars = 50000;
       const truncated = text.length > maxChars
-        ? text.substring(0, maxChars) + '\n\n... [Content truncated due to length]'
+        ? `${text.substring(0, maxChars)  }\n\n... [Content truncated due to length]`
         : text;
 
       expect(truncated.length).toBeLessThan(60000);

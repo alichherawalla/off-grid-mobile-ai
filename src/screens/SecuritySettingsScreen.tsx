@@ -85,7 +85,7 @@ export const SecuritySettingsScreen: React.FC = () => {
             <Switch
               value={authEnabled}
               onValueChange={handleTogglePassphrase}
-              trackColor={{ false: colors.surfaceLight, true: colors.primary + '80' }}
+              trackColor={{ false: colors.surfaceLight, true: `${colors.primary  }80` }}
               thumbColor={authEnabled ? colors.primary : colors.textMuted}
             />
           </View>

@@ -9,7 +9,8 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/Feather';
-import { useTheme } from '../theme';
+import { useTheme, useThemedStyles } from '../theme';
+import type { ThemeColors, ThemeShadows } from '../theme';
 import { triggerHaptic } from '../utils/haptics';
 import { useAppStore } from '../stores';
 import {
@@ -134,6 +135,7 @@ const TAB_ICON_MAP: Record<string, string> = {
 
 const TabBarIcon: React.FC<{ name: string; focused: boolean }> = ({ name, focused }) => {
   const { colors } = useTheme();
+  const tabStyles = useThemedStyles(createTabBarStyles);
   const scale = useSharedValue(focused ? 1.1 : 1);
 
   useEffect(() => {
@@ -146,7 +148,7 @@ const TabBarIcon: React.FC<{ name: string; focused: boolean }> = ({ name, focuse
   }));
 
   return (
-    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+    <View style={tabStyles.iconContainer}>
       <Animated.View style={animatedStyle}>
         <Icon
           name={TAB_ICON_MAP[name] || 'circle'}
@@ -154,19 +156,25 @@ const TabBarIcon: React.FC<{ name: string; focused: boolean }> = ({ name, focuse
           color={focused ? colors.primary : colors.textMuted}
         />
       </Animated.View>
-      {focused && (
-        <View style={{
-          position: 'absolute',
-          top: -6,
-          width: 4,
-          height: 4,
-          borderRadius: 2,
-          backgroundColor: colors.primary,
-        }} />
-      )}
+      {focused && <View style={tabStyles.focusDot} />}
     </View>
   );
 };
+
+const createTabBarStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
+  iconContainer: {
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  focusDot: {
+    position: 'absolute' as const,
+    top: -6,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.primary,
+  },
+});
 
 // Main Tab Navigator
 const MainTabs: React.FC = () => {

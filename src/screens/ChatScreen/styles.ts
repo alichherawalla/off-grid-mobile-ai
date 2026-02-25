@@ -1,0 +1,210 @@
+import type { ThemeColors, ThemeShadows } from '../../theme';
+import { TYPOGRAPHY, SPACING } from '../../constants';
+import { createImageStyles } from './stylesImage';
+
+const createLayoutStyles = (colors: ThemeColors) => ({
+  container: { flex: 1, backgroundColor: colors.background },
+  keyboardView: { flex: 1 },
+  messageList: { paddingVertical: 16 },
+});
+
+const createHeaderStyles = (colors: ThemeColors) => ({
+  header: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.background,
+    zIndex: 10,
+  },
+  headerRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    gap: SPACING.md,
+  },
+  backButton: { padding: SPACING.xs },
+  headerLeft: { flex: 1, marginRight: 12 },
+  headerTitle: { ...TYPOGRAPHY.h2, color: colors.text, marginBottom: 2 },
+  headerSubtitle: { ...TYPOGRAPHY.h3, color: colors.textMuted },
+  modelSelector: { flexDirection: 'row' as const, alignItems: 'center' as const },
+  modelSelectorArrow: { ...TYPOGRAPHY.meta, color: colors.textMuted, marginLeft: SPACING.xs },
+  headerImageBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: `${colors.primary}20`,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginLeft: 6,
+  },
+  headerActions: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 4,
+  },
+  iconButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+});
+
+const createScrollStyles = (colors: ThemeColors) => ({
+  scrollToBottomContainer: {
+    position: 'absolute' as const,
+    bottom: 130,
+    right: 16,
+    zIndex: 10,
+  },
+  scrollToBottomButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+});
+
+const createEmptyChatStyles = (colors: ThemeColors) => ({
+  emptyChat: { flex: 1, justifyContent: 'center' as const, alignItems: 'center' as const, paddingHorizontal: 32 },
+  emptyChatIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginBottom: SPACING.lg,
+  },
+  emptyChatTitle: { ...TYPOGRAPHY.h2, color: colors.text, marginBottom: SPACING.sm },
+  emptyChatText: { ...TYPOGRAPHY.body, color: colors.textSecondary, textAlign: 'center' as const, marginBottom: SPACING.xl },
+  projectHint: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: colors.surface,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: 8,
+    marginBottom: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  projectHintIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: `${colors.primary}30`,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  projectHintIconText: { ...TYPOGRAPHY.bodySmall, fontWeight: '600' as const, color: colors.primary },
+  projectHintText: { ...TYPOGRAPHY.h3, color: colors.primary, fontWeight: '500' as const },
+  privacyText: { ...TYPOGRAPHY.h3, color: colors.textMuted, textAlign: 'center' as const, maxWidth: 300 },
+});
+
+const createStateScreenStyles = (colors: ThemeColors) => ({
+  loadingContainer: { flex: 1, justifyContent: 'center' as const, alignItems: 'center' as const, gap: 16, paddingHorizontal: 24 },
+  loadingText: { ...TYPOGRAPHY.h1, fontSize: 18, fontWeight: '600' as const, textAlign: 'center' as const, color: colors.text },
+  loadingSubtext: { ...TYPOGRAPHY.body, color: colors.textSecondary },
+  loadingHint: { ...TYPOGRAPHY.bodySmall, color: colors.textMuted, marginTop: SPACING.lg, textAlign: 'center' as const, paddingHorizontal: 32 },
+  noModelContainer: { flex: 1, justifyContent: 'center' as const, alignItems: 'center' as const, paddingHorizontal: SPACING.xxl },
+  noModelIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginBottom: SPACING.lg,
+  },
+  noModelTitle: { ...TYPOGRAPHY.h2, color: colors.text, marginBottom: SPACING.sm },
+  noModelText: { ...TYPOGRAPHY.body, color: colors.textSecondary, textAlign: 'center' as const },
+  selectModelButton: {
+    marginTop: SPACING.xl,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.primary,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderRadius: 8,
+  },
+  selectModelButtonText: { ...TYPOGRAPHY.body, color: colors.primary },
+});
+
+const createIndicatorStyles = (colors: ThemeColors) => ({
+  classifyingBar: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  classifyingText: { ...TYPOGRAPHY.meta, color: colors.textSecondary },
+  imageProgressContainer: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 4,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  imageProgressCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: `${colors.primary}30`,
+  },
+  imageProgressRow: { flexDirection: 'row' as const, alignItems: 'center' as const },
+  imageProgressContent: { flex: 1 },
+  imageProgressHeader: { flexDirection: 'row' as const, alignItems: 'center' as const },
+  imageProgressIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: `${colors.primary}20`,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginRight: 10,
+  },
+  imageProgressInfo: { flex: 1 },
+  imageProgressTitle: { ...TYPOGRAPHY.body, fontWeight: '600' as const, color: colors.text },
+  imageProgressStatus: { ...TYPOGRAPHY.bodySmall, color: colors.textSecondary, fontStyle: 'normal' as const },
+  imageProgressBarContainer: { marginTop: 10 },
+  imageProgressBar: { height: 4, backgroundColor: colors.surfaceLight, borderRadius: 2, overflow: 'hidden' as const },
+  imageProgressFill: { height: '100%' as const, backgroundColor: colors.primary, borderRadius: 2 },
+  imageProgressSteps: { ...TYPOGRAPHY.bodySmall, fontWeight: '600' as const, color: colors.primary, marginRight: SPACING.sm },
+  imagePreview: { width: 100, height: 100, borderRadius: 8, marginRight: 12, backgroundColor: colors.surfaceLight },
+  imageStopButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: `${colors.error}20`,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+});
+
+export const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
+  ...createLayoutStyles(colors),
+  ...createHeaderStyles(colors),
+  ...createScrollStyles(colors),
+  ...createEmptyChatStyles(colors),
+  ...createStateScreenStyles(colors),
+  ...createIndicatorStyles(colors),
+  ...createImageStyles(colors, shadows),
+});

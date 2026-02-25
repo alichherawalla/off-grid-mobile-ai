@@ -77,7 +77,6 @@ jest.mock('../../../src/components/Button', () => ({
 }));
 
 jest.mock('../../../src/components/CustomAlert', () => {
-  const React = require('react');
   const { View, Text, TouchableOpacity } = require('react-native');
   return {
     CustomAlert: ({ visible, title, message, buttons, onClose }: any) => {

@@ -20,17 +20,17 @@ class PDFExtractorModule: NSObject {
 
       let limit = Int(maxChars)
       var fullText = ""
-      for i in 0..<document.pageCount {
-        if let page = document.page(at: i), let pageText = page.string {
+      for pageIndex in 0..<document.pageCount {
+        if let page = document.page(at: pageIndex), let pageText = page.string {
           fullText += pageText
-          if i < document.pageCount - 1 {
+          if pageIndex < document.pageCount - 1 {
             fullText += "\n\n"
           }
         }
 
         if fullText.count >= limit {
           fullText = String(fullText.prefix(limit))
-          fullText += "\n\n... [Extracted \(i + 1) of \(document.pageCount) pages]"
+          fullText += "\n\n... [Extracted \(pageIndex + 1) of \(document.pageCount) pages]"
           break
         }
       }

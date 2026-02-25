@@ -5,6 +5,7 @@ import Voice, {
   SpeechEndEvent,
 } from '@react-native-voice/voice';
 import { Platform, PermissionsAndroid } from 'react-native';
+import logger from '../utils/logger';
 
 export type VoiceEventCallbacks = {
   onStart?: () => void;
@@ -22,21 +23,21 @@ class VoiceService {
     if (this.isInitialized) return true;
 
     try {
-      console.log('[VoiceService] Checking availability...');
+      logger.log('[VoiceService] Checking availability...');
 
       // Check if Voice is available
       const available = await Voice.isAvailable();
-      console.log('[VoiceService] Voice.isAvailable():', available);
+      logger.log('[VoiceService] Voice.isAvailable():', available);
 
       if (!available) {
         // Try to get more info about why it's not available
         try {
           const services = await Voice.getSpeechRecognitionServices();
-          console.log('[VoiceService] Available speech services:', services);
+          logger.log('[VoiceService] Available speech services:', services);
         } catch (e) {
-          console.log('[VoiceService] Could not get speech services:', e);
+          logger.log('[VoiceService] Could not get speech services:', e);
         }
-        console.warn('[VoiceService] Voice recognition is not available on this device');
+        logger.warn('[VoiceService] Voice recognition is not available on this device');
         return false;
       }
 
@@ -48,10 +49,10 @@ class VoiceService {
       Voice.onSpeechError = this.handleSpeechError;
 
       this.isInitialized = true;
-      console.log('[VoiceService] Initialized successfully');
+      logger.log('[VoiceService] Initialized successfully');
       return true;
     } catch (error) {
-      console.error('[VoiceService] Failed to initialize:', error);
+      logger.error('[VoiceService] Failed to initialize:', error);
       return false;
     }
   }
@@ -70,7 +71,7 @@ class VoiceService {
         );
         return granted === PermissionsAndroid.RESULTS.GRANTED;
       } catch (error) {
-        console.error('Failed to request microphone permission:', error);
+        logger.error('Failed to request microphone permission:', error);
         return false;
       }
     }
@@ -112,7 +113,7 @@ class VoiceService {
       await this.initialize();
       await Voice.start('en-US');
     } catch (error) {
-      console.error('Failed to start voice recognition:', error);
+      logger.error('Failed to start voice recognition:', error);
       throw error;
     }
   }
@@ -121,7 +122,7 @@ class VoiceService {
     try {
       await Voice.stop();
     } catch (error) {
-      console.error('Failed to stop voice recognition:', error);
+      logger.error('Failed to stop voice recognition:', error);
       throw error;
     }
   }
@@ -130,7 +131,7 @@ class VoiceService {
     try {
       await Voice.cancel();
     } catch (error) {
-      console.error('Failed to cancel voice recognition:', error);
+      logger.error('Failed to cancel voice recognition:', error);
       throw error;
     }
   }
@@ -140,7 +141,7 @@ class VoiceService {
       await Voice.destroy();
       this.isInitialized = false;
     } catch (error) {
-      console.error('Failed to destroy voice service:', error);
+      logger.error('Failed to destroy voice service:', error);
     }
   }
 

@@ -1,0 +1,517 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<issues format="6" by="lint 8.12.0" type="baseline" client="gradle" dependencies="false" name="AGP (8.12.0)" variant="all" version="8.12.0">
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `java.lang.Process#isAlive`"
+        errorLine1="                if (currentModelPath == modelPath &amp;&amp; serverProcess?.isAlive == true &amp;&amp; isServerReady) {"
+        errorLine2="                                                                    ~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/localdream/LocalDreamModule.kt"
+            line="343"
+            column="69"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `java.lang.Process#isAlive`"
+        errorLine1="            val alive = serverProcess?.isAlive == true"
+        errorLine2="                                       ~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/localdream/LocalDreamModule.kt"
+            line="461"
+            column="40"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `java.lang.Process#isAlive`"
+        errorLine1="            if (serverProcess?.isAlive != true) {"
+        errorLine2="                               ~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/localdream/LocalDreamModule.kt"
+            line="487"
+            column="32"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `java.lang.Process#waitFor`"
+        errorLine1="                if (!proc.waitFor(5, TimeUnit.SECONDS)) {"
+        errorLine2="                          ~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/localdream/LocalDreamModule.kt"
+            line="545"
+            column="27"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `java.lang.Process#destroyForcibly`"
+        errorLine1="                    proc.destroyForcibly()"
+        errorLine2="                         ~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/localdream/LocalDreamModule.kt"
+            line="546"
+            column="26"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `java.lang.Process#isAlive`"
+        errorLine1="        promise.resolve(serverProcess?.isAlive == true &amp;&amp; isServerReady)"
+        errorLine2="                                       ~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/localdream/LocalDreamModule.kt"
+            line="572"
+            column="40"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `java.lang.Process#isAlive`"
+        errorLine1="            if (!isServerReady || serverProcess?.isAlive != true) {"
+        errorLine2="                                                 ~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/localdream/LocalDreamModule.kt"
+            line="621"
+            column="50"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `java.lang.Process#isAlive`"
+        errorLine1="                Log.w(TAG, &quot;Server health check failed before generation. Process alive: ${serverProcess?.isAlive}&quot;)"
+        errorLine2="                                                                                                          ~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/localdream/LocalDreamModule.kt"
+            line="628"
+            column="107"/>
+    </issue>
+
+    <issue
+        id="NewApi"
+        message="Call requires API level 26 (current min is 24): `java.lang.Process#isAlive`"
+        errorLine1="                    val alive = serverProcess?.isAlive == true"
+        errorLine2="                                               ~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/localdream/LocalDreamModule.kt"
+            line="795"
+            column="48"/>
+    </issue>
+
+    <issue
+        id="RedundantLabel"
+        message="Redundant label can be removed"
+        errorLine1="        android:label=&quot;@string/app_name&quot;"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="38"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="AndroidGradlePluginVersion"
+        message="A newer version of Gradle than 8.13 is available: 8.14.4"
+        errorLine1="distributionUrl=https\://services.gradle.org/distributions/gradle-8.13-bin.zip"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="$HOME/wednesday/on-device-llm/LocalLLM/android/gradle/wrapper/gradle-wrapper.properties"
+            line="3"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.test:core than 1.6.1 is available: 1.7.0"
+        errorLine1="    testImplementation(&quot;androidx.test:core:1.6.1&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle"
+            line="156"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-android than 1.7.3 is available: 1.10.2"
+        errorLine1="    implementation(&quot;org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle"
+            line="147"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.robolectric:robolectric than 4.13 is available: 4.16.1"
+        errorLine1="    testImplementation(&quot;org.robolectric:robolectric:4.13&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle"
+            line="153"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.mockito:mockito-core than 5.11.0 is available: 5.21.0"
+        errorLine1="    testImplementation(&quot;org.mockito:mockito-core:5.11.0&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle"
+            line="154"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.mockito.kotlin:mockito-kotlin than 5.4.0 is available: 6.2.3"
+        errorLine1="    testImplementation(&quot;org.mockito.kotlin:mockito-kotlin:5.4.0&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle"
+            line="155"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="PrivateResource"
+        message="The resource `@dimen/abc_edit_text_inset_horizontal_material` is marked as private in androidx.appcompat:appcompat:1.7.0"
+        errorLine1="       android:insetLeft=&quot;@dimen/abc_edit_text_inset_horizontal_material&quot;"
+        errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/drawable/rn_edit_text_material.xml"
+            line="17"
+            column="27"/>
+    </issue>
+
+    <issue
+        id="PrivateResource"
+        message="The resource `@dimen/abc_edit_text_inset_horizontal_material` is marked as private in androidx.appcompat:appcompat:1.7.0"
+        errorLine1="       android:insetRight=&quot;@dimen/abc_edit_text_inset_horizontal_material&quot;"
+        errorLine2="                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/drawable/rn_edit_text_material.xml"
+            line="18"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="PrivateResource"
+        message="The resource `@dimen/abc_edit_text_inset_top_material` is marked as private in androidx.appcompat:appcompat:1.7.0"
+        errorLine1="       android:insetTop=&quot;@dimen/abc_edit_text_inset_top_material&quot;"
+        errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/drawable/rn_edit_text_material.xml"
+            line="19"
+            column="26"/>
+    </issue>
+
+    <issue
+        id="PrivateResource"
+        message="The resource `@dimen/abc_edit_text_inset_bottom_material` is marked as private in androidx.appcompat:appcompat:1.7.0"
+        errorLine1="       android:insetBottom=&quot;@dimen/abc_edit_text_inset_bottom_material&quot;"
+        errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/drawable/rn_edit_text_material.xml"
+            line="20"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="PrivateResource"
+        message="The resource `@drawable/abc_textfield_default_mtrl_alpha` is marked as private in androidx.appcompat:appcompat:1.7.0"
+        errorLine1="        &lt;item android:state_enabled=&quot;false&quot; android:drawable=&quot;@drawable/abc_textfield_default_mtrl_alpha&quot;/>"
+        errorLine2="                                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/drawable/rn_edit_text_material.xml"
+            line="33"
+            column="63"/>
+    </issue>
+
+    <issue
+        id="PrivateResource"
+        message="The resource `@drawable/abc_textfield_activated_mtrl_alpha` is marked as private in androidx.appcompat:appcompat:1.7.0"
+        errorLine1="        &lt;item android:drawable=&quot;@drawable/abc_textfield_activated_mtrl_alpha&quot;/>"
+        errorLine2="                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/drawable/rn_edit_text_material.xml"
+            line="34"
+            column="33"/>
+    </issue>
+
+    <issue
+        id="DataExtractionRules"
+        message="The attribute `android:allowBackup` is deprecated from Android 12 and higher and may be removed in future versions. Consider adding the attribute `android:dataExtractionRules` specifying an `@xml` resource which configures cloud backups and device transfers on Android 12 and higher."
+        errorLine1="      android:allowBackup=&quot;false&quot;"
+        errorLine2="                           ~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="25"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.integer.react_native_dev_server_port` appears to be unused">
+        <location
+            file="build.gradle"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.integer.react_native_dev_server_port` appears to be unused">
+        <location
+            file="build.gradle"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.integer.react_native_dev_server_port` appears to be unused">
+        <location
+            file="build.gradle"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.react_native_dev_server_ip` appears to be unused">
+        <location
+            file="build.gradle"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.react_native_dev_server_ip` appears to be unused">
+        <location
+            file="build.gradle"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.string.react_native_dev_server_ip` appears to be unused">
+        <location
+            file="build.gradle"/>
+    </issue>
+
+    <issue
+        id="IconLauncherShape"
+        message="Launcher icon used as round icon did not have a circular shape">
+        <location
+            file="src/main/res/mipmap-hdpi/ic_launcher_round.png"/>
+    </issue>
+
+    <issue
+        id="IconLauncherShape"
+        message="Launcher icon used as round icon did not have a circular shape">
+        <location
+            file="src/main/res/mipmap-mdpi/ic_launcher_round.png"/>
+    </issue>
+
+    <issue
+        id="IconLauncherShape"
+        message="Launcher icon used as round icon did not have a circular shape">
+        <location
+            file="src/main/res/mipmap-xhdpi/ic_launcher_round.png"/>
+    </issue>
+
+    <issue
+        id="IconLauncherShape"
+        message="Launcher icon used as round icon did not have a circular shape">
+        <location
+            file="src/main/res/mipmap-xxhdpi/ic_launcher_round.png"/>
+    </issue>
+
+    <issue
+        id="IconLauncherShape"
+        message="Launcher icon used as round icon did not have a circular shape">
+        <location
+            file="src/main/res/mipmap-xxxhdpi/ic_launcher_round.png"/>
+    </issue>
+
+    <issue
+        id="MonochromeLauncherIcon"
+        message="The application adaptive icon is missing a monochrome tag"
+        errorLine1="&lt;adaptive-icon xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;>"
+        errorLine2="^">
+        <location
+            file="src/main/res/mipmap-anydpi-v26/ic_launcher.xml"
+            line="2"
+            column="1"/>
+    </issue>
+
+    <issue
+        id="MonochromeLauncherIcon"
+        message="The application adaptive roundIcon is missing a monochrome tag"
+        errorLine1="&lt;adaptive-icon xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;>"
+        errorLine2="^">
+        <location
+            file="src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml"
+            line="2"
+            column="1"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/splash_logo.png` in densityless folder">
+        <location
+            file="src/main/res/drawable/splash_logo.png"/>
+    </issue>
+
+    <issue
+        id="IconDensities"
+        message="Missing the following drawables in `drawable-xhdpi`: node_modules_reactnavigation_elements_lib_module_assets_backiconmask.png (found in drawable-mdpi)">
+        <location
+            file="src/main/res/drawable-xhdpi"/>
+    </issue>
+
+    <issue
+        id="IconDensities"
+        message="Missing the following drawables in `drawable-xxhdpi`: node_modules_reactnavigation_elements_lib_module_assets_backiconmask.png (found in drawable-mdpi)">
+        <location
+            file="src/main/res/drawable-xxhdpi"/>
+    </issue>
+
+    <issue
+        id="IconDuplicates"
+        message="The following unrelated icon files have identical contents: ic_launcher.png, ic_launcher_round.png">
+        <location
+            file="src/main/res/mipmap-hdpi/ic_launcher_round.png"/>
+        <location
+            file="src/main/res/mipmap-hdpi/ic_launcher.png"/>
+    </issue>
+
+    <issue
+        id="IconDuplicates"
+        message="The following unrelated icon files have identical contents: ic_launcher.png, ic_launcher_round.png">
+        <location
+            file="src/main/res/mipmap-mdpi/ic_launcher_round.png"/>
+        <location
+            file="src/main/res/mipmap-mdpi/ic_launcher.png"/>
+    </issue>
+
+    <issue
+        id="IconDuplicates"
+        message="The following unrelated icon files have identical contents: ic_launcher.png, ic_launcher_round.png">
+        <location
+            file="src/main/res/mipmap-xhdpi/ic_launcher_round.png"/>
+        <location
+            file="src/main/res/mipmap-xhdpi/ic_launcher.png"/>
+    </issue>
+
+    <issue
+        id="IconDuplicates"
+        message="The following unrelated icon files have identical contents: ic_launcher.png, ic_launcher_round.png">
+        <location
+            file="src/main/res/mipmap-xxhdpi/ic_launcher_round.png"/>
+        <location
+            file="src/main/res/mipmap-xxhdpi/ic_launcher.png"/>
+    </issue>
+
+    <issue
+        id="IconDuplicates"
+        message="The following unrelated icon files have identical contents: ic_launcher.png, ic_launcher_round.png">
+        <location
+            file="src/main/res/mipmap-xxxhdpi/ic_launcher_round.png"/>
+        <location
+            file="src/main/res/mipmap-xxxhdpi/ic_launcher.png"/>
+    </issue>
+
+    <issue
+        id="IconMissingDensityFolder"
+        message="Missing density variation folders in `src/main/res`: drawable-hdpi">
+        <location
+            file="src/main/res"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        sharedPrefs.edit()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/download/DownloadCompleteBroadcastReceiver.kt"
+            line="37"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="            val request = DownloadManager.Request(Uri.parse(url))"
+        errorLine2="                                                  ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/download/DownloadManagerModule.kt"
+            line="132"
+            column="51"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                    val uri = Uri.parse(localUri)"
+        errorLine2="                              ~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/download/DownloadManagerModule.kt"
+            line="267"
+            column="31"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        sharedPrefs.edit().putString(DOWNLOADS_KEY, downloads.toString()).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/download/DownloadManagerModule.kt"
+            line="500"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        sharedPrefs.edit().putString(DOWNLOADS_KEY, newDownloads.toString()).apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/download/DownloadManagerModule.kt"
+            line="529"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            sharedPrefs.edit().putString(DOWNLOADS_KEY, cleanedDownloads.toString()).apply()"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/download/DownloadManagerModule.kt"
+            line="575"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX function `createBitmap` instead?"
+        errorLine1="            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)"
+        errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/localdream/LocalDreamModule.kt"
+            line="146"
+            column="26"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX function `createBitmap` instead?"
+        errorLine1="                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)"
+        errorLine2="                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/ai/offgridmobile/localdream/LocalDreamModule.kt"
+            line="848"
+            column="30"/>
+    </issue>
+
+</issues>

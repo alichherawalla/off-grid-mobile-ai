@@ -6,6 +6,7 @@ import {
   TouchableWithoutFeedback,
   Modal,
   Animated,
+  Easing,
   PanResponder,
   Dimensions,
   Platform,
@@ -14,8 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, useThemedStyles } from '../theme';
-import type { ThemeColors, ThemeShadows } from '../theme';
-import { TYPOGRAPHY, SPACING } from '../constants';
+import { createStyles } from './AppSheet.styles';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -38,6 +38,54 @@ function resolveSnapPoint(snap: string | number): number {
     return (parseFloat(snap) / 100) * SCREEN_HEIGHT;
   }
   return SCREEN_HEIGHT * 0.5;
+}
+
+function createSheetPanResponder({
+  translateY,
+  backdropOpacity,
+  setModalVisible,
+  onCloseRef,
+}: {
+  translateY: Animated.Value;
+  backdropOpacity: Animated.Value;
+  setModalVisible: (v: boolean) => void;
+  onCloseRef: React.MutableRefObject<() => void>;
+}) {
+  return PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, { dy }) => Math.abs(dy) > 8,
+    onPanResponderMove: (_, { dy }) => {
+      if (dy > 0) {
+        translateY.setValue(dy);
+      }
+    },
+    onPanResponderRelease: (_, { dy, vy }) => {
+      if (dy > 80 || vy > 0.5) {
+        Animated.parallel([
+          Animated.timing(translateY, {
+            toValue: SCREEN_HEIGHT,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+          Animated.timing(backdropOpacity, {
+            toValue: 0,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+        ]).start(() => {
+          setModalVisible(false);
+          onCloseRef.current();
+        });
+      } else {
+        Animated.spring(translateY, {
+          toValue: 0,
+          damping: 28,
+          stiffness: 300,
+          useNativeDriver: true,
+        }).start();
+      }
+    },
+  });
 }
 
 export const AppSheet: React.FC<AppSheetProps> = ({
@@ -64,6 +112,16 @@ export const AppSheet: React.FC<AppSheetProps> = ({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
+  // Guards backdrop-tap dismiss during animate-in.
+  // Using a ref (not state) so there are zero re-renders — a state-based
+  // pointerEvents flip on the sheet caused the long-press finger-up event
+  // to route to the backdrop and close the sheet before any button was tapped.
+  //
+  // Starts TRUE: when the modal first renders the sheet is still off-screen
+  // (translateY=SCREEN_HEIGHT) so there is nothing to guard against.
+  // animateIn() sets it to false, then back to true on completion.
+  const backdropEnabled = useRef(true);
+
   // Calculate sheet max height from largest snap point
   const sheetMaxHeight = enableDynamicSizing
     ? SCREEN_HEIGHT * 0.85
@@ -73,14 +131,18 @@ export const AppSheet: React.FC<AppSheetProps> = ({
 
   const levelTokens = elevationTokens[elevation];
 
-  // Animate in
+  // Animate in — use timing (not spring) so the .start() callback fires at a
+  // guaranteed time. A spring only calls its callback when displacement <
+  // restDisplacementThreshold (0.001px); from SCREEN_HEIGHT that can take
+  // 1–2 s, leaving backdropEnabled=false the whole time and silently eating
+  // every tap that lands even slightly outside a button's hit area.
   const animateIn = useCallback(() => {
+    backdropEnabled.current = false;
     Animated.parallel([
-      Animated.spring(translateY, {
+      Animated.timing(translateY, {
         toValue: 0,
-        damping: 28,
-        stiffness: 300,
-        mass: 0.8,
+        duration: 320,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.timing(backdropOpacity, {
@@ -88,12 +150,15 @@ export const AppSheet: React.FC<AppSheetProps> = ({
         duration: 250,
         useNativeDriver: true,
       }),
-    ]).start();
+    ]).start(() => {
+      backdropEnabled.current = true;
+    });
   }, [translateY, backdropOpacity]);
 
   // Animate out then callback
   const animateOut = useCallback(
     (cb?: () => void) => {
+      backdropEnabled.current = false;
       Animated.parallel([
         Animated.timing(translateY, {
           toValue: SCREEN_HEIGHT,
@@ -139,9 +204,9 @@ export const AppSheet: React.FC<AppSheetProps> = ({
           clearTimeout(timeout);
           sub.remove();
         };
-      } else {
+      } 
         setModalVisible(true);
-      }
+      
     } else if (modalVisible) {
       animateOut(() => setModalVisible(false));
     }
@@ -155,8 +220,9 @@ export const AppSheet: React.FC<AppSheetProps> = ({
     }
   }, [animateIn]);
 
-
-  // User-initiated dismiss (backdrop tap, Done button, swipe)
+  // User-initiated dismiss (backdrop tap, Done button, swipe).
+  // Backdrop taps are gated by backdropEnabled to prevent the long-press
+  // finger-up event from closing the sheet before any action can be taken.
   const dismiss = useCallback(() => {
     animateOut(() => {
       setModalVisible(false);
@@ -164,45 +230,15 @@ export const AppSheet: React.FC<AppSheetProps> = ({
     });
   }, [animateOut]);
 
+  const handleBackdropPress = useCallback(() => {
+    if (backdropEnabled.current) {
+      dismiss();
+    }
+  }, [dismiss]);
+
   // Swipe-to-dismiss on handle
   const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, { dy }) => Math.abs(dy) > 8,
-      onPanResponderMove: (_, { dy }) => {
-        if (dy > 0) {
-          translateY.setValue(dy);
-        }
-      },
-      onPanResponderRelease: (_, { dy, vy }) => {
-        if (dy > 80 || vy > 0.5) {
-          // Dismiss
-          Animated.parallel([
-            Animated.timing(translateY, {
-              toValue: SCREEN_HEIGHT,
-              duration: 150,
-              useNativeDriver: true,
-            }),
-            Animated.timing(backdropOpacity, {
-              toValue: 0,
-              duration: 150,
-              useNativeDriver: true,
-            }),
-          ]).start(() => {
-            setModalVisible(false);
-            onCloseRef.current();
-          });
-        } else {
-          // Snap back
-          Animated.spring(translateY, {
-            toValue: 0,
-            damping: 28,
-            stiffness: 300,
-            useNativeDriver: true,
-          }).start();
-        }
-      },
-    }),
+    createSheetPanResponder({ translateY, backdropOpacity, setModalVisible, onCloseRef }),
   ).current;
 
   if (!modalVisible && !visible) {
@@ -223,8 +259,9 @@ export const AppSheet: React.FC<AppSheetProps> = ({
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {/* Backdrop */}
-        <TouchableWithoutFeedback onPress={dismiss}>
+        {/* Backdrop — gated by backdropEnabled ref so the long-press
+            finger-up can't close the sheet during animate-in */}
+        <TouchableWithoutFeedback onPress={handleBackdropPress}>
           <Animated.View
             style={[styles.backdrop, { opacity: backdropOpacity }]}
           />
@@ -291,48 +328,3 @@ export const AppSheet: React.FC<AppSheetProps> = ({
     </Modal>
   );
 };
-
-const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
-  container: {
-    flex: 1,
-    justifyContent: 'flex-end' as const,
-  },
-  backdrop: {
-    ...({
-      position: 'absolute' as const,
-      left: 0,
-      right: 0,
-      top: 0,
-      bottom: 0,
-    }),
-    backgroundColor: '#000000',
-  },
-  sheet: {
-    overflow: 'hidden' as const,
-    ...shadows.large,
-  },
-  handleContainer: {
-    alignItems: 'center' as const,
-    paddingVertical: SPACING.sm,
-  },
-  handle: {},
-  header: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  headerTitle: {
-    ...TYPOGRAPHY.h3,
-    color: colors.text,
-    flex: 1,
-    marginRight: SPACING.md,
-  },
-  headerClose: {
-    ...TYPOGRAPHY.body,
-    color: colors.primary,
-  },
-});

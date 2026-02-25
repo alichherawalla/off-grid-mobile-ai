@@ -108,7 +108,7 @@ export const PassphraseSetupScreen: React.FC<PassphraseSetupScreenProps> = ({
           <Text style={styles.title}>
             {isChanging ? 'Change Passphrase' : 'Set Up Passphrase'}
           </Text>
-          <View style={{ width: 50 }} />
+          <View style={styles.headerSpacer} />
         </View>
 
         <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
@@ -202,6 +202,9 @@ const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  headerSpacer: {
+    width: 50,
   },
   flex: {
     flex: 1,

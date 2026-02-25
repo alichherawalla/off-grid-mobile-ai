@@ -152,12 +152,32 @@ describe('stripControlTokens', () => {
     });
 
     it('handles very long content efficiently', () => {
-      const longContent = 'word '.repeat(10000) + '<|im_end|>';
+      const longContent = `${'word '.repeat(10000)  }<|im_end|>`;
       const result = stripControlTokens(longContent);
       expect(result).not.toContain('<|im_end|>');
       expect(result.trim().split(' ')).toHaveLength(10000);
     });
   });
+
+  // ==========================================================================
+  // Tool call tag stripping
+  // ==========================================================================
+  describe('tool_call tag stripping', () => {
+    it('strips tool_call tags with JSON content', () => {
+      expect(stripControlTokens('Hello <tool_call>{"name":"calc"}</tool_call> world')).toBe('Hello world');
+    });
+
+    it('strips multiple tool_call tags', () => {
+      const input = 'Start <tool_call>{"name":"add","args":{"a":1}}</tool_call> middle <tool_call>{"name":"sub","args":{"b":2}}</tool_call> end';
+      expect(stripControlTokens(input)).toBe('Start middle end');
+    });
+
+    it('strips multiline tool_call content', () => {
+      const input = 'Before <tool_call>\n{\n  "name": "search",\n  "query": "test"\n}\n</tool_call> after';
+      expect(stripControlTokens(input)).toBe('Before after');
+    });
+  });
+
 
   // ==========================================================================
   // Streaming simulation
@@ -166,13 +186,13 @@ describe('stripControlTokens', () => {
     it('handles incremental stripping (simulating streaming)', () => {
       let accumulated = '';
 
-      accumulated = stripControlTokens(accumulated + 'Hello');
+      accumulated = stripControlTokens(`${accumulated  }Hello`);
       expect(accumulated).toBe('Hello');
 
-      accumulated = stripControlTokens(accumulated + ' world');
+      accumulated = stripControlTokens(`${accumulated  } world`);
       expect(accumulated).toBe('Hello world');
 
-      accumulated = stripControlTokens(accumulated + '<|im_end|>');
+      accumulated = stripControlTokens(`${accumulated  }<|im_end|>`);
       expect(accumulated).toBe('Hello world');
     });
 
@@ -180,7 +200,7 @@ describe('stripControlTokens', () => {
       // In real streaming, a token like <|im_end|> arrives as a single token
       // but the accumulated string is re-stripped each time
       let accumulated = 'Response text';
-      accumulated = stripControlTokens(accumulated + '<|im_end|>');
+      accumulated = stripControlTokens(`${accumulated  }<|im_end|>`);
       expect(accumulated).toBe('Response text');
     });
   });

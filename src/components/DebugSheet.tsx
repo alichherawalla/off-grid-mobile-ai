@@ -250,11 +250,11 @@ const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
     borderRadius: 4,
   },
   debugRoleUser: {
-    backgroundColor: colors.primary + '30',
+    backgroundColor: `${colors.primary  }30`,
     color: colors.primary,
   },
   debugRoleAssistant: {
-    backgroundColor: colors.info + '30',
+    backgroundColor: `${colors.info  }30`,
     color: colors.info,
   },
   debugMessageIndex: {

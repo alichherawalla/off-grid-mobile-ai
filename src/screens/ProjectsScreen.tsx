@@ -6,10 +6,12 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, CompositeNavigationProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import Icon from 'react-native-vector-icons/Feather';
+import { AttachStep } from 'react-native-spotlight-tour';
 import { Button } from '../components/Button';
 import { CustomAlert, showAlert, hideAlert, AlertState, initialAlertState } from '../components/CustomAlert';
 import { AnimatedEntry } from '../components/AnimatedEntry';
@@ -20,9 +22,12 @@ import type { ThemeColors, ThemeShadows } from '../theme';
 import { TYPOGRAPHY, SPACING } from '../constants';
 import { useProjectStore, useChatStore } from '../stores';
 import { Project } from '../types';
-import { ProjectsStackParamList } from '../navigation/types';
+import { RootStackParamList, MainTabParamList } from '../navigation/types';
 
-type NavigationProp = NativeStackNavigationProp<ProjectsStackParamList, 'ProjectsList'>;
+type NavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'ProjectsTab'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
 export const ProjectsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -117,13 +122,15 @@ export const ProjectsScreen: React.FC = () => {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Projects</Text>
-        <Button
-          title="New"
-          variant="primary"
-          size="small"
-          onPress={handleNewProject}
-          icon={<Icon name="plus" size={16} color={colors.primary} />}
-        />
+        <AttachStep index={7}>
+          <Button
+            title="New"
+            variant="primary"
+            size="small"
+            onPress={handleNewProject}
+            icon={<Icon name="plus" size={16} color={colors.primary} />}
+          />
+        </AttachStep>
       </View>
 
       <Text style={styles.subtitle}>

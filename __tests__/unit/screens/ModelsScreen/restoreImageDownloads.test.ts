@@ -113,6 +113,7 @@ jest.mock('../../../../src/stores', () => ({
       removeImageModelDownloading: mockRemoveImageModelDownloading,
       setImageModelDownloadId: mockSetImageModelDownloadId,
       setBackgroundDownload: mockSetBackgroundDownload,
+      onboardingChecklist: { triedImageGen: true },
     })),
     {
       getState: jest.fn(() => ({

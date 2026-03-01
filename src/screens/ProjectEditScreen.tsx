@@ -7,19 +7,22 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  InteractionManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { AttachStep, useSpotlightTour } from 'react-native-spotlight-tour';
 import { CustomAlert, showAlert, hideAlert, AlertState, initialAlertState } from '../components/CustomAlert';
+import { consumePendingSpotlight } from '../components/onboarding/spotlightState';
 import { useTheme, useThemedStyles } from '../theme';
 import type { ThemeColors, ThemeShadows } from '../theme';
 import { TYPOGRAPHY, SPACING } from '../constants';
 import { useProjectStore } from '../stores';
-import { ProjectsStackParamList } from '../navigation/types';
+import { RootStackParamList } from '../navigation/types';
 
-type NavigationProp = NativeStackNavigationProp<ProjectsStackParamList, 'ProjectEdit'>;
-type RouteProps = RouteProp<ProjectsStackParamList, 'ProjectEdit'>;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ProjectEdit'>;
+type RouteProps = RouteProp<RootStackParamList, 'ProjectEdit'>;
 
 export const ProjectEditScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -29,8 +32,18 @@ export const ProjectEditScreen: React.FC = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
 
+  const { goTo } = useSpotlightTour();
   const { getProject, createProject, updateProject } = useProjectStore();
   const existingProject = projectId ? getProject(projectId) : null;
+
+  // If user arrived here via onboarding spotlight flow, show name input spotlight
+  useEffect(() => {
+    const pending = consumePendingSpotlight();
+    if (pending !== null) {
+      const task = InteractionManager.runAfterInteractions(() => goTo(pending));
+      return () => task.cancel();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [formData, setFormData] = useState({
     name: '',
@@ -101,13 +114,15 @@ export const ProjectEditScreen: React.FC = () => {
         >
           {/* Name */}
           <Text style={styles.label}>Name *</Text>
-          <TextInput
-            style={styles.input}
-            value={formData.name}
-            onChangeText={(text) => setFormData({ ...formData, name: text })}
-            placeholder="e.g., Spanish Learning, Code Review"
-            placeholderTextColor={colors.textMuted}
-          />
+          <AttachStep index={8} fill>
+            <TextInput
+              style={styles.input}
+              value={formData.name}
+              onChangeText={(text) => setFormData({ ...formData, name: text })}
+              placeholder="e.g., Spanish Learning, Code Review"
+              placeholderTextColor={colors.textMuted}
+            />
+          </AttachStep>
 
           {/* Description */}
           <Text style={styles.label}>Description</Text>

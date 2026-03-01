@@ -46,12 +46,16 @@ jest.mock('../../../package.json', () => ({ version: '1.0.0' }), {
 
 const mockSetOnboardingComplete = jest.fn();
 const mockSetThemeMode = jest.fn();
+const mockCompleteChecklistStep = jest.fn();
+const mockResetChecklist = jest.fn();
 jest.mock('../../../src/stores', () => ({
   useAppStore: jest.fn((selector?: any) => {
     const state = {
       setOnboardingComplete: mockSetOnboardingComplete,
       themeMode: 'system',
       setThemeMode: mockSetThemeMode,
+      completeChecklistStep: mockCompleteChecklistStep,
+      resetChecklist: mockResetChecklist,
     };
     return selector ? selector(state) : state;
   }),
@@ -66,9 +70,7 @@ jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({
     navigate: mockNavigate,
     getParent: () => ({
-      getParent: () => ({
-        dispatch: mockDispatch,
-      }),
+      dispatch: mockDispatch,
     }),
   }),
   CommonActions: {

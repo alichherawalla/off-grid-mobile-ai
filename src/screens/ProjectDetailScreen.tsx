@@ -16,10 +16,10 @@ import { useTheme, useThemedStyles } from '../theme';
 import { createStyles } from './ProjectDetailScreen.styles';
 import { useChatStore, useProjectStore, useAppStore } from '../stores';
 import { Conversation } from '../types';
-import { ProjectsStackParamList } from '../navigation/types';
+import { RootStackParamList } from '../navigation/types';
 
-type NavigationProp = NativeStackNavigationProp<ProjectsStackParamList, 'ProjectDetail'>;
-type RouteProps = RouteProp<ProjectsStackParamList, 'ProjectDetail'>;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type RouteProps = RouteProp<RootStackParamList, 'ProjectDetail'>;
 
 export const ProjectDetailScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -43,12 +43,7 @@ export const ProjectDetailScreen: React.FC = () => {
 
   const handleChatPress = (conversation: Conversation) => {
     setActiveConversation(conversation.id);
-    // Navigate to chat in the Chats tab stack
-    // For now, we'll use a workaround by navigating to the parent navigator
-    navigation.getParent()?.navigate('ChatsTab', {
-      screen: 'Chat',
-      params: { conversationId: conversation.id },
-    });
+    navigation.navigate('Chat', { conversationId: conversation.id });
   };
 
   const handleNewChat = () => {
@@ -60,10 +55,7 @@ export const ProjectDetailScreen: React.FC = () => {
     const modelId = activeModelId || downloadedModels[0]?.id;
     if (modelId) {
       const newConversationId = createConversation(modelId, undefined, projectId);
-      navigation.getParent()?.navigate('ChatsTab', {
-        screen: 'Chat',
-        params: { conversationId: newConversationId, projectId },
-      });
+      navigation.navigate('Chat', { conversationId: newConversationId, projectId });
     }
   };
 

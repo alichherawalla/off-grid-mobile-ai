@@ -1,7 +1,9 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Animated, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { AppSheet } from '../../../components/AppSheet';
+import { consumePendingSpotlight } from '../../../components/onboarding/spotlightState';
+import { MODEL_PICKER_STEP_INDEX } from '../../../components/onboarding/spotlightConfig';
 import { Button } from '../../../components';
 import { useTheme, useThemedStyles } from '../../../theme';
 import { createStyles } from '../styles';
@@ -43,6 +45,34 @@ export const ModelPickerSheet: React.FC<Props> = ({
 }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const [highlightFirst, setHighlightFirst] = useState(false);
+  const pulseAnim = React.useRef(new Animated.Value(0)).current;
+
+  // When sheet opens after loadedModel flow, consume pending spotlight and highlight first model
+  // NOTE: Can't use AttachStep/spotlight-tour inside Modal (separate view hierarchy).
+  // Instead, pulse the first model's border as a visual hint.
+  useEffect(() => {
+    if (pickerType === 'text') {
+      const pending = consumePendingSpotlight();
+      if (pending === MODEL_PICKER_STEP_INDEX) {
+        setHighlightFirst(true);
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: false }),
+            Animated.timing(pulseAnim, { toValue: 0, duration: 800, useNativeDriver: false }),
+          ]),
+          { iterations: 3 },
+        ).start(() => setHighlightFirst(false));
+      }
+    } else {
+      setHighlightFirst(false);
+    }
+  }, [pickerType, pulseAnim]);
+
+  const highlightBorderColor = pulseAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [colors.border, colors.primary],
+  });
 
   return (
     <AppSheet
@@ -76,15 +106,15 @@ export const ModelPickerSheet: React.FC<Props> = ({
                     <Text style={styles.unloadButtonText}>Unload current model</Text>
                   </TouchableOpacity>
                 )}
-                {downloadedModels.map((model) => {
+                {downloadedModels.map((model, idx) => {
                   const totalSize = model.fileSize + (model.mmProjFileSize || 0);
                   const estimatedMemoryGB = (totalSize * 1.5) / (1024 * 1024 * 1024);
                   const memoryFits = memoryInfo
                     ? estimatedMemoryGB < memoryInfo.memoryAvailable / (1024 * 1024 * 1024) - 1.5
                     : true;
-                  return (
+                  const isHighlighted = idx === 0 && highlightFirst;
+                  const modelItem = (
                     <TouchableOpacity
-                      key={model.id}
                       testID="model-item"
                       style={[
                         styles.pickerItem,
@@ -112,6 +142,20 @@ export const ModelPickerSheet: React.FC<Props> = ({
                       )}
                     </TouchableOpacity>
                   );
+                  if (isHighlighted) {
+                    return (
+                      <Animated.View
+                        key={model.id}
+                        style={[localStyles.highlightBorder, { borderColor: highlightBorderColor }]}
+                      >
+                        {modelItem}
+                        <Text style={[localStyles.highlightHint, { color: colors.textSecondary }]}>
+                          Tap this model to load it for chatting
+                        </Text>
+                      </Animated.View>
+                    );
+                  }
+                  return <View key={model.id}>{modelItem}</View>;
                 })}
               </>
             )}
@@ -190,3 +234,16 @@ export const ModelPickerSheet: React.FC<Props> = ({
     </AppSheet>
   );
 };
+
+const localStyles = StyleSheet.create({
+  highlightBorder: {
+    borderWidth: 2,
+    borderRadius: 10,
+  },
+  highlightHint: {
+    fontSize: 11,
+    fontStyle: 'italic',
+    paddingHorizontal: 12,
+    paddingBottom: 4,
+  },
+});

@@ -3,89 +3,54 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DeviceInfo, DownloadedModel, ModelRecommendation, ONNXImageModel, ImageGenerationMode, AutoDetectMethod, ModelLoadingStrategy, CacheType, GeneratedImage, PersistedDownloadInfo } from '../types';
 
+type DownloadProgressInfo = { progress: number; bytesDownloaded: number; totalBytes: number };
+
+type OnboardingChecklist = {
+  downloadedModel: boolean; loadedModel: boolean; sentMessage: boolean;
+  triedImageGen: boolean; exploredSettings: boolean; createdProject: boolean;
+};
+
+type AppSettings = {
+  systemPrompt: string; temperature: number; maxTokens: number;
+  topP: number; repeatPenalty: number; contextLength: number;
+  nThreads: number; nBatch: number;
+  imageGenerationMode: ImageGenerationMode; autoDetectMethod: AutoDetectMethod;
+  classifierModelId: string | null; imageSteps: number; imageGuidanceScale: number;
+  imageThreads: number; imageWidth: number; imageHeight: number;
+  enhanceImagePrompts: boolean; modelLoadingStrategy: ModelLoadingStrategy;
+  enableGpu: boolean; gpuLayers: number; flashAttn: boolean;
+  cacheType: CacheType; showGenerationDetails: boolean; enabledTools: string[];
+};
+
 interface AppState {
-  // Theme
   themeMode: 'system' | 'light' | 'dark';
   setThemeMode: (mode: 'system' | 'light' | 'dark') => void;
-
-  // Onboarding
   hasCompletedOnboarding: boolean;
   setOnboardingComplete: (complete: boolean) => void;
-
-  // Device info
+  onboardingChecklist: OnboardingChecklist;
+  checklistDismissed: boolean;
+  completeChecklistStep: (key: string) => void;
+  dismissChecklist: () => void;
+  resetChecklist: () => void;
   deviceInfo: DeviceInfo | null;
   modelRecommendation: ModelRecommendation | null;
   setDeviceInfo: (info: DeviceInfo) => void;
   setModelRecommendation: (rec: ModelRecommendation) => void;
-
-  // Downloaded models
   downloadedModels: DownloadedModel[];
   setDownloadedModels: (models: DownloadedModel[]) => void;
   addDownloadedModel: (model: DownloadedModel) => void;
   removeDownloadedModel: (modelId: string) => void;
-
-  // Active model
   activeModelId: string | null;
   setActiveModelId: (modelId: string | null) => void;
-
-  // Loading states
   isLoadingModel: boolean;
   setIsLoadingModel: (loading: boolean) => void;
-
-  // Download progress
-  downloadProgress: Record<string, {
-    progress: number;
-    bytesDownloaded: number;
-    totalBytes: number;
-  }>;
-  setDownloadProgress: (modelId: string, progress: {
-    progress: number;
-    bytesDownloaded: number;
-    totalBytes: number;
-  } | null) => void;
-
-  // Background downloads (Android)
+  downloadProgress: Record<string, DownloadProgressInfo>;
+  setDownloadProgress: (modelId: string, progress: DownloadProgressInfo | null) => void;
   activeBackgroundDownloads: Record<number, PersistedDownloadInfo>;
   setBackgroundDownload: (downloadId: number, info: PersistedDownloadInfo | null) => void;
   clearBackgroundDownloads: () => void;
-  // Settings
-  settings: {
-    systemPrompt: string;
-    temperature: number;
-    maxTokens: number;
-    topP: number;
-    repeatPenalty: number;
-    contextLength: number;
-    // Performance settings
-    nThreads: number;
-    nBatch: number;
-    // Image generation settings
-    imageGenerationMode: ImageGenerationMode;
-    autoDetectMethod: AutoDetectMethod;
-    classifierModelId: string | null;
-    imageSteps: number;
-    imageGuidanceScale: number;
-    imageThreads: number;
-    imageWidth: number;
-    imageHeight: number;
-    // Use text LLM to enhance/refine image prompts before generation
-    enhanceImagePrompts: boolean;
-    // Model loading strategy: 'performance' keeps models loaded, 'memory' loads on demand
-    modelLoadingStrategy: ModelLoadingStrategy;
-    // GPU acceleration for text model inference (requires model reload)
-    enableGpu: boolean;
-    // Number of model layers offloaded to GPU (higher = more GPU usage, 0 = CPU only)
-    gpuLayers: number;
-    // Flash attention: faster but incompatible with Android Hexagon/OpenCL multi-layer GPU offload
-    flashAttn: boolean;
-    // KV cache quantization type: q8_0 (default), f16 (full precision), q4_0 (max compression)
-    cacheType: CacheType;
-    // Show generation details (GPU, model, tok/s, steps, etc.) in chat messages
-    showGenerationDetails: boolean;
-    // Tool calling: list of enabled tool IDs
-    enabledTools: string[];
-  };
-  updateSettings: (settings: Partial<AppState['settings']>) => void;
+  settings: AppSettings;
+  updateSettings: (settings: Partial<AppSettings>) => void;
   resetSettings: () => void;
   downloadedImageModels: ONNXImageModel[];
   activeImageModelId: string | null;
@@ -93,14 +58,12 @@ interface AppState {
   addDownloadedImageModel: (model: ONNXImageModel) => void;
   removeDownloadedImageModel: (modelId: string) => void;
   setActiveImageModelId: (modelId: string | null) => void;
-  // Image model download tracking (global so cancel works across screens)
   imageModelDownloading: string[];
   imageModelDownloadIds: Record<string, number>;
   addImageModelDownloading: (modelId: string) => void;
   removeImageModelDownloading: (modelId: string) => void;
   clearImageModelDownloading: () => void;
   setImageModelDownloadId: (modelId: string, downloadId: number | null) => void;
-  // Image generation state
   isGeneratingImage: boolean;
   imageGenerationProgress: { step: number; totalSteps: number } | null;
   imageGenerationStatus: string | null;
@@ -109,18 +72,24 @@ interface AppState {
   setImageGenerationProgress: (progress: { step: number; totalSteps: number } | null) => void;
   setImageGenerationStatus: (status: string | null) => void;
   setImagePreviewPath: (path: string | null) => void;
-  // Gallery - persisted metadata of all generated images
   generatedImages: GeneratedImage[];
   addGeneratedImage: (image: GeneratedImage) => void;
   removeGeneratedImage: (imageId: string) => void;
   removeImagesByConversationId: (conversationId: string) => string[];
   clearGeneratedImages: () => void;
-  // Cache type nudge (shown once after first generation when using default q8_0)
   hasSeenCacheTypeNudge: boolean;
   setHasSeenCacheTypeNudge: (v: boolean) => void;
+  shownSpotlights: Record<string, boolean>;
+  markSpotlightShown: (key: string) => void;
+  resetShownSpotlights: () => void;
 }
 
-const DEFAULT_SETTINGS: AppState['settings'] = {
+const DEFAULT_CHECKLIST: OnboardingChecklist = {
+  downloadedModel: false, loadedModel: false, sentMessage: false,
+  triedImageGen: false, exploredSettings: false, createdProject: false,
+};
+
+const DEFAULT_SETTINGS: AppSettings = {
   systemPrompt: 'You are a helpful AI assistant running locally on the user\'s device. Be concise and helpful.',
   temperature: 0.7,
   maxTokens: 1024,
@@ -155,6 +124,12 @@ export const useAppStore = create<AppState>()(
       hasCompletedOnboarding: false,
       setOnboardingComplete: (complete) =>
         set({ hasCompletedOnboarding: complete }),
+      onboardingChecklist: { ...DEFAULT_CHECKLIST },
+      checklistDismissed: false,
+      completeChecklistStep: (key) =>
+        set((state) => ({ onboardingChecklist: { ...state.onboardingChecklist, [key]: true } })),
+      dismissChecklist: () => set({ checklistDismissed: true }),
+      resetChecklist: () => set({ checklistDismissed: false, onboardingChecklist: { ...DEFAULT_CHECKLIST }, shownSpotlights: {} }),
       deviceInfo: null,
       modelRecommendation: null,
       setDeviceInfo: (info) => set({ deviceInfo: info }),
@@ -291,6 +266,11 @@ export const useAppStore = create<AppState>()(
       // Cache type nudge
       hasSeenCacheTypeNudge: false,
       setHasSeenCacheTypeNudge: (v) => set({ hasSeenCacheTypeNudge: v }),
+      // Reactive spotlight tracking
+      shownSpotlights: {},
+      markSpotlightShown: (key) =>
+        set((state) => ({ shownSpotlights: { ...state.shownSpotlights, [key]: true } })),
+      resetShownSpotlights: () => set({ shownSpotlights: {} }),
     }),
     {
       name: 'local-llm-app-storage',
@@ -331,6 +311,8 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         themeMode: state.themeMode,
         hasCompletedOnboarding: state.hasCompletedOnboarding,
+        onboardingChecklist: state.onboardingChecklist,
+        checklistDismissed: state.checklistDismissed,
         activeModelId: state.activeModelId,
         settings: state.settings,
         activeBackgroundDownloads: state.activeBackgroundDownloads,
@@ -341,6 +323,8 @@ export const useAppStore = create<AppState>()(
         imageModelDownloadIds: state.imageModelDownloadIds,
         // Persist gallery
         generatedImages: state.generatedImages,
+        // Reactive spotlight tracking
+        shownSpotlights: state.shownSpotlights,
         // Cache type nudge
         hasSeenCacheTypeNudge: state.hasSeenCacheTypeNudge,
       }),

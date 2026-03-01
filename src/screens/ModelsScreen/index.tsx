@@ -1,7 +1,9 @@
-import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import React, { useCallback } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Feather';
+import { AttachStep } from 'react-native-spotlight-tour';
 import { CustomAlert, hideAlert } from '../../components/CustomAlert';
 import { useTheme, useThemedStyles } from '../../theme';
 import { useModelsScreen } from './useModelsScreen';
@@ -15,74 +17,101 @@ export const ModelsScreen: React.FC = () => {
   const styles = useThemedStyles(createStyles);
   const vm = useModelsScreen();
 
+  // Reset to model list view when tab loses focus (e.g. user switches away)
+  // vm.setSelectedModel / vm.setModelFiles are useState setters — stable across renders.
+  // Do NOT use [vm] as dependency — vm is a new object every render, which would
+  // cause the cleanup to fire on every re-render and immediately undo model selection.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        vm.setSelectedModel(null);
+        vm.setModelFiles([]);
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []),
+  );
+
+  const isShowingDetail = vm.activeTab === 'text' && vm.selectedModel !== null;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']} testID="models-screen">
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Models</Text>
-        <TouchableOpacity
-          style={styles.downloadManagerButton}
-          onPress={() => vm.navigation.navigate('DownloadManager')}
-          testID="downloads-icon"
-        >
-          <Icon name="download" size={20} color={colors.text} />
-          {vm.totalModelCount > 0 && (
-            <View style={styles.downloadBadge}>
-              <Text style={styles.downloadBadgeText}>{vm.totalModelCount}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {/* Import Local File */}
-      {vm.isImporting && vm.importProgress ? (
-        <View style={styles.importProgressCard}>
-          <View style={styles.importProgressHeader}>
-            <Icon name="file" size={18} color={colors.primary} />
-            <Text style={styles.importProgressText} numberOfLines={1}>
-              Importing {vm.importProgress.fileName}
-            </Text>
-          </View>
-          <View style={styles.imageProgressBar}>
-            <View style={[styles.imageProgressFill, { width: `${Math.round(vm.importProgress.fraction * 100)}%` }]} />
-          </View>
-          <Text style={styles.importProgressPercent}>
-            {Math.round(vm.importProgress.fraction * 100)}%
-          </Text>
+      {/* Collapse header/import/tabs when showing model detail — detail has its own header.
+           Use height:0 + overflow:hidden instead of unmounting so AttachStep components
+           stay registered with the SpotlightTourProvider (prevents broken spotlight overlays). */}
+      <View style={isShowingDetail ? collapsedStyle.hidden : undefined}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.title}>Models</Text>
+          <AttachStep index={10}>
+            <TouchableOpacity
+              style={styles.downloadManagerButton}
+              onPress={() => vm.navigation.navigate('DownloadManager')}
+              testID="downloads-icon"
+            >
+              <Icon name="download" size={20} color={colors.text} />
+              {vm.totalModelCount > 0 && (
+                <View style={styles.downloadBadge}>
+                  <Text style={styles.downloadBadgeText}>{vm.totalModelCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </AttachStep>
         </View>
-      ) : (
-        <TouchableOpacity style={styles.importButton} onPress={vm.handleImportLocalModel} testID="import-local-model">
-          <Icon name="folder-plus" size={20} color={colors.primary} />
-          <Text style={styles.importButtonText}>Import Local File</Text>
-        </TouchableOpacity>
-      )}
 
-      {/* Tab Bar */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={styles.tabItem}
-          onPress={() => {
-            vm.setActiveTab('text');
-            vm.setFilterState(initialFilterState);
-            vm.setTextFiltersVisible(false);
-            vm.setImageFiltersVisible(false);
-          }}
-        >
-          <Text style={[styles.tabText, vm.activeTab === 'text' && styles.tabTextActive]}>Text Models</Text>
-          {vm.activeTab === 'text' && <View style={styles.tabIndicator} />}
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.tabItem}
-          onPress={() => {
-            vm.setActiveTab('image');
-            vm.setFilterState(initialFilterState);
-            vm.setTextFiltersVisible(false);
-            vm.setImageFiltersVisible(false);
-          }}
-        >
-          <Text style={[styles.tabText, vm.activeTab === 'image' && styles.tabTextActive]}>Image Models</Text>
-          {vm.activeTab === 'image' && <View style={styles.tabIndicator} />}
-        </TouchableOpacity>
+        {/* Import Local File */}
+        <View>
+          {vm.isImporting && vm.importProgress ? (
+            <View style={styles.importProgressCard}>
+              <View style={styles.importProgressHeader}>
+                <Icon name="file" size={18} color={colors.primary} />
+                <Text style={styles.importProgressText} numberOfLines={1}>
+                  Importing {vm.importProgress.fileName}
+                </Text>
+              </View>
+              <View style={styles.imageProgressBar}>
+                <View style={[styles.imageProgressFill, { width: `${Math.round(vm.importProgress.fraction * 100)}%` }]} />
+              </View>
+              <Text style={styles.importProgressPercent}>
+                {Math.round(vm.importProgress.fraction * 100)}%
+              </Text>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.importButton} onPress={vm.handleImportLocalModel} testID="import-local-model">
+              <Icon name="folder-plus" size={20} color={colors.primary} />
+              <Text style={styles.importButtonText}>Import Local File</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Tab Bar */}
+        <View style={styles.tabBar}>
+          <TouchableOpacity
+            style={styles.tabItem}
+            onPress={() => {
+              vm.setActiveTab('text');
+              vm.setFilterState(initialFilterState);
+              vm.setTextFiltersVisible(false);
+              vm.setImageFiltersVisible(false);
+            }}
+          >
+            <Text style={[styles.tabText, vm.activeTab === 'text' && styles.tabTextActive]}>Text Models</Text>
+            {vm.activeTab === 'text' && <View style={styles.tabIndicator} />}
+          </TouchableOpacity>
+          <AttachStep index={4}>
+            <TouchableOpacity
+              style={styles.tabItem}
+              onPress={() => {
+                vm.setActiveTab('image');
+                vm.setFilterState(initialFilterState);
+                vm.setTextFiltersVisible(false);
+                vm.setImageFiltersVisible(false);
+              }}
+            >
+              <Text style={[styles.tabText, vm.activeTab === 'image' && styles.tabTextActive]}>Image Models</Text>
+              {vm.activeTab === 'image' && <View style={styles.tabIndicator} />}
+            </TouchableOpacity>
+          </AttachStep>
+        </View>
       </View>
 
       {/* Text Models Tab */}
@@ -181,3 +210,7 @@ export const ModelsScreen: React.FC = () => {
     </SafeAreaView>
   );
 };
+
+const collapsedStyle = StyleSheet.create({
+  hidden: { height: 0, overflow: 'hidden' },
+});

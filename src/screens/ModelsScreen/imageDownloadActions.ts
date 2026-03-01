@@ -26,7 +26,10 @@ export async function registerAndNotify(
   const { imageModel, modelName, downloadId } = opts;
   await modelManager.addDownloadedImageModel(imageModel);
   deps.addDownloadedImageModel(imageModel);
-  if (!deps.activeImageModelId) deps.setActiveImageModelId(imageModel.id);
+  // Auto-load the first image model unless the onboarding spotlight flow is
+  // still active — Step 13 needs activeImageModelId to be null so the
+  // "Load your image model" spotlight can fire on HomeScreen.
+  if (!deps.activeImageModelId && deps.triedImageGen) deps.setActiveImageModelId(imageModel.id);
   cleanupDownloadState(deps, imageModel.id, downloadId);
   deps.setAlertState(showAlert('Success', `${modelName} downloaded successfully!`));
 }
@@ -66,6 +69,8 @@ export interface ImageDownloadDeps {
   setImageModelDownloadId: (modelId: string, downloadId: number | null) => void;
   setBackgroundDownload: (downloadId: number, data: any) => void;
   setAlertState: (s: AlertState) => void;
+  /** When false, skip auto-load so the onboarding spotlight can guide the user to load manually. */
+  triedImageGen: boolean;
 }
 
 export async function downloadHuggingFaceModel(

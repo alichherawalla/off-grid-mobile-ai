@@ -89,6 +89,7 @@ function makeDeps(overrides: Partial<ImageDownloadDeps> = {}): ImageDownloadDeps
     setImageModelDownloadId: jest.fn(),
     setBackgroundDownload: jest.fn(),
     setAlertState: jest.fn(),
+    triedImageGen: true,
     ...overrides,
   };
 }
@@ -578,6 +579,13 @@ describe('imageDownloadActions', () => {
 
     it('does not set active model when one already exists', async () => {
       const deps = makeDeps({ activeImageModelId: 'existing' });
+      await registerAndNotify(deps, { imageModel, modelName: 'Test' });
+
+      expect(deps.setActiveImageModelId).not.toHaveBeenCalled();
+    });
+
+    it('does not auto-load when onboarding image flow is still active', async () => {
+      const deps = makeDeps({ activeImageModelId: null, triedImageGen: false });
       await registerAndNotify(deps, { imageModel, modelName: 'Test' });
 
       expect(deps.setActiveImageModelId).not.toHaveBeenCalled();

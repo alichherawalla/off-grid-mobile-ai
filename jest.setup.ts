@@ -252,14 +252,34 @@ jest.mock('@react-native-documents/viewer', () => ({
 // react-native-gesture-handler mock
 jest.mock('react-native-gesture-handler', () => {
   const MockView = 'View';
+  const mockGestureBuilder = () => {
+    const gesture: any = {
+      activeOffsetX: () => gesture,
+      activeOffsetY: () => gesture,
+      minDuration: () => gesture,
+      onStart: () => gesture,
+      onUpdate: () => gesture,
+      onEnd: () => gesture,
+    };
+    return gesture;
+  };
   return {
     Swipeable: MockView,
     GestureHandlerRootView: MockView,
+    GestureDetector: MockView,
     ScrollView: MockView,
     PanGestureHandler: MockView,
     TapGestureHandler: MockView,
     State: {},
     Directions: {},
+    Gesture: {
+      Pan: mockGestureBuilder,
+      Tap: mockGestureBuilder,
+      LongPress: mockGestureBuilder,
+      Race: (..._gestures: any[]) => ({}),
+      Simultaneous: (..._gestures: any[]) => ({}),
+      Exclusive: (..._gestures: any[]) => ({}),
+    },
   };
 });
 
@@ -342,6 +362,23 @@ jest.mock('react-native-zip-archive', () => ({
 
 // Mock react-native-vector-icons
 jest.mock('react-native-vector-icons/Feather', () => 'Icon');
+
+// react-native-spotlight-tour mock
+jest.mock('react-native-spotlight-tour', () => ({
+  SpotlightTourProvider: ({ children }: { children: React.ReactNode }) => children,
+  AttachStep: ({ children }: { children: React.ReactNode }) => children,
+  useSpotlightTour: () => ({
+    start: jest.fn(),
+    stop: jest.fn(),
+    next: jest.fn(),
+    previous: jest.fn(),
+    goTo: jest.fn(),
+    current: 0,
+    status: 'idle',
+    pause: jest.fn(),
+    resume: jest.fn(),
+  }),
+}));
 
 // react-native-safe-area-context mock
 jest.mock('react-native-safe-area-context', () => {

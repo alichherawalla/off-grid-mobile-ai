@@ -427,11 +427,8 @@ describe('HomeScreen', () => {
       fireEvent.press(getByTestId('new-chat-button'));
 
       expect(mockNavigate).toHaveBeenCalledWith(
-        'ChatsTab',
-        expect.objectContaining({
-          screen: 'Chat',
-          params: expect.objectContaining({ conversationId: expect.any(String) }),
-        })
+        'Chat',
+        expect.objectContaining({ conversationId: expect.any(String) })
       );
     });
 
@@ -506,10 +503,7 @@ describe('HomeScreen', () => {
       const { getByTestId } = renderHomeScreen();
       fireEvent.press(getByTestId('conversation-item-0'));
 
-      expect(mockNavigate).toHaveBeenCalledWith('ChatsTab', {
-        screen: 'Chat',
-        params: { conversationId: conversation.id },
-      });
+      expect(mockNavigate).toHaveBeenCalledWith('Chat', { conversationId: conversation.id });
     });
 
     it('shows message preview for conversations with messages', () => {
@@ -679,12 +673,12 @@ describe('HomeScreen', () => {
       expect(getByText('Image Gallery')).toBeTruthy();
     });
 
-    it('shows image count as "0 images" when no images', () => {
+    it('shows "0 images" when no images', () => {
       const { getByText } = renderHomeScreen();
       expect(getByText('0 images')).toBeTruthy();
     });
 
-    it('shows correct image count', () => {
+    it('shows count with "images" (plural) for multiple images', () => {
       useAppStore.setState({
         generatedImages: [
           { id: '1', prompt: 'test', imagePath: '/path', width: 512, height: 512, steps: 20, seed: 1, modelId: 'm', createdAt: '' },

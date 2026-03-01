@@ -8,7 +8,7 @@ import {
   ImageGenerationState, hardwareService, QueuedMessage,
 } from '../../services';
 import { Message, MediaAttachment, Project, DownloadedModel, DebugInfo } from '../../types';
-import { ChatsStackParamList } from '../../navigation/types';
+import { RootStackParamList } from '../../navigation/types';
 import { ensureModelLoadedFn, handleModelSelectFn, handleUnloadModelFn } from './useChatModelActions';
 import {
   startGenerationFn, handleSendFn, handleStopFn, executeDeleteConversationFn,
@@ -21,7 +21,7 @@ import logger from '../../utils/logger';
 export type { AlertState, ChatMessageItem, StreamingState };
 export { getDisplayMessages, getPlaceholderText };
 
-type ChatScreenRouteProp = RouteProp<ChatsStackParamList, 'Chat'>;
+type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>;
 
 export const useChatScreen = () => {
   const navigation = useNavigation();

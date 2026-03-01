@@ -13,6 +13,8 @@ const createLayoutStyles = (colors: ThemeColors) => ({
     paddingBottom: 32,
   },
   header: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     marginBottom: 20,
   },
   title: {

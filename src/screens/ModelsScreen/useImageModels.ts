@@ -84,6 +84,7 @@ export function useImageModels(setAlertState: (s: AlertState) => void) {
     activeImageModelId, setActiveImageModelId,
     imageModelDownloading, addImageModelDownloading, removeImageModelDownloading,
     setImageModelDownloadId, setBackgroundDownload,
+    onboardingChecklist,
   } = useAppStore();
 
   const updateModelProgress = (modelId: string, n: number) =>
@@ -97,6 +98,7 @@ export function useImageModels(setAlertState: (s: AlertState) => void) {
     addDownloadedImageModel, activeImageModelId,
     setActiveImageModelId, setImageModelDownloadId,
     setBackgroundDownload, setAlertState,
+    triedImageGen: onboardingChecklist.triedImageGen,
   });
 
   const loadDownloadedImageModels = async () => {

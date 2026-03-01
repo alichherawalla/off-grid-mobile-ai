@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
-import { useNavigation, CommonActions } from '@react-navigation/native';
+import { AttachStep } from 'react-native-spotlight-tour';
+import { useNavigation, CommonActions, CompositeNavigationProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { Card } from '../components';
 import { AnimatedEntry } from '../components/AnimatedEntry';
 import { AnimatedListItem } from '../components/AnimatedListItem';
@@ -17,10 +19,13 @@ import { useTheme, useThemedStyles } from '../theme';
 import type { ThemeColors, ThemeShadows } from '../theme';
 import { TYPOGRAPHY, SPACING } from '../constants';
 import { useAppStore } from '../stores';
-import { SettingsStackParamList } from '../navigation/types';
+import { RootStackParamList, MainTabParamList } from '../navigation/types';
 import packageJson from '../../package.json';
 
-type NavigationProp = NativeStackNavigationProp<SettingsStackParamList, 'SettingsMain'>;
+type NavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'SettingsTab'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
 export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -30,11 +35,19 @@ export const SettingsScreen: React.FC = () => {
   const setOnboardingComplete = useAppStore((s) => s.setOnboardingComplete);
   const themeMode = useAppStore((s) => s.themeMode);
   const setThemeMode = useAppStore((s) => s.setThemeMode);
+  const completeChecklistStep = useAppStore((s) => s.completeChecklistStep);
+  const resetChecklist = useAppStore((s) => s.resetChecklist);
+
+  useEffect(() => {
+    completeChecklistStep('exploredSettings');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleResetOnboarding = () => {
     setOnboardingComplete(false);
     // Navigate to root stack and reset to Onboarding
-    navigation.getParent()?.getParent()?.dispatch(
+    // getParent() reaches the RootStack from inside the Tab navigator
+    navigation.getParent()?.dispatch(
       CommonActions.reset({
         index: 0,
         routes: [{ name: 'Onboarding' }],
@@ -79,6 +92,7 @@ export const SettingsScreen: React.FC = () => {
         </AnimatedEntry>
 
         {/* Navigation Items */}
+        <AttachStep index={5} fill>
         <View style={styles.navSection}>
           {[
             { icon: 'sliders', title: 'Model Settings', desc: 'System prompt, generation, and performance', screen: 'ModelSettings' as const },
@@ -106,6 +120,7 @@ export const SettingsScreen: React.FC = () => {
             </AnimatedListItem>
           ))}
         </View>
+        </AttachStep>
 
         {/* About */}
         <AnimatedEntry index={6} staggerMs={40} trigger={focusTrigger}>
@@ -137,10 +152,16 @@ export const SettingsScreen: React.FC = () => {
         {/* Dev-only: Reset Onboarding */}
         {__DEV__ && (
           <AnimatedEntry index={8} staggerMs={40} trigger={focusTrigger}>
-            <TouchableOpacity style={styles.devButton} onPress={handleResetOnboarding}>
-              <Icon name="rotate-ccw" size={14} color={colors.textMuted} />
-              <Text style={styles.devButtonText}>Reset Onboarding</Text>
-            </TouchableOpacity>
+            <View style={styles.devButtonGroup}>
+              <TouchableOpacity style={styles.devButton} onPress={handleResetOnboarding}>
+                <Icon name="rotate-ccw" size={14} color={colors.textMuted} />
+                <Text style={styles.devButtonText}>Reset Onboarding</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.devButton} onPress={resetChecklist}>
+                <Icon name="list" size={14} color={colors.textMuted} />
+                <Text style={styles.devButtonText}>Reset Onboarding Checklist</Text>
+              </TouchableOpacity>
+            </View>
           </AnimatedEntry>
         )}
       </ScrollView>
@@ -306,6 +327,9 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
     borderColor: colors.border,
     borderStyle: 'dashed' as const,
     borderRadius: 6,
+  },
+  devButtonGroup: {
+    gap: 12,
   },
   devButtonText: {
     ...TYPOGRAPHY.bodySmall,

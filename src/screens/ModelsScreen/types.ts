@@ -1,6 +1,8 @@
+import { CompositeNavigationProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { ModelSource } from '../../types';
-import { RootStackParamList } from '../../navigation/types';
+import { RootStackParamList, MainTabParamList } from '../../navigation/types';
 
 export type BackendFilter = 'all' | 'mnn' | 'qnn' | 'coreml';
 
@@ -37,4 +39,7 @@ export interface FilterState {
   expandedDimension: FilterDimension;
 }
 
-export type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+export type NavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'ModelsTab'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;

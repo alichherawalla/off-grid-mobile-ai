@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useSharedValue,
@@ -9,10 +9,12 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/Feather';
+import { SpotlightTourProvider } from 'react-native-spotlight-tour';
 import { useTheme, useThemedStyles } from '../theme';
 import type { ThemeColors, ThemeShadows } from '../theme';
 import { triggerHaptic } from '../utils/haptics';
 import { useAppStore } from '../stores';
+import { createSpotlightSteps } from '../components/onboarding/spotlightConfig';
 import {
   OnboardingScreen,
   ModelDownloadScreen,
@@ -35,94 +37,10 @@ import {
 import {
   RootStackParamList,
   MainTabParamList,
-  ChatsStackParamList,
-  ProjectsStackParamList,
-  ModelsStackParamList,
-  SettingsStackParamList,
 } from './types';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
-const ChatsStack = createNativeStackNavigator<ChatsStackParamList>();
-const ProjectsStack = createNativeStackNavigator<ProjectsStackParamList>();
-const ModelsStack = createNativeStackNavigator<ModelsStackParamList>();
-const SettingsStack = createNativeStackNavigator<SettingsStackParamList>();
-
-// Chats Tab Stack
-const ChatsStackNavigator: React.FC = () => {
-  const { colors } = useTheme();
-  return (
-    <ChatsStack.Navigator
-      screenOptions={{
-        headerShown: false,
-        animation: 'slide_from_right',
-        contentStyle: { backgroundColor: colors.background },
-      }}
-    >
-      <ChatsStack.Screen name="ChatsList" component={ChatsListScreen} />
-      <ChatsStack.Screen name="Chat" component={ChatScreen} />
-    </ChatsStack.Navigator>
-  );
-};
-
-// Projects Tab Stack
-const ProjectsStackNavigator: React.FC = () => {
-  const { colors } = useTheme();
-  return (
-    <ProjectsStack.Navigator
-      screenOptions={{
-        headerShown: false,
-        animation: 'slide_from_right',
-        contentStyle: { backgroundColor: colors.background },
-      }}
-    >
-      <ProjectsStack.Screen name="ProjectsList" component={ProjectsScreen} />
-      <ProjectsStack.Screen name="ProjectDetail" component={ProjectDetailScreen} />
-      <ProjectsStack.Screen
-        name="ProjectEdit"
-        component={ProjectEditScreen}
-        options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-      />
-    </ProjectsStack.Navigator>
-  );
-};
-
-// Models Tab Stack
-const ModelsStackNavigator: React.FC = () => {
-  const { colors } = useTheme();
-  return (
-    <ModelsStack.Navigator
-      screenOptions={{
-        headerShown: false,
-        animation: 'slide_from_right',
-        contentStyle: { backgroundColor: colors.background },
-      }}
-    >
-      <ModelsStack.Screen name="ModelsList" component={ModelsScreen} />
-    </ModelsStack.Navigator>
-  );
-};
-
-// Settings Tab Stack
-const SettingsStackNavigator: React.FC = () => {
-  const { colors } = useTheme();
-  return (
-    <SettingsStack.Navigator
-      screenOptions={{
-        headerShown: false,
-        animation: 'slide_from_right',
-        contentStyle: { backgroundColor: colors.background },
-      }}
-    >
-      <SettingsStack.Screen name="SettingsMain" component={SettingsScreen} />
-      <SettingsStack.Screen name="ModelSettings" component={ModelSettingsScreen} />
-      <SettingsStack.Screen name="VoiceSettings" component={VoiceSettingsScreen} />
-      <SettingsStack.Screen name="DeviceInfo" component={DeviceInfoScreen} />
-      <SettingsStack.Screen name="StorageSettings" component={StorageSettingsScreen} />
-      <SettingsStack.Screen name="SecuritySettings" component={SecuritySettingsScreen} />
-    </SettingsStack.Navigator>
-  );
-};
 
 // Animated tab icon with scale spring on focus
 const TAB_ICON_MAP: Record<string, string> = {
@@ -176,98 +94,97 @@ const createTabBarStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({
   },
 });
 
+const mainTabsStyles = StyleSheet.create({
+  container: { flex: 1 },
+});
+
 // Main Tab Navigator
 const MainTabs: React.FC = () => {
   const { colors, shadows } = useTheme();
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, 20);
+  const tabBarHeight = 60 + bottomInset;
 
   return (
-    <Tab.Navigator
-      backBehavior="history"
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        animation: 'fade',
-        tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
-          height: 60 + bottomInset,
-          paddingBottom: bottomInset,
-          paddingTop: 10,
-          ...shadows.medium,
-        },
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMuted,
-        // eslint-disable-next-line react/no-unstable-nested-components
-        tabBarIcon: ({ focused }) => (
-          <TabBarIcon name={route.name} focused={focused} />
-        ),
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '500' as const,
-        },
-      })}
-    >
-      <Tab.Screen
-        name="HomeTab"
-        component={HomeScreen}
-        options={{ tabBarLabel: 'Home', tabBarButtonTestID: 'home-tab' }}
-        listeners={() => ({
-          tabPress: () => { triggerHaptic('selection'); },
-        })}
-      />
-      <Tab.Screen
-        name="ChatsTab"
-        component={ChatsStackNavigator}
-        options={{ tabBarLabel: 'Chats', tabBarButtonTestID: 'chats-tab' }}
-        listeners={({ navigation }) => ({
-          tabPress: (e) => {
-            triggerHaptic('selection');
-            e.preventDefault();
-            navigation.navigate('ChatsTab', { screen: 'ChatsList' });
+    <View style={mainTabsStyles.container}>
+      <Tab.Navigator
+        backBehavior="history"
+        screenOptions={({ route }) => ({
+          headerShown: false,
+          animation: 'fade',
+          tabBarStyle: {
+            backgroundColor: colors.surface,
+            borderTopColor: colors.border,
+            borderTopWidth: 1,
+            height: tabBarHeight,
+            paddingBottom: bottomInset,
+            paddingTop: 10,
+            ...shadows.medium,
+          },
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.textMuted,
+          // eslint-disable-next-line react/no-unstable-nested-components
+          tabBarIcon: ({ focused }) => (
+            <TabBarIcon name={route.name} focused={focused} />
+          ),
+          tabBarLabelStyle: {
+            fontSize: 11,
+            fontWeight: '500' as const,
           },
         })}
-      />
-      <Tab.Screen
-        name="ProjectsTab"
-        component={ProjectsStackNavigator}
-        options={{ tabBarLabel: 'Projects', tabBarButtonTestID: 'projects-tab' }}
-        listeners={() => ({
-          tabPress: () => { triggerHaptic('selection'); },
-        })}
-      />
-      <Tab.Screen
-        name="ModelsTab"
-        component={ModelsStackNavigator}
-        options={{ tabBarLabel: 'Models', tabBarButtonTestID: 'models-tab' }}
-        listeners={({ navigation }) => ({
-          tabPress: () => {
-            triggerHaptic('selection');
-            navigation.navigate('ModelsTab', { screen: 'ModelsList' });
-          },
-        })}
-      />
-      <Tab.Screen
-        name="SettingsTab"
-        component={SettingsStackNavigator}
-        options={{ tabBarLabel: 'Settings', tabBarButtonTestID: 'settings-tab' }}
-        listeners={({ navigation }) => ({
-          tabPress: () => {
-            triggerHaptic('selection');
-            navigation.navigate('SettingsTab', { screen: 'SettingsMain' });
-          },
-        })}
-      />
-    </Tab.Navigator>
+      >
+        <Tab.Screen
+          name="HomeTab"
+          component={HomeScreen}
+          options={{ tabBarLabel: 'Home', tabBarButtonTestID: 'home-tab' }}
+          listeners={() => ({
+            tabPress: () => { triggerHaptic('selection'); },
+          })}
+        />
+        <Tab.Screen
+          name="ChatsTab"
+          component={ChatsListScreen}
+          options={{ tabBarLabel: 'Chats', tabBarButtonTestID: 'chats-tab' }}
+          listeners={() => ({
+            tabPress: () => { triggerHaptic('selection'); },
+          })}
+        />
+        <Tab.Screen
+          name="ProjectsTab"
+          component={ProjectsScreen}
+          options={{ tabBarLabel: 'Projects', tabBarButtonTestID: 'projects-tab' }}
+          listeners={() => ({
+            tabPress: () => { triggerHaptic('selection'); },
+          })}
+        />
+        <Tab.Screen
+          name="ModelsTab"
+          component={ModelsScreen}
+          options={{ tabBarLabel: 'Models', tabBarButtonTestID: 'models-tab' }}
+          listeners={() => ({
+            tabPress: () => { triggerHaptic('selection'); },
+          })}
+        />
+        <Tab.Screen
+          name="SettingsTab"
+          component={SettingsScreen}
+          options={{ tabBarLabel: 'Settings', tabBarButtonTestID: 'settings-tab' }}
+          listeners={() => ({
+            tabPress: () => { triggerHaptic('selection'); },
+          })}
+        />
+      </Tab.Navigator>
+    </View>
   );
 };
 
-// Root Navigator
+// Root Navigator — SpotlightTourProvider wraps entire stack so all screens
+// (both tab screens and RootStack screens) can use useSpotlightTour()
 export const AppNavigator: React.FC = () => {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const hasCompletedOnboarding = useAppStore((s) => s.hasCompletedOnboarding);
   const downloadedModels = useAppStore((s) => s.downloadedModels);
+  const steps = useMemo(() => createSpotlightSteps(), []);
 
   // Determine initial route
   let initialRoute: keyof RootStackParamList = 'Onboarding';
@@ -276,27 +193,48 @@ export const AppNavigator: React.FC = () => {
   }
 
   return (
-    <RootStack.Navigator
-      initialRouteName={initialRoute}
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: colors.background },
-        animation: 'slide_from_right',
-      }}
+    <SpotlightTourProvider
+      steps={steps}
+      overlayColor="black"
+      overlayOpacity={isDark ? 0.78 : 0.62}
+      onBackdropPress="stop"
+      motion="fade"
+      shape={{ type: 'rectangle', padding: 8 }}
     >
-      <RootStack.Screen name="Onboarding" component={OnboardingScreen} />
-      <RootStack.Screen name="ModelDownload" component={ModelDownloadScreen} />
-      <RootStack.Screen name="Main" component={MainTabs} />
-      <RootStack.Screen
-        name="DownloadManager"
-        component={DownloadManagerScreen}
-        options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-      />
-      <RootStack.Screen
-        name="Gallery"
-        component={GalleryScreen}
-        options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-      />
-    </RootStack.Navigator>
+      <RootStack.Navigator
+        initialRouteName={initialRoute}
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.background },
+          animation: 'slide_from_right',
+        }}
+      >
+        <RootStack.Screen name="Onboarding" component={OnboardingScreen} />
+        <RootStack.Screen name="ModelDownload" component={ModelDownloadScreen} />
+        <RootStack.Screen name="Main" component={MainTabs} />
+        <RootStack.Screen name="Chat" component={ChatScreen} />
+        <RootStack.Screen name="ProjectDetail" component={ProjectDetailScreen} />
+        <RootStack.Screen
+          name="ProjectEdit"
+          component={ProjectEditScreen}
+          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
+        <RootStack.Screen name="ModelSettings" component={ModelSettingsScreen} />
+        <RootStack.Screen name="VoiceSettings" component={VoiceSettingsScreen} />
+        <RootStack.Screen name="DeviceInfo" component={DeviceInfoScreen} />
+        <RootStack.Screen name="StorageSettings" component={StorageSettingsScreen} />
+        <RootStack.Screen name="SecuritySettings" component={SecuritySettingsScreen} />
+        <RootStack.Screen
+          name="DownloadManager"
+          component={DownloadManagerScreen}
+          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
+        <RootStack.Screen
+          name="Gallery"
+          component={GalleryScreen}
+          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
+      </RootStack.Navigator>
+    </SpotlightTourProvider>
   );
 };

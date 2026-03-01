@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, TextInput, TouchableOpacity, Text, Animated } from 'react-native';
+import { View, TextInput, TouchableOpacity, Text, Animated, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { useTheme, useThemedStyles } from '../../theme';
 import { ImageModeState, MediaAttachment } from '../../types';
 import { VoiceRecordButton } from '../VoiceRecordButton';
+import { AttachStep } from 'react-native-spotlight-tour';
 import { triggerHaptic } from '../../utils/haptics';
 import { CustomAlert, showAlert, hideAlert, AlertState, initialAlertState } from '../CustomAlert';
 import { createStyles, PILL_ICONS_WIDTH, ANIM_DURATION_IN, ANIM_DURATION_OUT } from './styles';
@@ -28,6 +29,8 @@ interface ChatInputProps {
   onToolsPress?: () => void;
   enabledToolCount?: number;
   supportsToolCalling?: boolean;
+  /** When set, mounts a single AttachStep for that index. Only one at a time to avoid waypoint dots. */
+  activeSpotlight?: number | null;
 }
 
 const IMAGE_MODE_CYCLE: ImageModeState[] = ['auto', 'force', 'disabled'];
@@ -67,6 +70,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onToolsPress,
   enabledToolCount = 0,
   supportsToolCalling = false,
+  activeSpotlight = null,
 }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -146,7 +150,39 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
   const imgState = imageModeIcon();
 
-  return (
+  const actionButton = canSend ? (
+    <TouchableOpacity
+      testID="send-button"
+      style={styles.circleButton}
+      onPress={handleSend}
+    >
+      <Icon name="send" size={18} color={colors.background} />
+    </TouchableOpacity>
+  ) : isGenerating && onStop ? (
+    <TouchableOpacity
+      testID="stop-button"
+      style={[styles.circleButton, styles.circleButtonStop]}
+      onPress={handleStop}
+    >
+      <Icon name="square" size={18} color={colors.background} />
+    </TouchableOpacity>
+  ) : (
+    <VoiceRecordButton
+      isRecording={isRecording}
+      isAvailable={voiceAvailable}
+      isModelLoading={isModelLoading}
+      isTranscribing={isTranscribing}
+      partialResult={partialResult}
+      error={error}
+      disabled={disabled}
+      onStartRecording={startRecording}
+      onStopRecording={stopRecording}
+      onCancelRecording={() => { stopRecording(); clearResult(); }}
+      asSendButton
+    />
+  );
+
+  const content = (
     <View style={styles.container}>
       <AttachmentPreview attachments={attachments} onRemove={removeAttachment} />
       <QueueRow
@@ -247,38 +283,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           </Animated.View>
         </View>
 
-        {/* Circular action button — always visible */}
-        {canSend ? (
-          <TouchableOpacity
-            testID="send-button"
-            style={styles.circleButton}
-            onPress={handleSend}
-          >
-            <Icon name="send" size={18} color={colors.background} />
-          </TouchableOpacity>
-        ) : isGenerating && onStop ? (
-          <TouchableOpacity
-            testID="stop-button"
-            style={[styles.circleButton, styles.circleButtonStop]}
-            onPress={handleStop}
-          >
-            <Icon name="square" size={18} color={colors.background} />
-          </TouchableOpacity>
-        ) : (
-          <VoiceRecordButton
-            isRecording={isRecording}
-            isAvailable={voiceAvailable}
-            isModelLoading={isModelLoading}
-            isTranscribing={isTranscribing}
-            partialResult={partialResult}
-            error={error}
-            disabled={disabled}
-            onStartRecording={startRecording}
-            onStopRecording={stopRecording}
-            onCancelRecording={() => { stopRecording(); clearResult(); }}
-            asSendButton
-          />
-        )}
+        {/* Circular action button — conditionally wrapped with AttachStep */}
+        {activeSpotlight === 12 ? (
+          <AttachStep index={12} style={spotlightStyles.centered}>{actionButton}</AttachStep>
+        ) : actionButton}
       </View>
       <CustomAlert
         visible={alertState.visible}
@@ -289,4 +297,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       />
     </View>
   );
+
+  return content;
 };
+
+const spotlightStyles = StyleSheet.create({
+  centered: { alignSelf: 'center' },
+});

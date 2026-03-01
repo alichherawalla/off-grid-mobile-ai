@@ -17,7 +17,6 @@ import { render, fireEvent, act } from '@testing-library/react-native';
 
 const mockGoBack = jest.fn();
 const mockNavigate = jest.fn();
-const mockParentNavigate = jest.fn();
 
 jest.mock('@react-navigation/native', () => {
   const actual = jest.requireActual('@react-navigation/native');
@@ -28,7 +27,6 @@ jest.mock('@react-navigation/native', () => {
       goBack: mockGoBack,
       setOptions: jest.fn(),
       addListener: jest.fn(() => jest.fn()),
-      getParent: () => ({ navigate: mockParentNavigate }),
     }),
     useRoute: () => ({
       params: { projectId: 'proj1' },
@@ -362,10 +360,7 @@ describe('ProjectDetailScreen', () => {
       fireEvent.press(getByText('Tappable Chat'));
 
       expect(mockSetActiveConversation).toHaveBeenCalledWith('conv1');
-      expect(mockParentNavigate).toHaveBeenCalledWith('ChatsTab', {
-        screen: 'Chat',
-        params: { conversationId: 'conv1' },
-      });
+      expect(mockNavigate).toHaveBeenCalledWith('Chat', { conversationId: 'conv1' });
     });
   });
 
@@ -378,10 +373,7 @@ describe('ProjectDetailScreen', () => {
       fireEvent.press(getByText('New Chat'));
 
       expect(mockCreateConversation).toHaveBeenCalledWith('model1', undefined, 'proj1');
-      expect(mockParentNavigate).toHaveBeenCalledWith('ChatsTab', {
-        screen: 'Chat',
-        params: { conversationId: 'new-conv-1', projectId: 'proj1' },
-      });
+      expect(mockNavigate).toHaveBeenCalledWith('Chat', { conversationId: 'new-conv-1', projectId: 'proj1' });
     });
 
     it('disables New Chat button when no models available', () => {

@@ -260,6 +260,7 @@ class ImageGenerationService {
       result.modelId = activeImageModel.id;
       if (params.conversationId) result.conversationId = params.conversationId;
       useAppStore.getState().addGeneratedImage(result);
+      useAppStore.getState().completeChecklistStep('triedImageGen');
       if (params.conversationId) {
         const genTime = Date.now() - startTime;
         useChatStore.getState().addMessage(params.conversationId, {

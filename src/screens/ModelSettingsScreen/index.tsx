@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, InteractionManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
+import { AttachStep, useSpotlightTour } from 'react-native-spotlight-tour';
 import { useNavigation } from '@react-navigation/native';
 import { Button } from '../../components';
 import { CustomAlert, showAlert, hideAlert, AlertState, initialAlertState } from '../../components/CustomAlert';
+import { consumePendingSpotlight } from '../../components/onboarding/spotlightState';
 import { useTheme, useThemedStyles } from '../../theme';
 import { useAppStore } from '../../stores';
 import { createStyles } from './styles';
@@ -17,6 +19,7 @@ export const ModelSettingsScreen: React.FC = () => {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const { goTo } = useSpotlightTour();
   const resetSettings = useAppStore((s) => s.resetSettings);
   const [alertState, setAlertState] = useState<AlertState>(initialAlertState);
 
@@ -24,6 +27,15 @@ export const ModelSettingsScreen: React.FC = () => {
   const [imageOpen, setImageOpen] = useState(false);
   const [textOpen, setTextOpen] = useState(false);
   const [perfOpen, setPerfOpen] = useState(false);
+
+  // If user arrived here via onboarding spotlight flow, show accordion spotlight
+  useEffect(() => {
+    const pending = consumePendingSpotlight();
+    if (pending !== null) {
+      const task = InteractionManager.runAfterInteractions(() => goTo(pending));
+      return () => task.cancel();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleReset = () => {
     setAlertState(showAlert(
@@ -49,19 +61,21 @@ export const ModelSettingsScreen: React.FC = () => {
         <Text style={styles.title}>Model Settings</Text>
       </View>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
-        <TouchableOpacity
-          style={styles.accordionHeader}
-          onPress={() => setPromptOpen(!promptOpen)}
-          activeOpacity={0.7}
-          testID="system-prompt-accordion"
-        >
-          <Text style={styles.accordionTitle}>Default System Prompt</Text>
-          <Icon
-            name={promptOpen ? 'chevron-up' : 'chevron-down'}
-            size={16}
-            color={colors.textMuted}
-          />
-        </TouchableOpacity>
+        <AttachStep index={6} fill>
+          <TouchableOpacity
+            style={styles.accordionHeader}
+            onPress={() => setPromptOpen(!promptOpen)}
+            activeOpacity={0.7}
+            testID="system-prompt-accordion"
+          >
+            <Text style={styles.accordionTitle}>Default System Prompt</Text>
+            <Icon
+              name={promptOpen ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={colors.textMuted}
+            />
+          </TouchableOpacity>
+        </AttachStep>
         {promptOpen && <SystemPromptSection />}
 
         <TouchableOpacity

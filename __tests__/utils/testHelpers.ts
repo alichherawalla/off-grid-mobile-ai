@@ -80,6 +80,16 @@ export const resetStores = (): void => {
     imagePreviewPath: null,
     generatedImages: [],
     hasSeenCacheTypeNudge: false,
+    shownSpotlights: {},
+    onboardingChecklist: {
+      downloadedModel: false,
+      loadedModel: false,
+      sentMessage: false,
+      triedImageGen: false,
+      exploredSettings: false,
+      createdProject: false,
+    },
+    checklistDismissed: false,
   });
 
   // Reset chat store

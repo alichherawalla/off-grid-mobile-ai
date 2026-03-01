@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { AttachStep } from 'react-native-spotlight-tour';
 import { ModelSelectorModal } from '../../components';
 import { AnimatedEntry } from '../../components/AnimatedEntry';
 import { llmService } from '../../services';
@@ -21,14 +22,26 @@ type ColorsType = ReturnType<typeof useTheme>['colors'];
 export const NoModelScreen: React.FC<{
   styles: StylesType;
   colors: ColorsType;
+  navigation: any;
   downloadedModelsCount: number;
   showModelSelector: boolean;
   setShowModelSelector: (v: boolean) => void;
   onSelectModel: (model: any) => void;
   onUnloadModel: () => void;
   isModelLoading: boolean;
-}> = ({ styles, colors, downloadedModelsCount, showModelSelector, setShowModelSelector, onSelectModel, onUnloadModel, isModelLoading }) => (
+}> = ({ styles, colors, navigation, downloadedModelsCount, showModelSelector, setShowModelSelector, onSelectModel, onUnloadModel, isModelLoading }) => (
   <SafeAreaView style={styles.container} edges={['top']}>
+    <View style={styles.header}>
+      <View style={styles.headerRow}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Icon name="arrow-left" size={20} color={colors.text} />
+        </TouchableOpacity>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerTitle}>New Chat</Text>
+        </View>
+        <View style={styles.headerActions} />
+      </View>
+    </View>
     <View style={styles.noModelContainer}>
       <View style={styles.noModelIconContainer}>
         <Icon name="cpu" size={32} color={colors.textMuted} />
@@ -59,11 +72,23 @@ export const NoModelScreen: React.FC<{
 export const LoadingScreen: React.FC<{
   styles: StylesType;
   colors: ColorsType;
+  navigation: any;
   loadingModelName: string;
   modelSize: string;
   hasVision: boolean;
-}> = ({ styles, colors, loadingModelName, modelSize, hasVision }) => (
+}> = ({ styles, colors, navigation, loadingModelName, modelSize, hasVision }) => (
   <SafeAreaView style={styles.container} edges={['top']}>
+    <View style={styles.header}>
+      <View style={styles.headerRow}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Icon name="arrow-left" size={20} color={colors.text} />
+        </TouchableOpacity>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerTitle}>Loading Model</Text>
+        </View>
+        <View style={styles.headerActions} />
+      </View>
+    </View>
     <View style={styles.loadingContainer}>
       <ActivityIndicator size="large" color={colors.primary} />
       <Text style={styles.loadingText}>Loading {loadingModelName}</Text>
@@ -108,9 +133,11 @@ export const ChatHeader: React.FC<{
         </TouchableOpacity>
       </View>
       <View style={styles.headerActions}>
-        <TouchableOpacity style={styles.iconButton} onPress={() => setShowSettingsPanel(true)} testID="chat-settings-icon">
-          <Icon name="sliders" size={16} color={colors.textSecondary} />
-        </TouchableOpacity>
+        <AttachStep index={16}>
+          <TouchableOpacity style={styles.iconButton} onPress={() => setShowSettingsPanel(true)} testID="chat-settings-icon">
+            <Icon name="sliders" size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </AttachStep>
       </View>
     </View>
   </View>

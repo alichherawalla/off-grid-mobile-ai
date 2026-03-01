@@ -1,10 +1,12 @@
-import React from 'react';
-import { View, Text, FlatList, TextInput, ActivityIndicator, RefreshControl, TouchableOpacity, Modal } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useEffect } from 'react';
+import { View, Text, FlatList, TextInput, ActivityIndicator, RefreshControl, TouchableOpacity, InteractionManager } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { AttachStep, useSpotlightTour } from 'react-native-spotlight-tour';
 import { Card, ModelCard, Button } from '../../components';
 import { AnimatedEntry } from '../../components/AnimatedEntry';
 import { CustomAlert, hideAlert } from '../../components/CustomAlert';
+import { consumePendingSpotlight, peekPendingSpotlight, setPendingSpotlight } from '../../components/onboarding/spotlightState';
+import { DOWNLOAD_MANAGER_STEP_INDEX } from '../../components/onboarding/spotlightConfig';
 import { useTheme, useThemedStyles } from '../../theme';
 import { CREDIBILITY_LABELS } from '../../constants';
 import { ModelInfo, ModelFile, DownloadedModel } from '../../types';
@@ -64,6 +66,20 @@ const ModelDetailView: React.FC<DetailProps> = ({
   getDownloadedModel, isModelDownloaded, handleDownload, handleRepairMmProj, handleCancelDownload, downloadIds,
   styles, colors,
 }) => {
+  const { goTo } = useSpotlightTour();
+
+  // If user arrived here via onboarding spotlight flow, show file card spotlight
+  // Pre-set the next pending (Download Manager icon) so it fires regardless of
+  // how the user dismisses step 9 (button or backdrop tap).
+  useEffect(() => {
+    const pending = consumePendingSpotlight();
+    if (pending !== null) {
+      setPendingSpotlight(DOWNLOAD_MANAGER_STEP_INDEX);
+      const task = InteractionManager.runAfterInteractions(() => goTo(pending));
+      return () => task.cancel();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const renderFileItem = ({ item, index }: { item: ModelFile; index: number }) => {
     const downloadKey = `${selectedModel.id}/${item.name}`;
     const repairKey = `${selectedModel.id}/${item.name}-mmproj`;
@@ -73,7 +89,15 @@ const ModelDetailView: React.FC<DetailProps> = ({
     // Show repair button when: file is downloaded, has an mmproj companion, but stored model is missing mmProjPath
     const needsVisionRepair = downloaded && !!item.mmProjFile && !downloadedModel?.mmProjPath;
     const canCancel = !!progress && downloadIds[downloadKey] != null;
-    return (
+    const handleFileDownload = !downloaded && !progress ? () => {
+      handleDownload(selectedModel, item);
+      // If in onboarding flow, auto-navigate back to show Download Manager spotlight
+      if (peekPendingSpotlight() !== null) {
+        setTimeout(onBack, 800);
+      }
+    } : undefined;
+
+    const card = (
       <ModelCard
         model={{ id: selectedModel.id, name: item.name.replace('.gguf', ''), author: selectedModel.author, credibility: selectedModel.credibility }}
         file={item}
@@ -83,11 +107,17 @@ const ModelDetailView: React.FC<DetailProps> = ({
         downloadProgress={progress?.progress}
         isCompatible={item.size / (1024 ** 3) < ramGB * 0.6}
         testID={`file-card-${index}`}
-        onDownload={!downloaded && !progress ? () => handleDownload(selectedModel, item) : undefined}
+        onDownload={handleFileDownload}
         onRepairVision={needsVisionRepair && !progress ? () => handleRepairMmProj(selectedModel, item) : undefined}
         onCancel={canCancel ? () => handleCancelDownload(downloadKey) : undefined}
       />
     );
+
+    // Spotlight the first file card for the "Download a model" onboarding step (part 2)
+    if (index === 0) {
+      return <AttachStep index={9} fill>{card}</AttachStep>;
+    }
+    return card;
   };
 
   return (
@@ -156,55 +186,63 @@ export const TextModelsTab: React.FC<Props> = (props) => {
 
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const { goTo } = useSpotlightTour();
 
-  const renderModelItem = ({ item, index }: { item: ModelInfo; index: number }) => (
-    <AnimatedEntry index={index} staggerMs={30} trigger={focusTrigger}>
-      <ModelCard
-        model={item}
-        isDownloaded={downloadedModels.some(m => m.id.startsWith(item.id))}
-        onPress={() => handleSelectModel(item)}
-        testID={`model-card-${index}`}
-        compact
+  const renderModelItem = ({ item, index }: { item: ModelInfo; index: number }) => {
+    const card = (
+      <AnimatedEntry index={index} staggerMs={30} trigger={focusTrigger}>
+        <ModelCard
+          model={item}
+          isDownloaded={downloadedModels.some(m => m.id.startsWith(item.id))}
+          onPress={() => handleSelectModel(item)}
+          testID={`model-card-${index}`}
+          compact
+        />
+      </AnimatedEntry>
+    );
+
+    // Spotlight the first recommended model card for the "Download a model" onboarding step
+    if (index === 0) {
+      return <AttachStep index={0} fill>{card}</AttachStep>;
+    }
+    return card;
+  };
+
+  const onBack = () => {
+    const pending = consumePendingSpotlight();
+    setSelectedModel(null);
+    setModelFiles([]);
+    if (pending !== null) {
+      InteractionManager.runAfterInteractions(() => goTo(pending));
+    }
+  };
+
+  if (selectedModel) {
+    return (
+      <ModelDetailView
+        selectedModel={selectedModel}
+        modelFiles={modelFiles}
+        isLoadingFiles={isLoadingFiles}
+        filterState={filterState}
+        ramGB={ramGB}
+        downloadProgress={downloadProgress}
+        alertState={alertState}
+        setAlertState={setAlertState}
+        onBack={onBack}
+        getDownloadedModel={getDownloadedModel}
+        isModelDownloaded={isModelDownloaded}
+        handleDownload={handleDownload}
+        handleRepairMmProj={handleRepairMmProj}
+        handleCancelDownload={handleCancelDownload}
+        downloadIds={downloadIds}
+        styles={styles}
+        colors={colors}
       />
-    </AnimatedEntry>
-  );
-
-  const onBack = () => { setSelectedModel(null); setModelFiles([]); };
+    );
+  }
 
   return (
     <>
-      {/* Full-screen modal for model detail / file selection */}
-      <Modal
-        visible={!!selectedModel}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={onBack}
-      >
-        <SafeAreaView style={styles.container}>
-          {selectedModel && (
-            <ModelDetailView
-              selectedModel={selectedModel}
-              modelFiles={modelFiles}
-              isLoadingFiles={isLoadingFiles}
-              filterState={filterState}
-              ramGB={ramGB}
-              downloadProgress={downloadProgress}
-              alertState={alertState}
-              setAlertState={setAlertState}
-              onBack={onBack}
-              getDownloadedModel={getDownloadedModel}
-              isModelDownloaded={isModelDownloaded}
-              handleDownload={handleDownload}
-              handleRepairMmProj={handleRepairMmProj}
-              handleCancelDownload={handleCancelDownload}
-              downloadIds={downloadIds}
-              styles={styles}
-              colors={colors}
-            />
-          )}
-        </SafeAreaView>
-      </Modal>
-
       {/* Main list / search UI */}
       <View style={styles.searchContainer}>
         <TextInput

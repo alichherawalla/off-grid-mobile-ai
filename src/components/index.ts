@@ -20,3 +20,8 @@ export type { AppSheetProps } from './AppSheet';
 export { ProjectSelectorSheet } from './ProjectSelectorSheet';
 export { DebugSheet } from './DebugSheet';
 export { ToolPickerSheet } from './ToolPickerSheet';
+export {
+  OnboardingSheet,
+  PulsatingIcon,
+  useOnboardingSheet,
+} from './onboarding';

@@ -4,21 +4,17 @@ import { AlertState, initialAlertState, showAlert, hideAlert } from '../../../co
 import { useAppStore, useChatStore } from '../../../stores';
 import { modelManager, hardwareService, activeModelService, ResourceUsage } from '../../../services';
 import { Conversation } from '../../../types';
-import { NavigatorScreenParams } from '@react-navigation/native';
+import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { ChatsStackParamList } from '../../../navigation/types';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { MainTabParamList, RootStackParamList } from '../../../navigation/types';
 import { useModelLoading } from './useModelLoading';
 import logger from '../../../utils/logger';
 
-type MainTabParamListWithNested = {
-  HomeTab: undefined;
-  ChatsTab: NavigatorScreenParams<ChatsStackParamList> | undefined;
-  ProjectsTab: undefined;
-  ModelsTab: undefined;
-  SettingsTab: undefined;
-};
-
-export type HomeScreenNavigationProp = BottomTabNavigationProp<MainTabParamListWithNested, 'HomeTab'>;
+export type HomeScreenNavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'HomeTab'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
 export type ModelPickerType = 'text' | 'image' | null;
 
@@ -145,12 +141,12 @@ export const useHomeScreen = (navigation: HomeScreenNavigationProp) => {
     if (!activeModelId) { return; }
     const conversationId = createConversation(activeModelId);
     setActiveConversation(conversationId);
-    navigation.navigate('ChatsTab', { screen: 'Chat', params: { conversationId } });
+    navigation.navigate('Chat', { conversationId });
   };
 
   const continueChat = (conversationId: string) => {
     setActiveConversation(conversationId);
-    navigation.navigate('ChatsTab', { screen: 'Chat', params: { conversationId } });
+    navigation.navigate('Chat', { conversationId });
   };
 
   const handleDeleteConversation = (conversation: Conversation) => {

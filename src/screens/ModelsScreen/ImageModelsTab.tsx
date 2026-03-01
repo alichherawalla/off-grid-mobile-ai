@@ -1,8 +1,10 @@
-import React from 'react';
-import { View, Text, TextInput, ActivityIndicator, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, TextInput, ActivityIndicator, TouchableOpacity, ScrollView, InteractionManager } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
+import { AttachStep, useSpotlightTour } from 'react-native-spotlight-tour';
 import { ModelCard } from '../../components';
+import { consumePendingSpotlight } from '../../components/onboarding/spotlightState';
 import { useTheme, useThemedStyles } from '../../theme';
 import { HFImageModel, getVariantLabel } from '../../services/huggingFaceModelBrowser';
 import { ImageModelRecommendation } from '../../types';
@@ -130,6 +132,18 @@ const ImageModelsScrollContent: React.FC<ScrollContentProps> = ({
 }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const { goTo } = useSpotlightTour();
+
+  // Consume pending spotlight from the onboarding flow (queued when user taps "Try image generation")
+  useEffect(() => {
+    if (!hfModelsLoading && filteredHFModels.length > 0) {
+      const pending = consumePendingSpotlight();
+      if (pending !== null) {
+        const task = InteractionManager.runAfterInteractions(() => goTo(pending));
+        return () => task.cancel();
+      }
+    }
+  }, [hfModelsLoading, filteredHFModels.length, goTo]);
   const emptyMessage = imageSearchQuery.trim()
     ? 'No models match your search'
     : hasActiveImageFilters ? 'No models match your filters' : 'All available models are downloaded';
@@ -141,7 +155,7 @@ const ImageModelsScrollContent: React.FC<ScrollContentProps> = ({
           <TouchableOpacity style={styles.recHint} onPress={() => setShowRecHint(false)} activeOpacity={0.7}>
             <Icon name="info" size={11} color={colors.primary} />
             <Text style={styles.recHintText}>
-              Showing recommended models only. Tap <MaterialIcon name="star" size={11} color={colors.primary} /> to see all.
+              Showing recommended models only. Tap{' '}<Text style={{ color: colors.primary }}>★</Text>{' '}to see all.
             </Text>
           </TouchableOpacity>
         )}
@@ -186,18 +200,25 @@ const ImageModelsScrollContent: React.FC<ScrollContentProps> = ({
         )}
 
         {!hfModelsLoading && !hfModelsError && filteredHFModels.map(
-          (model, index) => (
-            <ImageModelCardItem
-              key={model.id}
-              model={model}
-              index={index}
-              imageRec={imageRec}
-              imageModelDownloading={imageModelDownloading}
-              imageModelProgress={imageModelProgress}
-              isRecommendedModel={isRecommendedModel}
-              handleDownloadImageModel={handleDownloadImageModel}
-            />
-          )
+          (model, index) => {
+            const card = (
+              <ImageModelCardItem
+                key={model.id}
+                model={model}
+                index={index}
+                imageRec={imageRec}
+                imageModelDownloading={imageModelDownloading}
+                imageModelProgress={imageModelProgress}
+                isRecommendedModel={isRecommendedModel}
+                handleDownloadImageModel={handleDownloadImageModel}
+              />
+            );
+            // Spotlight the first image model card for the onboarding flow
+            if (index === 0) {
+              return <AttachStep key={model.id} index={17} fill>{card}</AttachStep>;
+            }
+            return card;
+          }
         )}
 
         {shouldShowEmptyMessage({ loading: hfModelsLoading, error: hfModelsError, filtered: filteredHFModels, available: availableHFModels }) && (

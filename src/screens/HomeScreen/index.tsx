@@ -59,9 +59,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       navigation.navigate(tab as any);
     }
 
-    // Delay spotlight to allow navigation transition to complete
+    // Delay spotlight to allow sheet close + navigation transition to complete.
+    // Cross-tab navigations need more time for the target screen to mount and
+    // measure AttachStep layout; 800ms covers sheet-close + tab-switch animation.
     if (stepIndex !== undefined) {
-      setTimeout(() => goTo(stepIndex), 600);
+      const delay = tab && tab !== 'HomeTab' ? 800 : 600;
+      setTimeout(() => goTo(stepIndex), delay);
     }
   }, [closeSheet, navigation, goTo]);
 

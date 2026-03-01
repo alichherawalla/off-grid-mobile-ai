@@ -56,7 +56,7 @@ describe('Onboarding Flows', () => {
 
     it('every step has a render function and rectangle shape', () => {
       const steps = createSpotlightSteps();
-      steps.forEach((step, i) => {
+      steps.forEach((step) => {
         expect(step.render).toBeDefined();
         expect(typeof step.render).toBe('function');
         expect(step.shape).toEqual({ type: 'rectangle', padding: 8 });

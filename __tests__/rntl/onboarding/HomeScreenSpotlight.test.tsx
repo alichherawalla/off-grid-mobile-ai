@@ -1,0 +1,477 @@
+/**
+ * HomeScreen Spotlight Integration Tests
+ *
+ * Renders the actual HomeScreen component and verifies:
+ * - handleStepPress queues correct pending spotlights
+ * - handleStepPress navigates to correct tabs
+ * - handleStepPress fires goTo() with correct step index after delay
+ * - Reactive spotlight for image load (step 13) fires on state change
+ * - OnboardingSheet visibility and interaction
+ */
+
+import React from 'react';
+import { render, fireEvent, act } from '@testing-library/react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { useAppStore } from '../../../src/stores/appStore';
+import { resetStores } from '../../utils/testHelpers';
+import {
+  createONNXImageModel,
+} from '../../utils/factories';
+import {
+  peekPendingSpotlight,
+  setPendingSpotlight,
+} from '../../../src/components/onboarding/spotlightState';
+
+// Capture goTo calls from inside rendered components
+const mockGoTo = jest.fn();
+const mockStart = jest.fn();
+const mockStop = jest.fn();
+
+jest.mock('react-native-spotlight-tour', () => ({
+  SpotlightTourProvider: ({ children }: { children: React.ReactNode }) => children,
+  AttachStep: ({ children }: { children: React.ReactNode }) => children,
+  useSpotlightTour: () => ({
+    start: mockStart,
+    stop: mockStop,
+    next: jest.fn(),
+    previous: jest.fn(),
+    goTo: mockGoTo,
+    current: 0,
+    status: 'idle',
+    pause: jest.fn(),
+    resume: jest.fn(),
+  }),
+}));
+
+// Mock requestAnimationFrame
+(globalThis as any).requestAnimationFrame = (cb: () => void) => {
+  return setTimeout(cb, 0);
+};
+
+// Mock navigation
+const mockNavigate = jest.fn();
+const mockGoBack = jest.fn();
+jest.mock('@react-navigation/native', () => {
+  const actual = jest.requireActual('@react-navigation/native');
+  return {
+    ...actual,
+    useNavigation: () => ({
+      navigate: mockNavigate,
+      goBack: mockGoBack,
+      setOptions: jest.fn(),
+      addListener: jest.fn(() => jest.fn()),
+    }),
+  };
+});
+
+// Mock services
+jest.mock('../../../src/services/activeModelService', () => ({
+  activeModelService: {
+    loadTextModel: jest.fn(() => Promise.resolve()),
+    loadImageModel: jest.fn(() => Promise.resolve()),
+    unloadTextModel: jest.fn(() => Promise.resolve()),
+    unloadImageModel: jest.fn(() => Promise.resolve()),
+    unloadAllModels: jest.fn(() => Promise.resolve({ textUnloaded: true, imageUnloaded: true })),
+    getActiveModels: jest.fn(() => ({ text: null, image: null })),
+    checkMemoryForModel: jest.fn(() => Promise.resolve({ canLoad: true, severity: 'safe', message: '' })),
+    subscribe: jest.fn(() => jest.fn()),
+    getResourceUsage: jest.fn(() => Promise.resolve({
+      textModelMemory: 0,
+      imageModelMemory: 0,
+      totalMemory: 0,
+      memoryAvailable: 4 * 1024 * 1024 * 1024,
+    })),
+    syncWithNativeState: jest.fn(),
+  },
+}));
+
+jest.mock('../../../src/services/modelManager', () => ({
+  modelManager: {
+    getDownloadedModels: jest.fn(() => Promise.resolve([])),
+    getDownloadedImageModels: jest.fn(() => Promise.resolve([])),
+  },
+}));
+
+jest.mock('../../../src/services/hardware', () => ({
+  hardwareService: {
+    getDeviceInfo: jest.fn(() => Promise.resolve({
+      totalMemory: 8 * 1024 * 1024 * 1024,
+      availableMemory: 4 * 1024 * 1024 * 1024,
+    })),
+    formatBytes: jest.fn((bytes: number) => `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`),
+    formatModelSize: jest.fn(() => '4.0 GB'),
+  },
+}));
+
+// Mock child components to simplify
+jest.mock('../../../src/components/AppSheet', () => ({
+  AppSheet: ({ visible, onClose, title, children }: any) => {
+    const { View, Text, TouchableOpacity } = require('react-native');
+    if (!visible) return null;
+    return (
+      <View testID="app-sheet">
+        <Text testID="app-sheet-title">{title}</Text>
+        {children}
+        <TouchableOpacity testID="close-sheet" onPress={onClose}>
+          <Text>Close</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  },
+}));
+
+jest.mock('../../../src/components/AnimatedEntry', () => ({
+  AnimatedEntry: ({ children }: any) => children,
+}));
+
+jest.mock('../../../src/components/AnimatedPressable', () => ({
+  AnimatedPressable: ({ children, onPress, style, testID }: any) => {
+    const { TouchableOpacity } = require('react-native');
+    return (
+      <TouchableOpacity onPress={onPress} style={style} testID={testID}>
+        {children}
+      </TouchableOpacity>
+    );
+  },
+}));
+
+jest.mock('../../../src/components/AnimatedListItem', () => ({
+  AnimatedListItem: ({ children, onPress, style, testID }: any) => {
+    const { TouchableOpacity } = require('react-native');
+    return (
+      <TouchableOpacity onPress={onPress} style={style} testID={testID}>
+        {children}
+      </TouchableOpacity>
+    );
+  },
+}));
+
+jest.mock('../../../src/components/CustomAlert', () => ({
+  CustomAlert: () => null,
+  showAlert: jest.fn(),
+  hideAlert: jest.fn(() => ({ visible: false, title: '', message: '', buttons: [] })),
+  initialAlertState: { visible: false, title: '', message: '', buttons: [] },
+}));
+
+// Mock OnboardingSheet to expose step presses
+jest.mock('../../../src/components/onboarding/OnboardingSheet', () => ({
+  OnboardingSheet: ({ visible, onClose, onStepPress }: any) => {
+    const { View, TouchableOpacity, Text } = require('react-native');
+    if (!visible) return null;
+    return (
+      <View testID="onboarding-sheet">
+        <TouchableOpacity testID="step-downloadedModel" onPress={() => onStepPress('downloadedModel')}>
+          <Text>Download a model</Text>
+        </TouchableOpacity>
+        <TouchableOpacity testID="step-loadedModel" onPress={() => onStepPress('loadedModel')}>
+          <Text>Load a model</Text>
+        </TouchableOpacity>
+        <TouchableOpacity testID="step-sentMessage" onPress={() => onStepPress('sentMessage')}>
+          <Text>Send a message</Text>
+        </TouchableOpacity>
+        <TouchableOpacity testID="step-triedImageGen" onPress={() => onStepPress('triedImageGen')}>
+          <Text>Try image generation</Text>
+        </TouchableOpacity>
+        <TouchableOpacity testID="step-exploredSettings" onPress={() => onStepPress('exploredSettings')}>
+          <Text>Explore settings</Text>
+        </TouchableOpacity>
+        <TouchableOpacity testID="step-createdProject" onPress={() => onStepPress('createdProject')}>
+          <Text>Create a project</Text>
+        </TouchableOpacity>
+        <TouchableOpacity testID="close-onboarding" onPress={onClose}>
+          <Text>Close</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  },
+}));
+
+jest.mock('../../../src/components/onboarding/PulsatingIcon', () => ({
+  PulsatingIcon: ({ onPress }: any) => {
+    const { TouchableOpacity, Text } = require('react-native');
+    return (
+      <TouchableOpacity testID="pulsating-icon" onPress={onPress}>
+        <Text>?</Text>
+      </TouchableOpacity>
+    );
+  },
+}));
+
+jest.mock('../../../src/components/onboarding/useOnboardingSheet', () => ({
+  useOnboardingSheet: () => ({
+    sheetVisible: true, // Always visible for testing
+    openSheet: jest.fn(),
+    closeSheet: jest.fn(),
+    showIcon: true,
+  }),
+}));
+
+// Mock the HomeScreen sub-components
+jest.mock('../../../src/screens/HomeScreen/components/ActiveModelsSection', () => ({
+  ActiveModelsSection: () => {
+    const { View, Text } = require('react-native');
+    return <View testID="active-models-section"><Text>Models</Text></View>;
+  },
+}));
+
+jest.mock('../../../src/screens/HomeScreen/components/RecentConversations', () => ({
+  RecentConversations: () => null,
+}));
+
+jest.mock('../../../src/screens/HomeScreen/components/ModelPickerSheet', () => ({
+  ModelPickerSheet: () => null,
+}));
+
+jest.mock('../../../src/screens/HomeScreen/components/LoadingOverlay', () => ({
+  LoadingOverlay: () => null,
+}));
+
+import { HomeScreen } from '../../../src/screens/HomeScreen';
+
+let unmountFn: (() => void) | null = null;
+
+function renderHomeScreen() {
+  const result = render(
+    <NavigationContainer>
+      <HomeScreen navigation={{ navigate: mockNavigate } as any} />
+    </NavigationContainer>
+  );
+  unmountFn = result.unmount;
+  return result;
+}
+
+describe('HomeScreen Spotlight Integration', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    resetStores();
+    setPendingSpotlight(null);
+    mockGoTo.mockClear();
+    mockNavigate.mockClear();
+    mockStart.mockClear();
+    mockStop.mockClear();
+    unmountFn = null;
+  });
+
+  afterEach(() => {
+    // Unmount before flushing timers to prevent async state update loops during cleanup
+    if (unmountFn) { unmountFn(); unmountFn = null; }
+    jest.useRealTimers();
+  });
+
+  // ========================================================================
+  // Flow 1: Download a Model
+  // ========================================================================
+  describe('Flow 1: downloadedModel', () => {
+    it('queues pending spotlight 9, navigates to ModelsTab, fires goTo(0)', () => {
+      const { getByTestId } = renderHomeScreen();
+
+      act(() => {
+        fireEvent.press(getByTestId('step-downloadedModel'));
+      });
+
+      // Should queue step 9 (DOWNLOAD_FILE_STEP_INDEX)
+      expect(peekPendingSpotlight()).toBe(9);
+
+      // Should navigate to ModelsTab
+      expect(mockNavigate).toHaveBeenCalledWith('ModelsTab');
+
+      // goTo not called yet (800ms delay for cross-tab)
+      expect(mockGoTo).not.toHaveBeenCalled();
+
+      // Advance past delay
+      act(() => { jest.advanceTimersByTime(800); });
+      expect(mockGoTo).toHaveBeenCalledWith(0);
+    });
+  });
+
+  // ========================================================================
+  // Flow 2: Load a Model
+  // ========================================================================
+  describe('Flow 2: loadedModel', () => {
+    it('queues pending spotlight 11, stays on HomeTab, fires goTo(1)', () => {
+      const { getByTestId } = renderHomeScreen();
+
+      act(() => {
+        fireEvent.press(getByTestId('step-loadedModel'));
+      });
+
+      // Should queue step 11 (MODEL_PICKER_STEP_INDEX)
+      expect(peekPendingSpotlight()).toBe(11);
+
+      // Should NOT navigate (HomeTab)
+      expect(mockNavigate).not.toHaveBeenCalled();
+
+      // goTo not called yet (600ms delay for same-tab)
+      expect(mockGoTo).not.toHaveBeenCalled();
+
+      act(() => { jest.advanceTimersByTime(600); });
+      expect(mockGoTo).toHaveBeenCalledWith(1);
+    });
+  });
+
+  // ========================================================================
+  // Flow 3: Send a Message
+  // ========================================================================
+  describe('Flow 3: sentMessage', () => {
+    it('queues pending spotlight 3, navigates to ChatsTab, fires goTo(2)', () => {
+      const { getByTestId } = renderHomeScreen();
+
+      act(() => {
+        fireEvent.press(getByTestId('step-sentMessage'));
+      });
+
+      expect(peekPendingSpotlight()).toBe(3);
+      expect(mockNavigate).toHaveBeenCalledWith('ChatsTab');
+
+      act(() => { jest.advanceTimersByTime(800); });
+      expect(mockGoTo).toHaveBeenCalledWith(2);
+    });
+  });
+
+  // ========================================================================
+  // Flow 4: Try Image Generation
+  // ========================================================================
+  describe('Flow 4: triedImageGen', () => {
+    it('does NOT queue pending, navigates to ModelsTab, fires goTo(4)', () => {
+      const { getByTestId } = renderHomeScreen();
+
+      act(() => {
+        fireEvent.press(getByTestId('step-triedImageGen'));
+      });
+
+      // No pending queued for image gen flow (only immediate step)
+      expect(peekPendingSpotlight()).toBeNull();
+      expect(mockNavigate).toHaveBeenCalledWith('ModelsTab');
+
+      act(() => { jest.advanceTimersByTime(800); });
+      expect(mockGoTo).toHaveBeenCalledWith(4);
+    });
+  });
+
+  // ========================================================================
+  // Flow 5: Explore Settings
+  // ========================================================================
+  describe('Flow 5: exploredSettings', () => {
+    it('queues pending spotlight 6, navigates to SettingsTab, fires goTo(5)', () => {
+      const { getByTestId } = renderHomeScreen();
+
+      act(() => {
+        fireEvent.press(getByTestId('step-exploredSettings'));
+      });
+
+      expect(peekPendingSpotlight()).toBe(6);
+      expect(mockNavigate).toHaveBeenCalledWith('SettingsTab');
+
+      act(() => { jest.advanceTimersByTime(800); });
+      expect(mockGoTo).toHaveBeenCalledWith(5);
+    });
+  });
+
+  // ========================================================================
+  // Flow 6: Create a Project
+  // ========================================================================
+  describe('Flow 6: createdProject', () => {
+    it('queues pending spotlight 8, navigates to ProjectsTab, fires goTo(7)', () => {
+      const { getByTestId } = renderHomeScreen();
+
+      act(() => {
+        fireEvent.press(getByTestId('step-createdProject'));
+      });
+
+      expect(peekPendingSpotlight()).toBe(8);
+      expect(mockNavigate).toHaveBeenCalledWith('ProjectsTab');
+
+      act(() => { jest.advanceTimersByTime(800); });
+      expect(mockGoTo).toHaveBeenCalledWith(7);
+    });
+  });
+
+  // ========================================================================
+  // Timing: cross-tab vs same-tab
+  // ========================================================================
+  describe('timing', () => {
+    it('cross-tab navigation uses 800ms delay', () => {
+      const { getByTestId } = renderHomeScreen();
+
+      act(() => { fireEvent.press(getByTestId('step-downloadedModel')); });
+
+      // Not called at 799ms
+      act(() => { jest.advanceTimersByTime(799); });
+      expect(mockGoTo).not.toHaveBeenCalled();
+
+      // Called at 800ms
+      act(() => { jest.advanceTimersByTime(1); });
+      expect(mockGoTo).toHaveBeenCalledWith(0);
+    });
+
+    it('same-tab (HomeTab) uses 600ms delay', () => {
+      const { getByTestId } = renderHomeScreen();
+
+      act(() => { fireEvent.press(getByTestId('step-loadedModel')); });
+
+      act(() => { jest.advanceTimersByTime(599); });
+      expect(mockGoTo).not.toHaveBeenCalled();
+
+      act(() => { jest.advanceTimersByTime(1); });
+      expect(mockGoTo).toHaveBeenCalledWith(1);
+    });
+  });
+
+  // ========================================================================
+  // Reactive: Image Load spotlight (step 13)
+  // ========================================================================
+  describe('reactive: imageLoad spotlight (step 13)', () => {
+    it('fires goTo(13) when image model downloaded but not loaded', () => {
+      renderHomeScreen();
+
+      // Add a downloaded image model → triggers the reactive effect
+      act(() => {
+        useAppStore.getState().addDownloadedImageModel(createONNXImageModel());
+      });
+
+      // The effect fires with 800ms delay
+      act(() => { jest.advanceTimersByTime(800); });
+      expect(mockGoTo).toHaveBeenCalledWith(13);
+
+      // Should mark spotlight as shown
+      expect(useAppStore.getState().shownSpotlights.imageLoad).toBe(true);
+    });
+
+    it('does NOT fire when image model is already loaded', () => {
+      // Pre-set active image model
+      act(() => {
+        useAppStore.getState().addDownloadedImageModel(createONNXImageModel());
+        useAppStore.getState().setActiveImageModelId('some-model');
+      });
+
+      renderHomeScreen();
+
+      act(() => { jest.advanceTimersByTime(1000); });
+      expect(mockGoTo).not.toHaveBeenCalled();
+    });
+
+    it('does NOT fire when already shown', () => {
+      act(() => {
+        useAppStore.getState().markSpotlightShown('imageLoad');
+        useAppStore.getState().addDownloadedImageModel(createONNXImageModel());
+      });
+
+      renderHomeScreen();
+
+      act(() => { jest.advanceTimersByTime(1000); });
+      expect(mockGoTo).not.toHaveBeenCalled();
+    });
+
+    it('does NOT fire when triedImageGen is completed', () => {
+      act(() => {
+        useAppStore.getState().completeChecklistStep('triedImageGen');
+        useAppStore.getState().addDownloadedImageModel(createONNXImageModel());
+      });
+
+      renderHomeScreen();
+
+      act(() => { jest.advanceTimersByTime(1000); });
+      expect(mockGoTo).not.toHaveBeenCalled();
+    });
+  });
+});

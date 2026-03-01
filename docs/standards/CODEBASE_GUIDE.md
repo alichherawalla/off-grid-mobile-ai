@@ -103,6 +103,7 @@ OffgridMobile/
 │   │   ├── AnimatedListItem.tsx         # Animated list item wrapper
 │   │   ├── AnimatedPressable.tsx        # Animated press feedback wrapper
 │   │   ├── AppSheet.tsx                 # Bottom sheet wrapper
+│   │   ├── AppSheet.styles.ts           # Bottom sheet styles
 │   │   ├── Button.tsx                   # Styled button
 │   │   ├── Card.tsx                     # Card layout
 │   │   ├── ChatInput/                   # Message input bar (text, voice, attachments, image mode)
@@ -125,23 +126,42 @@ OffgridMobile/
 │   │   │   └── styles.ts               # ChatMessage styles
 │   │   ├── checklist/                   # Onboarding checklist components
 │   │   │   ├── index.ts                 # Checklist exports
-│   │   │   ├── ProgressBar.tsx          # Checklist progress bar
+│   │   │   ├── ProgressBar.tsx          # Animated checklist progress bar
 │   │   │   ├── useOnboardingSteps.ts    # Onboarding step definitions
 │   │   │   ├── animations.ts            # Checklist animations
 │   │   │   └── types.ts                 # Checklist types
-│   │   ├── onboarding/                  # Onboarding sheet components
+│   │   ├── onboarding/                  # Onboarding spotlight & sheet components
 │   │   │   ├── index.ts                 # Onboarding exports
 │   │   │   ├── OnboardingSheet.tsx      # Onboarding bottom sheet
 │   │   │   ├── PulsatingIcon.tsx        # Animated pulsating icon
-│   │   │   └── useOnboardingSheet.ts    # Onboarding sheet hook
+│   │   │   ├── useOnboardingSheet.ts    # Onboarding sheet hook
+│   │   │   ├── spotlightConfig.tsx      # Spotlight step definitions per screen
+│   │   │   └── spotlightState.ts        # Reactive spotlight state management
+│   │   ├── GenerationSettingsModal/     # Generation settings modal (split into sections)
+│   │   │   ├── index.tsx                # Main modal component
+│   │   │   ├── TextGenerationSection.tsx # Text generation parameters
+│   │   │   ├── PerformanceSection.tsx   # Performance tuning (threads, GPU, batch)
+│   │   │   ├── ImageGenerationSection.tsx # Image generation parameters
+│   │   │   ├── ImageQualitySliders.tsx  # Image quality slider controls
+│   │   │   ├── ConversationActionsSection.tsx # Conversation actions (clear, etc.)
+│   │   │   └── styles.ts               # Settings modal styles
+│   │   ├── ModelSelectorModal/          # Model picker modal (text + image models)
+│   │   │   ├── index.tsx                # Main modal component
+│   │   │   └── styles.ts               # Modal styles
+│   │   ├── VoiceRecordButton/           # Long-press voice recording with waveform
+│   │   │   ├── index.tsx                # Main button component
+│   │   │   ├── states.tsx               # Recording state UI variants
+│   │   │   └── styles.ts               # Button styles
 │   │   ├── CustomAlert.tsx              # Alert dialog
 │   │   ├── DebugSheet.tsx               # Debug info bottom sheet
-│   │   ├── GenerationSettingsModal.tsx  # All generation settings in a modal
+│   │   ├── MarkdownText.tsx             # Markdown rendering component
 │   │   ├── ModelCard.tsx                # Model browser card with compact/full modes, icon actions
-│   │   ├── ModelSelectorModal.tsx       # Model picker modal (text + image models)
+│   │   ├── ModelCard.styles.ts          # ModelCard extracted styles
+│   │   ├── ModelCardContent.tsx         # ModelCard content sub-component
 │   │   ├── ProjectSelectorSheet.tsx     # Project picker bottom sheet
 │   │   ├── ThinkingIndicator.tsx        # Thinking/loading indicator
-│   │   └── VoiceRecordButton.tsx        # Long-press voice recording with waveform
+│   │   ├── ToolPickerSheet.tsx          # Tool selection bottom sheet (enable/disable tools)
+│   │   └── index.ts                     # Component exports
 │   │
 │   ├── screens/                         # Screen components (19 screens)
 │   │   ├── OnboardingScreen.tsx         # Welcome slides
@@ -149,11 +169,14 @@ OffgridMobile/
 │   │   ├── HomeScreen/                  # Dashboard: active models, memory, recent chats
 │   │   │   ├── index.tsx                # Main HomeScreen component
 │   │   │   ├── styles.ts               # HomeScreen styles
-│   │   │   └── components/
-│   │   │       ├── ActiveModelsSection.tsx  # Active model cards
-│   │   │       ├── RecentConversations.tsx  # Recent chat list
-│   │   │       ├── ModelPickerSheet.tsx     # Model selection bottom sheet
-│   │   │       └── LoadingOverlay.tsx       # Loading state overlay
+│   │   │   ├── components/
+│   │   │   │   ├── ActiveModelsSection.tsx  # Active model cards
+│   │   │   │   ├── RecentConversations.tsx  # Recent chat list
+│   │   │   │   ├── ModelPickerSheet.tsx     # Model selection bottom sheet
+│   │   │   │   └── LoadingOverlay.tsx       # Loading state overlay
+│   │   │   └── hooks/
+│   │   │       ├── useHomeScreen.ts         # Main home screen hook
+│   │   │       └── useModelLoading.ts       # Model loading hook
 │   │   ├── ChatScreen/                  # Main chat interface
 │   │   │   ├── index.tsx                # Main ChatScreen component
 │   │   │   ├── ChatScreenComponents.tsx # Extracted sub-components
@@ -183,19 +206,38 @@ OffgridMobile/
 │   │   │   ├── utils.ts                 # ModelsScreen utilities
 │   │   │   ├── styles.ts               # Text models styles
 │   │   │   └── imageStyles.ts           # Image models styles
+│   │   ├── ModelSettingsScreen/         # LLM + image gen parameters (split into sections)
+│   │   │   ├── index.tsx                # Main ModelSettingsScreen component
+│   │   │   ├── TextGenerationSection.tsx # Text generation settings
+│   │   │   ├── PerformanceSection.tsx   # Performance tuning section
+│   │   │   ├── ImageGenerationSection.tsx # Image generation settings
+│   │   │   ├── SystemPromptSection.tsx  # System prompt editor
+│   │   │   └── styles.ts               # ModelSettingsScreen styles
+│   │   ├── GalleryScreen/               # Generated image gallery
+│   │   │   ├── index.tsx                # Main GalleryScreen component
+│   │   │   ├── FullscreenViewer.tsx     # Fullscreen image viewer with zoom
+│   │   │   ├── GridItem.tsx             # Gallery grid item
+│   │   │   ├── useGalleryActions.ts     # Gallery actions hook (save, delete, share)
+│   │   │   └── styles.ts               # GalleryScreen styles
+│   │   ├── DownloadManagerScreen/       # Active downloads (modal)
+│   │   │   ├── index.tsx                # Main DownloadManagerScreen component
+│   │   │   ├── items.tsx                # Download item components
+│   │   │   ├── useDownloadManager.ts    # Download manager hook
+│   │   │   └── styles.ts               # DownloadManagerScreen styles
 │   │   ├── ProjectsScreen.tsx           # Projects list
 │   │   ├── ProjectDetailScreen.tsx      # View project + linked chats
+│   │   ├── ProjectDetailScreen.styles.ts # ProjectDetailScreen styles
 │   │   ├── ProjectEditScreen.tsx        # Create/edit project
-│   │   ├── GalleryScreen.tsx            # Generated image grid
 │   │   ├── SettingsScreen.tsx           # Settings hub
-│   │   ├── ModelSettingsScreen.tsx      # LLM + image gen parameters
 │   │   ├── VoiceSettingsScreen.tsx      # Whisper model management
 │   │   ├── DeviceInfoScreen.tsx         # Hardware specs
 │   │   ├── StorageSettingsScreen.tsx    # Per-model storage usage
+│   │   ├── StorageSettingsScreen.styles.ts # StorageSettingsScreen styles
+│   │   ├── OrphanedFilesSection.tsx     # Orphaned model file cleanup UI
 │   │   ├── SecuritySettingsScreen.tsx   # Passphrase toggle + change
 │   │   ├── LockScreen.tsx              # Passphrase entry with lockout
 │   │   ├── PassphraseSetupScreen.tsx    # Initial passphrase creation
-│   │   └── DownloadManagerScreen.tsx    # Active downloads (modal)
+│   │   └── index.ts                     # Screen exports
 │   │
 │   ├── navigation/
 │   │   ├── AppNavigator.tsx             # Root stack + tab navigator definitions
@@ -211,8 +253,24 @@ OffgridMobile/
 │   │
 │   ├── services/                        # Business logic & native bridges
 │   │   ├── llm.ts                       # LLMService — llama.rn context, streaming, GPU
-│   │   ├── activeModelService.ts        # Singleton — load/unload text & image models
-│   │   ├── modelManager.ts             # Download, store, track model files
+│   │   ├── llmTypes.ts                  # LLM type definitions (extracted)
+│   │   ├── llmMessages.ts              # LLM message building/formatting (extracted)
+│   │   ├── llmHelpers.ts               # LLM helper utilities (extracted)
+│   │   ├── activeModelService/          # Singleton — load/unload text & image models (folder)
+│   │   │   ├── index.ts                # Main service entry point
+│   │   │   ├── loaders.ts              # Model loading logic
+│   │   │   ├── memory.ts               # Memory budget calculations
+│   │   │   ├── types.ts                # Service types
+│   │   │   └── utils.ts                # Service utilities
+│   │   ├── modelManager/               # Download, store, track model files (folder)
+│   │   │   ├── index.ts                # Main service entry point
+│   │   │   ├── download.ts             # Download orchestration
+│   │   │   ├── downloadHelpers.ts      # Download helper utilities
+│   │   │   ├── scan.ts                 # Model file scanning & discovery
+│   │   │   ├── storage.ts              # Storage management
+│   │   │   ├── imageSync.ts            # Image model download sync/recovery
+│   │   │   ├── restore.ts              # Download restore after app kill
+│   │   │   └── types.ts                # Service types
 │   │   ├── generationService.ts        # Lifecycle-independent text generation
 │   │   ├── imageGenerationService.ts   # Lifecycle-independent image generation
 │   │   ├── localDreamGenerator.ts      # ONNX SD wrapper (native subprocess)
@@ -244,6 +302,7 @@ OffgridMobile/
 │   │
 │   ├── types/
 │   │   ├── index.ts                    # All TypeScript interfaces & type aliases
+│   │   ├── global.d.ts                 # Global type declarations
 │   │   └── whisper.rn.d.ts             # Whisper native module type declarations
 │   │
 │   ├── theme/                            # Light/dark theme system
@@ -252,11 +311,14 @@ OffgridMobile/
 │   │   └── useThemedStyles.ts           # useThemedStyles() — memoized style factory
 │   │
 │   ├── constants/
-│   │   └── index.ts                    # Model recommendations, curated models, org filters, quantization info, HF config, typography, spacing
+│   │   ├── index.ts                    # Model recommendations, org filters, quantization info, HF config, typography, spacing
+│   │   └── models.ts                   # Curated model definitions (extracted)
 │   │
 │   └── utils/
 │       ├── coreMLModelUtils.ts         # Core ML model path resolution helpers
+│       ├── generateId.ts              # Crypto-safe UUID generation
 │       ├── haptics.ts                  # Haptic feedback utilities
+│       ├── logger.ts                   # Logger utility (replaces console.log/warn/error)
 │       └── messageContent.ts           # Strip LLM control tokens from output
 │
 ├── android/                             # Android native code
@@ -275,49 +337,65 @@ OffgridMobile/
 │           └── PDFExtractorPackage.kt   # Package registration
 │
 ├── ios/                                 # iOS native code
+│   ├── CoreMLDiffusionModule.swift      # Core ML image generation (root level)
+│   ├── CoreMLDiffusionModule.m          # ObjC bridge
+│   ├── DownloadManagerModule.swift      # iOS download manager (root level)
+│   ├── DownloadManagerModule.m          # ObjC bridge
+│   ├── PDFExtractorModule.swift         # Native PDF text extraction (root level)
+│   ├── PDFExtractorModule.m             # ObjC bridge
 │   └── OffgridMobile/
 │       ├── AppDelegate.swift            # Application delegate
+│       ├── OffgridMobile-Bridging-Header.h # Swift/ObjC bridging header
 │       ├── CoreMLDiffusion/
-│       │   ├── CoreMLDiffusionModule.swift  # Core ML image generation
-│       │   └── CoreMLDiffusionModule.m      # ObjC bridge
+│       │   └── CoreMLDiffusionModule.m  # ObjC bridge (subdirectory)
 │       ├── Download/
-│       │   ├── DownloadManagerModule.swift   # iOS download manager
-│       │   └── DownloadManagerModule.m       # ObjC bridge
+│       │   └── DownloadManagerModule.m  # ObjC bridge (subdirectory)
 │       └── PDFExtractor/
-│           ├── PDFExtractorModule.swift      # Native PDF text extraction
-│           └── PDFExtractorModule.m          # ObjC bridge
+│           └── PDFExtractorModule.m     # ObjC bridge (subdirectory)
 │
-├── __tests__/                           # Test suites
+├── __tests__/                           # Test suites (~108 test files)
 │   ├── unit/                            # Store & service unit tests
-│   │   ├── stores/                      # appStore, chatStore, authStore
-│   │   ├── services/                    # 12 service test files
+│   │   ├── stores/                      # appStore, chatStore, authStore, projectStore, whisperStore
+│   │   ├── services/                    # 20+ service test files
+│   │   ├── hooks/                       # Hook tests (useAppState, useChatGenerationActions, etc.)
+│   │   ├── onboarding/                  # Onboarding/spotlight unit tests (6 files)
+│   │   ├── screens/ModelsScreen/        # ModelsScreen utility tests
 │   │   ├── constants/                   # Constants tests
+│   │   ├── theme/                       # Theme palette tests
 │   │   └── utils/                       # Utility tests
 │   ├── integration/                     # Multi-service integration tests
 │   │   ├── generation/                  # generationFlow, imageGenerationFlow
 │   │   ├── models/                      # activeModelService
+│   │   ├── onboarding/                  # spotlightFlowIntegration
 │   │   └── stores/                      # chatStoreIntegration
 │   ├── contracts/                       # Native module contract tests (7 files)
 │   ├── rntl/                            # React Native Testing Library tests
-│   │   ├── screens/                     # 6 screen tests
-│   │   └── components/                  # 3 component tests
+│   │   ├── screens/                     # 19 screen tests
+│   │   ├── components/                  # 17 component tests
+│   │   ├── onboarding/                  # 5 spotlight screen tests
+│   │   ├── hooks/                       # Hook tests (useFocusTrigger)
+│   │   └── navigation/                  # AppNavigator tests
 │   ├── specs/                           # Behavior specifications (YAML)
-│   └── utils/                           # Test helpers & factories
+│   └── utils/                           # Test helpers, factories & spotlight mocks
 │
 ├── .maestro/                            # E2E tests (Maestro framework)
 │   ├── E2E_TESTING.md                   # E2E testing guide
-│   ├── flows/p0/                        # 16 critical-path E2E flows
-│   ├── flows/p1/                        # Important-path E2E flows (planned)
-│   ├── flows/p2/                        # Nice-to-have E2E flows (planned)
+│   ├── flows/p0/                        # 5 critical-path E2E flows (app launch, text/image gen, stop gen)
+│   ├── flows/p1/                        # 4 important-path flows (attachments, retry)
+│   ├── flows/p2/                        # 4 model management flows (download, uninstall, selection, unload)
+│   ├── flows/p3/                        # 3 image model management flows
 │   └── utils/
 │
 ├── docs/                                # Documentation
 │   ├── ARCHITECTURE.md                  # System architecture & build guide
+│   ├── PRIVACY_POLICY.md               # Privacy policy
 │   ├── standards/
 │   │   └── CODEBASE_GUIDE.md            # This file — comprehensive architecture guide
 │   ├── design/
 │   │   ├── DESIGN_PHILOSOPHY_SYSTEM.md  # Design system reference
 │   │   └── VISUAL_HIERARCHY_STANDARD.md # Visual hierarchy guidelines
+│   ├── onboarding/
+│   │   └── ONBOARDING_FLOWS.md          # Onboarding spotlight flow documentation
 │   └── test/
 │       ├── CLAUDE_TEST_SKILL.md         # Claude test generation skill
 │       ├── TEST_FLOWS.md                # End-to-end test flows
@@ -543,7 +621,7 @@ Project
 
 ## 7. Core Services
 
-### LLMService (`src/services/llm.ts`, 32KB)
+### LLMService (`src/services/llm.ts` + `llmTypes.ts`, `llmMessages.ts`, `llmHelpers.ts`)
 
 The central service for on-device text inference.
 
@@ -569,9 +647,9 @@ The central service for on-device text inference.
 | GPU layers | 99 (Metal) | 0 (disabled) |
 | Context length | 2048 | 2048 |
 
-### ActiveModelService (`src/services/activeModelService.ts`, 28KB)
+### ActiveModelService (`src/services/activeModelService/`)
 
-Singleton that manages which models are loaded in native memory.
+Singleton that manages which models are loaded in native memory. Split into `index.ts`, `loaders.ts`, `memory.ts`, `types.ts`, `utils.ts`.
 
 **Responsibilities:**
 - Load/unload text models (llama.rn context creation)
@@ -581,12 +659,13 @@ Singleton that manages which models are loaded in native memory.
 - Automatic unload of previous model before loading new one
 - Observable pattern for UI subscriptions
 
-### ModelManager (`src/services/modelManager.ts`, 38KB)
+### ModelManager (`src/services/modelManager/`)
 
-Handles model file lifecycle on disk.
+Handles model file lifecycle on disk. Split into `index.ts`, `download.ts`, `downloadHelpers.ts`, `scan.ts`, `storage.ts`, `imageSync.ts`, `restore.ts`, `types.ts`.
 
 **Responsibilities:**
-- Download from Hugging Face (foreground via RNFS, background via Android DownloadManager)
+- Download from Hugging Face (background downloads exclusively on both platforms)
+- Parallel mmproj downloads alongside main model for vision models
 - Import local `.gguf` files from device storage (Bring Your Own Model)
 - Store text models in `Documents/local-llm/models/`
 - Store image models in `Documents/image_models/`
@@ -594,7 +673,8 @@ Handles model file lifecycle on disk.
 - Handle vision model companion files (mmproj)
 - Verify file integrity
 - Delete models and clean up
-- Recover models after app kill
+- Recover/restore downloads after app kill (both iOS and Android)
+- Image model download sync and recovery (`imageSync.ts`)
 
 ### GenerationService (`src/services/generationService.ts`, 7KB)
 
@@ -674,16 +754,18 @@ Passphrase management.
 - Store in device Keychain (encrypted native storage)
 - Methods: `setPassphrase()`, `verifyPassphrase()`, `hasPassphrase()`, `removePassphrase()`
 
-### BackgroundDownloadService (`src/services/backgroundDownloadService.ts`, 9KB)
+### BackgroundDownloadService (`src/services/backgroundDownloadService.ts`)
 
-Bridge to native download managers on both platforms.
+Bridge to native download managers on both platforms. This is now the **only** download method (foreground downloads removed).
 
 - Downloads continue even after app is killed (both Android and iOS)
 - Android: Persists download state in SharedPreferences, 500ms polling for progress
-- iOS: Uses background URLSession with app lifecycle integration
+- iOS: Uses background URLSession with delegate-based progress callbacks
 - Emits events: `DownloadProgress`, `DownloadComplete`, `DownloadError`
 - Moves completed files from Downloads temp to models directory
 - Tracks event delivery separately from completion status to prevent race conditions
+- Download restore after app kill via `modelManager/restore.ts`
+- Image model download sync/recovery via `modelManager/imageSync.ts`
 
 ### Tool Calling Services (`src/services/tools/`, `src/services/generationToolLoop.ts`, `src/services/llmToolGeneration.ts`)
 
@@ -970,41 +1052,33 @@ This section expands on every testable flow, grouped by feature area. Each flow 
 6. For vision models: auto-pairs mmproj companion file with matching quantization
 7. Shows quantization quality indicator (Low → Excellent)
 
-#### 9.3.3 Download Text Model (Foreground)
+#### 9.3.3 Download Text Model (Background — Both Platforms)
 
 **Trigger:** Tap download button on a model file.
 
 **Steps:**
 1. Construct download URL: `https://huggingface.co/{modelId}/resolve/main/{fileName}`
-2. Start download via `RNFS.downloadFile()` with progress callback (500ms)
-3. UI shows: progress bar, percentage, bytes downloaded / total
-4. File saved to `Documents/local-llm/models/{fileName}`
-5. If vision model: also download mmproj file sequentially
-6. On completion:
+2. First download triggers notification permission rationale dialog (if not yet granted)
+3. `backgroundDownloadService.startDownload(url, fileName)` enqueues in native download manager
+4. **Android:** System DownloadManager with SharedPreferences tracking, 500ms polling for progress
+5. **iOS:** Background URLSession with delegate-based progress callbacks
+6. UI shows: progress bar, percentage, bytes downloaded / total
+7. File saved to `Documents/local-llm/models/{fileName}`
+8. If vision model: mmproj file downloaded **in parallel** alongside main model
+9. On completion:
+   - File moved from temp location to models directory
    - Create `DownloadedModel` metadata object
    - Save to `appStore.downloadedModels[]`
    - Persist metadata to AsyncStorage
-7. Model appears in "Downloaded" section and model selector
+10. Model appears in "Downloaded" section and model selector
 
-**Cancellation:** User taps cancel → `RNFS.stopDownload()` → partial file deleted
+**Cancellation:** User taps cancel → download cancelled → partial file cleaned up
 
-#### 9.3.4 Download Text Model (Background — Android only)
-
-**Trigger:** Start download on Android (alternative download method).
-
-**Steps:**
-1. `backgroundDownloadService.startDownload(url, fileName)`
-2. Enqueues in Android's native DownloadManager → returns `downloadId`
-3. Metadata persisted in SharedPreferences
-4. System shows notification with progress
-5. 500ms polling queries DownloadManager for status
-6. Events emitted: `DownloadProgress` (bytesDownloaded, totalBytes), `DownloadComplete`, `DownloadError`
-7. On completion: file moved from `ExternalFilesDir/Downloads/` to `Documents/models/`
-8. If app was killed: on next launch, `syncBackgroundDownloads()` recovers state
+**Recovery after app kill:** On next launch, `restore.ts` recovers download state from native storage (SharedPreferences on Android, URLSession on iOS)
 
 **States:** pending → running → paused → completed / failed
 
-#### 9.3.5 Import Local Model (Bring Your Own Model)
+#### 9.3.4 Import Local Model (Bring Your Own Model)
 
 **Trigger:** Tap "Import local .gguf" button on Models screen.
 
@@ -1027,7 +1101,7 @@ This section expands on every testable flow, grouped by feature area. Each flow 
 
 **Implementation:** `modelManager.importLocalModel()` in `src/services/modelManager.ts`
 
-#### 9.3.6 Download Image Model
+#### 9.3.5 Download Image Model
 
 **Trigger:** Tap download on an image model card.
 
@@ -1039,7 +1113,7 @@ This section expands on every testable flow, grouped by feature area. Each flow 
 5. Create `ONNXImageModel` metadata with detected backend (mnn/qnn) and style
 6. Save to `appStore.downloadedImageModels[]`
 
-#### 9.3.7 Delete Model
+#### 9.3.6 Delete Model
 
 **Trigger:** Long-press model in Downloaded section → Delete, or from Storage Settings.
 
@@ -1662,20 +1736,52 @@ User message
 | `stores/appStore.test.ts` | App store state transitions |
 | `stores/chatStore.test.ts` | Conversation CRUD, message management |
 | `stores/authStore.test.ts` | Auth state, lockout logic |
+| `stores/projectStore.test.ts` | Project CRUD |
+| `stores/whisperStore.test.ts` | Whisper model state |
 | `services/generationService.test.ts` | Text generation lifecycle |
+| `services/generationToolLoop.test.ts` | Tool loop orchestration |
 | `services/intentClassifier.test.ts` | Pattern matching, LLM fallback |
 | `services/llm.test.ts` | Model loading, GPU fallback, generation, context |
+| `services/llmMessages.test.ts` | Message building/formatting |
+| `services/llmToolGeneration.test.ts` | Tool-aware LLM generation |
 | `services/hardware.test.ts` | Device info, memory calculations, recommendations |
 | `services/modelManager.test.ts` | Download lifecycle, storage, orphan detection |
+| `services/downloadHelpers.test.ts` | Download helper utilities |
+| `services/restore.test.ts` | Download restore after app kill |
+| `services/parallelMmproj.test.ts` | Parallel mmproj download |
 | `services/backgroundDownloadService.test.ts` | Native events, polling lifecycle |
 | `services/localDreamGenerator.test.ts` | Platform routing, iOS/Android delegation |
+| `services/imageGenerator.test.ts` | Image generator helper |
+| `services/imageModelRecommendation.test.ts` | Image model recommendations |
 | `services/coreMLModelBrowser.test.ts` | Model discovery, caching, errors |
+| `services/huggingFaceModelBrowser.test.ts` | Image model browsing |
 | `services/whisperService.test.ts` | Transcription, permissions |
+| `services/voiceService.test.ts` | Voice input bridge |
 | `services/documentService.test.ts` | File types, reading, preview |
 | `services/pdfExtractor.test.ts` | PDF text extraction |
 | `services/huggingface.test.ts` | HuggingFace API client |
+| `services/authService.test.ts` | Auth service |
+| `tools/handlers.test.ts` | Tool execution handlers |
+| `tools/registry.test.ts` | Tool definitions & schema |
+| `hooks/useAppState.test.ts` | App state foreground/background |
+| `hooks/useChatGenerationActions.test.ts` | Chat generation actions |
+| `hooks/useChatModelActions.test.ts` | Chat model actions |
+| `hooks/useNotifRationale.test.ts` | Notification rationale |
+| `hooks/useVoiceRecording.test.ts` | Voice recording state machine |
+| `hooks/useWhisperTranscription.test.ts` | Whisper transcription |
+| `onboarding/checklistComponents.test.tsx` | Checklist ProgressBar, animations |
+| `onboarding/onboardingFlows.test.ts` | Onboarding flow logic |
+| `onboarding/spotlightTooltips.test.ts` | Spotlight tooltip rendering |
+| `onboarding/handleStepPress.test.ts` | Step press navigation |
+| `onboarding/chatScreenSpotlight.test.ts` | Chat screen spotlight behavior |
+| `onboarding/reactiveSpotlightConditions.test.ts` | Reactive spotlight conditions |
 | `constants/constants.test.ts` | Constants validation |
+| `theme/palettes.test.ts` | Theme palette definitions |
 | `utils/coreMLModelUtils.test.ts` | Core ML model path utilities |
+| `utils/messageContent.test.ts` | Message content utilities |
+| `screens/ModelsScreen/imageDownloadActions.test.ts` | Image download actions |
+| `screens/ModelsScreen/restoreImageDownloads.test.ts` | Image download restore |
+| `screens/ModelsScreen/utils.test.ts` | ModelsScreen utilities |
 
 ### Integration Tests (`__tests__/integration/`)
 
@@ -1685,6 +1791,7 @@ User message
 | `models/activeModelService.test.ts` | Model load/unload with memory checks |
 | `generation/generationFlow.test.ts` | End-to-end text generation |
 | `generation/imageGenerationFlow.test.ts` | End-to-end image generation |
+| `onboarding/spotlightFlowIntegration.test.ts` | End-to-end spotlight behavior |
 
 ### Contract Tests (`__tests__/contracts/`)
 
@@ -1704,43 +1811,73 @@ Tests that verify native module interfaces haven't changed:
 
 React Native Testing Library tests:
 
-**Screens:**
-- `ChatScreen.test.tsx`
-- `ModelsScreen.test.tsx`
-- `HomeScreen.test.tsx`
-- `ChatsListScreen.test.tsx`
-- `ModelSettingsScreen.test.tsx`
-- `ProjectsScreen.test.tsx`
+**Screens (19 files):**
+- `ChatScreen.test.tsx`, `ChatsListScreen.test.tsx`, `DeviceInfoScreen.test.tsx`
+- `DownloadManagerScreen.test.tsx`, `GalleryScreen.test.tsx`, `HomeScreen.test.tsx`
+- `LockScreen.test.tsx`, `ModelDownloadScreen.test.tsx`, `ModelSettingsScreen.test.tsx`
+- `ModelsScreen.test.tsx`, `OnboardingScreen.test.tsx`, `PassphraseSetupScreen.test.tsx`
+- `ProjectDetailScreen.test.tsx`, `ProjectEditScreen.test.tsx`, `ProjectsScreen.test.tsx`
+- `SecuritySettingsScreen.test.tsx`, `SettingsScreen.test.tsx`, `StorageSettingsScreen.test.tsx`
+- `VoiceSettingsScreen.test.tsx`
 
-**Components:**
-- `ChatInput.test.tsx`
-- `ChatMessage.test.tsx`
-- `ModelCard.test.tsx`
+**Components (17 files):**
+- `ChatInput.test.tsx`, `ChatMessage.test.tsx`, `ChatMessageTools.test.tsx`
+- `AnimatedEntry.test.tsx`, `AnimatedListItem.test.tsx`, `AnimatedPressable.test.tsx`
+- `AppSheet.test.tsx`, `Card.test.tsx`, `CustomAlert.test.tsx`, `DebugSheet.test.tsx`
+- `GenerationSettingsModal.test.tsx`, `MarkdownText.test.tsx`
+- `ModelCard.test.tsx`, `ModelSelectorModal.test.tsx`
+- `ProjectSelectorSheet.test.tsx`, `ToolPickerSheet.test.tsx`, `VoiceRecordButton.test.tsx`
+
+**Onboarding/Spotlight (5 files):**
+- `ChatScreenSpotlight.test.tsx`, `ChatsListScreenSpotlight.test.tsx`
+- `HomeScreenSpotlight.test.tsx`, `ModelSettingsScreenSpotlight.test.tsx`
+- `ProjectEditScreenSpotlight.test.tsx`
+
+**Other:**
+- `navigation/AppNavigator.test.tsx`
+- `hooks/useFocusTrigger.test.ts`
 
 ### E2E Tests (Maestro, `.maestro/`)
 
 **Configuration:** App ID `ai.offgridmobile`, 30-second default timeout, screenshots on failure.
 
-#### P0 Critical Path Flows (16 flows)
+#### E2E Flows by Priority (16 flows across 4 tiers)
+
+**P0 — Critical Path (5 flows)**
 
 | Flow | File | What It Tests |
 |------|------|---------------|
-| Model Setup | `00-setup-model.yaml` | Model setup utility for other tests |
-| App Launch | `01-app-launch.yaml` | Launch → loading disappears → home screen visible |
-| Text Generation | `02-text-generation.yaml` | Home → new chat → type message → send → assistant responds |
-| Stop Generation | `03-stop-generation.yaml` | Send message → tap stop during streaming → generation halts |
-| Image Generation | `04-image-generation.yaml` | Image generation + auto-download |
-| Model Uninstall | `05a-model-uninstall.yaml` | Model deletion |
-| Model Download | `05b-model-download.yaml` | Models screen → trigger download → progress → complete |
-| Model Selection | `05b-model-selection.yaml` | Model switching between downloaded models |
-| Model Unload | `05c-model-unload.yaml` | Model unloading from memory |
-| Document Attachment | `06a-document-attachment.yaml` | Attach document to chat |
-| Image Attachment | `06b-image-attachment.yaml` | Attach image to chat |
-| Text Gen Full | `06c-text-generation-full.yaml` | Full text generation with attachments |
-| Text Gen Retry | `06d-text-generation-retry.yaml` | Retry/regenerate text generation |
-| Image Model Uninstall | `07a-image-model-uninstall.yaml` | Image model deletion |
-| Image Model Download | `07b-image-model-download.yaml` | Image model download |
-| Image Model Activate | `07c-image-model-set-active.yaml` | Image model activation |
+| Model Setup | `p0/00-setup-model.yaml` | Model setup utility for other tests |
+| App Launch | `p0/01-app-launch.yaml` | Launch → loading disappears → home screen visible |
+| Text Generation | `p0/02-text-generation.yaml` | Home → new chat → type message → send → assistant responds |
+| Stop Generation | `p0/03-stop-generation.yaml` | Send message → tap stop during streaming → generation halts |
+| Image Generation | `p0/04-image-generation.yaml` | Image generation + auto-download |
+
+**P1 — Important Path (4 flows)**
+
+| Flow | File | What It Tests |
+|------|------|---------------|
+| Document Attachment | `p1/06a-document-attachment.yaml` | Attach document to chat |
+| Image Attachment | `p1/06b-image-attachment.yaml` | Attach image to chat |
+| Text Gen Full | `p1/06c-text-generation-full.yaml` | Full text generation with attachments |
+| Text Gen Retry | `p1/06d-text-generation-retry.yaml` | Retry/regenerate text generation |
+
+**P2 — Model Management (4 flows)**
+
+| Flow | File | What It Tests |
+|------|------|---------------|
+| Model Uninstall | `p2/05a-model-uninstall.yaml` | Model deletion |
+| Model Download | `p2/05b-model-download.yaml` | Models screen → trigger download → progress → complete |
+| Model Selection | `p2/05b-model-selection.yaml` | Model switching between downloaded models |
+| Model Unload | `p2/05c-model-unload.yaml` | Model unloading from memory |
+
+**P3 — Image Model Management (3 flows)**
+
+| Flow | File | What It Tests |
+|------|------|---------------|
+| Image Model Uninstall | `p3/07a-image-model-uninstall.yaml` | Image model deletion |
+| Image Model Download | `p3/07b-image-model-download.yaml` | Image model download |
+| Image Model Activate | `p3/07c-image-model-set-active.yaml` | Image model activation |
 
 #### Key testIDs Required
 
@@ -1775,7 +1912,7 @@ npm run test:e2e:single   # Single Maestro flow
 | 12–16 GB | 13B | Q4_K_M |
 | 16+ GB | 30B | Q4_K_M |
 
-### Recommended Models (Feb 2026)
+### Recommended Models (Mar 2026)
 
 | Model | Parameters | Min RAM | Type | Description |
 |-------|-----------|---------|------|-------------|

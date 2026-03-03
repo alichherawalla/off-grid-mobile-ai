@@ -1,6 +1,6 @@
 import RNFS from 'react-native-fs';
 import { guessStyle, HFImageModel } from '../../services/huggingFaceModelBrowser';
-import { ModelInfo, ImageModelRecommendation } from '../../types';
+import { ModelInfo, ImageModelRecommendation, SoCInfo } from '../../types';
 import { ImageModelDescriptor, ModelTypeFilter } from './types';
 
 export function formatNumber(num: number): string {
@@ -84,6 +84,7 @@ export function matchesSdVersionFilter(modelName: string, sdVersionFilter: strin
 export function getImageModelCompatibility(
   model: HFImageModel,
   imageRec: ImageModelRecommendation | null,
+  socInfo?: SoCInfo | null,
 ): { isCompatible: boolean; incompatibleReason: string | undefined } {
   const backendCompatible =
     !imageRec?.compatibleBackends ||
@@ -97,11 +98,18 @@ export function getImageModelCompatibility(
     (imageRec.qnnVariant === '8gen1' && model.variant !== '8gen2');
 
   const isCompatible = backendCompatible && variantCompatible;
-  const incompatibleReason = !backendCompatible
-    ? 'Incompatible'
-    : !variantCompatible
-    ? 'Wrong chip variant'
-    : undefined;
+
+  let incompatibleReason: string | undefined;
+  if (!backendCompatible) {
+    if (socInfo?.vendor === 'qualcomm' && !socInfo.hasNPU) {
+      incompatibleReason = 'Requires newer Snapdragon';
+    } else {
+      incompatibleReason = 'Requires Snapdragon 888+';
+    }
+  } else if (!variantCompatible) {
+    const variantName = model.variant === '8gen2' ? 'Snapdragon 8 Gen 2+' : model.variant;
+    incompatibleReason = `Requires ${variantName}`;
+  }
 
   return { isCompatible, incompatibleReason };
 }

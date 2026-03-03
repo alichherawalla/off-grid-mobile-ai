@@ -275,6 +275,31 @@ describe('huggingFaceModelBrowser', () => {
       expect(models[0].name).toBe('NewModel');
     });
 
+    it('skips QNN repo when skipQnn is true', async () => {
+      mockFetchResponses(
+        { ok: true, body: [treeEntry('ModelA.zip', 10, 'file', 1000)] },
+        // Second fetch should not happen
+      );
+
+      const models = await fetchAvailableModels(true, { skipQnn: true });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(models).toHaveLength(1);
+      expect(models[0].backend).toBe('mnn');
+    });
+
+    it('fetches QNN repo when skipQnn is false', async () => {
+      mockFetchResponses(
+        { ok: true, body: [treeEntry('ModelA.zip', 10, 'file', 1000)] },
+        { ok: true, body: [treeEntry('ModelB_qnn2.28_8gen1.zip', 10, 'file', 2000)] },
+      );
+
+      const models = await fetchAvailableModels(true, { skipQnn: false });
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(models).toHaveLength(2);
+    });
+
     it('throws when fetch returns a non-ok response', async () => {
       mockFetchResponses(
         { ok: false, body: null },

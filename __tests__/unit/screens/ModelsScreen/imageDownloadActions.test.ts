@@ -464,7 +464,7 @@ describe('imageDownloadActions', () => {
       expect(deps.addImageModelDownloading).toHaveBeenCalled();
     });
 
-    it('shows warning for QNN on device without NPU', async () => {
+    it('blocks QNN download on device without NPU (no "Download Anyway")', async () => {
       Object.defineProperty(Platform, 'OS', { value: 'android' });
       const { hardwareService } = require('../../../../src/services');
       hardwareService.getSoCInfo.mockResolvedValueOnce({ hasNPU: false });
@@ -477,14 +477,32 @@ describe('imageDownloadActions', () => {
       expect(deps.setAlertState).toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'Incompatible Model',
+          buttons: [expect.objectContaining({ text: 'OK', style: 'cancel' })],
+        }),
+      );
+      // Should not start download
+      expect(deps.addImageModelDownloading).not.toHaveBeenCalled();
+    });
+
+    it('shows "Download Anyway" for variant mismatch (has NPU)', async () => {
+      Object.defineProperty(Platform, 'OS', { value: 'android' });
+      const { hardwareService } = require('../../../../src/services');
+      hardwareService.getSoCInfo.mockResolvedValueOnce({ hasNPU: true, qnnVariant: 'min' });
+
+      const deps = makeDeps();
+      const model = makeZipModelInfo({ backend: 'qnn', variant: '8gen2' });
+
+      await handleDownloadImageModel(model, deps);
+
+      expect(deps.setAlertState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Incompatible Model',
           buttons: expect.arrayContaining([
             expect.objectContaining({ text: 'Cancel' }),
             expect.objectContaining({ text: 'Download Anyway' }),
           ]),
         }),
       );
-      // Should not start download
-      expect(deps.addImageModelDownloading).not.toHaveBeenCalled();
     });
 
     it.each([

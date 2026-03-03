@@ -46,9 +46,12 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
             val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 Build.SOC_MODEL
             } else {
-                ""
+                return false
             }
-            return soc.startsWith("SM") || soc.startsWith("QCS") || soc.startsWith("QCM")
+            // QNN HTP requires SM8350+ (Snapdragon 888+)
+            val smMatch = Regex("^SM(\\d+)").find(soc) ?: return false
+            val num = smMatch.groupValues[1].toIntOrNull() ?: return false
+            return num >= 8350
         }
 
         internal fun resolveModelDir(dir: File, isCpu: Boolean): File? {
@@ -462,9 +465,11 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
             val exitCode = if (!alive) try { serverProcess?.exitValue() } catch (_: Exception) { null } else null
 
             return if (!alive) {
+                val socModel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Build.SOC_MODEL else "unknown"
                 StartResult(false,
-                    "Server process exited with code $exitCode before becoming ready. " +
-                    "This may be due to SELinux blocking DSP access (QNN) or missing libraries.")
+                    "Server process exited with code $exitCode. " +
+                    "Your device ($socModel) may not support this model's backend. " +
+                    "Try a CPU model instead.")
             } else {
                 StartResult(false,
                     "Server failed to start within ${timeoutMs/1000}s. " +
@@ -929,13 +934,7 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun isNpuSupported(promise: Promise) {
-        val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            Build.SOC_MODEL
-        } else {
-            ""
-        }
-        val isQualcomm = soc.startsWith("SM") || soc.startsWith("QCS") || soc.startsWith("QCM")
-        promise.resolve(isQualcomm)
+        promise.resolve(isNpuSupportedInternal())
     }
 
     @ReactMethod

@@ -117,7 +117,8 @@ export function useImageModels(setAlertState: (s: AlertState) => void) {
           _coreml: true, _coremlFiles: m.files,
         })));
       } else {
-        setAvailableHFModels(await fetchAvailableModels(forceRefresh));
+        const socInfo = await hardwareService.getSoCInfo();
+        setAvailableHFModels(await fetchAvailableModels(forceRefresh, { skipQnn: !socInfo.hasNPU }));
       }
     } catch (error: any) {
       setHfModelsError(error?.message || 'Failed to fetch models');

@@ -238,11 +238,11 @@ class HardwareService {
     else if (hw.includes('mt') || hw.includes('mediatek')) vendor = 'mediatek';
     else if (hw.includes('exynos') || hw.includes('samsungexynos')) vendor = 'exynos';
     const qnnVariant = vendor === 'qualcomm' ? await this.getQnnVariantFromSoC() : undefined;
-    this.cachedSoCInfo = { vendor, hasNPU: vendor === 'qualcomm', qnnVariant };
+    this.cachedSoCInfo = { vendor, hasNPU: vendor === 'qualcomm' && !!qnnVariant, qnnVariant };
     return this.cachedSoCInfo;
   }
 
-  private async getQnnVariantFromSoC(): Promise<'8gen2' | '8gen1' | 'min'> {
+  private async getQnnVariantFromSoC(): Promise<'8gen2' | '8gen1' | 'min' | undefined> {
     let socModel = '';
     try {
       const localDream = getLocalDreamModule();
@@ -253,12 +253,14 @@ class HardwareService {
       const smMatch = base.match(/^SM(\d+)$/);
       if (smMatch) {
         const num = parseInt(smMatch[1], 10);
+        if (num < 8350) return undefined; // SM8250 (SD 870) and below — no HTP v68+
         if (num >= 8550) return '8gen2';
         if (num >= 8450) return '8gen1';
         return 'min';
       }
-      return 'min';
+      return undefined; // Non-SM Qualcomm SoC — not supported
     }
+    // RAM heuristic fallback (native module unavailable)
     return this.getTotalMemoryGB() >= 12 ? '8gen1' : 'min';
   }
 
@@ -285,10 +287,12 @@ class HardwareService {
     let rec: ImageModelRecommendation;
     if (Platform.OS === 'ios') {
       rec = this.getIosImageRec(socInfo.appleChip, ramGB);
-    } else if (socInfo.vendor === 'qualcomm') {
+    } else if (socInfo.vendor === 'qualcomm' && socInfo.hasNPU) {
       rec = this.getQualcommImageRec(socInfo);
+    } else if (socInfo.vendor === 'qualcomm') {
+      rec = { recommendedBackend: 'mnn', bannerText: 'CPU models recommended \u2014 your Snapdragon doesn\u2019t support NPU acceleration', compatibleBackends: ['mnn'] };
     } else {
-      rec = { recommendedBackend: 'mnn', bannerText: 'CPU models recommended \u2014 NPU requires Snapdragon', compatibleBackends: ['mnn'] };
+      rec = { recommendedBackend: 'mnn', bannerText: 'CPU models recommended \u2014 NPU requires Snapdragon 888+', compatibleBackends: ['mnn'] };
     }
     if (ramGB < 4) { rec.warning = 'Low RAM \u2014 expect slower performance'; }
     this.cachedImageRecommendation = rec;

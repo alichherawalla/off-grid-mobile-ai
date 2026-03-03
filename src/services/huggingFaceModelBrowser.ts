@@ -77,14 +77,15 @@ async function fetchRepoFiles(repo: string): Promise<HFTreeEntry[]> {
   return response.json();
 }
 
-export async function fetchAvailableModels(forceRefresh = false): Promise<HFImageModel[]> {
+export async function fetchAvailableModels(forceRefresh = false, opts?: { skipQnn?: boolean }): Promise<HFImageModel[]> {
   if (!forceRefresh && cachedModels && Date.now() - cacheTimestamp < CACHE_TTL) {
     return cachedModels;
   }
 
+  const fetchQnn = !opts?.skipQnn;
   const [mnnFiles, qnnFiles] = await Promise.all([
     fetchRepoFiles(REPOS.mnn),
-    fetchRepoFiles(REPOS.qnn),
+    fetchQnn ? fetchRepoFiles(REPOS.qnn) : Promise.resolve([] as HFTreeEntry[]),
   ]);
 
   const models: HFImageModel[] = [];

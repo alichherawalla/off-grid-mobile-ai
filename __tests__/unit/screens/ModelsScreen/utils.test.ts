@@ -323,7 +323,17 @@ describe('ModelsScreen/utils', () => {
         compatibleBackends: ['mnn'],
       } as any);
       expect(result.isCompatible).toBe(false);
-      expect(result.incompatibleReason).toBe('Incompatible');
+      expect(result.incompatibleReason).toBe('Requires Snapdragon 888+');
+    });
+
+    it('returns "Requires newer Snapdragon" for old Qualcomm device', () => {
+      const result = getImageModelCompatibility(
+        makeHFModel({ backend: 'qnn' }) as any,
+        { recommendedBackend: 'mnn', compatibleBackends: ['mnn'] } as any,
+        { vendor: 'qualcomm', hasNPU: false } as any,
+      );
+      expect(result.isCompatible).toBe(false);
+      expect(result.incompatibleReason).toBe('Requires newer Snapdragon');
     });
 
     it('returns compatible when backend in compatibleBackends', () => {
@@ -340,7 +350,7 @@ describe('ModelsScreen/utils', () => {
         { recommendedBackend: 'qnn', compatibleBackends: ['qnn'], qnnVariant: '8gen1' } as any,
       );
       expect(result.isCompatible).toBe(false);
-      expect(result.incompatibleReason).toBe('Wrong chip variant');
+      expect(result.incompatibleReason).toBe('Requires Snapdragon 8 Gen 2+');
     });
 
     it('8gen2 device is compatible with all variants', () => {

@@ -260,8 +260,8 @@ class HardwareService {
       }
       return undefined; // Non-SM Qualcomm SoC — not supported
     }
-    // RAM heuristic fallback (native module unavailable)
-    return this.getTotalMemoryGB() >= 12 ? '8gen1' : 'min';
+    // Native module unavailable — can't determine SoC, assume no NPU
+    return undefined;
   }
 
   private getIosImageRec(chip: SoCInfo['appleChip'], ramGB: number): ImageModelRecommendation {

@@ -41,6 +41,7 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
 
         private const val EVENT_PROGRESS = "LocalDreamProgress"
         private const val EVENT_ERROR = "LocalDreamError"
+        private val SM_REGEX = Regex("^SM(\\d+)")
 
         internal fun isNpuSupportedInternal(): Boolean {
             val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -49,7 +50,7 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
                 return false
             }
             // QNN HTP requires SM8350+ (Snapdragon 888+)
-            val smMatch = Regex("^SM(\\d+)").find(soc) ?: return false
+            val smMatch = SM_REGEX.find(soc) ?: return false
             val num = smMatch.groupValues[1].toIntOrNull() ?: return false
             return num >= 8350
         }

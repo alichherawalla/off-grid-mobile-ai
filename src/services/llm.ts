@@ -9,8 +9,9 @@ import {
   initMultimodal, checkContextMultimodal,
   recordGenerationStats,
   hashString, ensureSessionCacheDir, getSessionPath, buildModelParams,
-  buildCompletionParams, createThinkInjector,
+  buildCompletionParams, createThinkInjector, getMaxContextForDevice, getGpuLayersForDevice,
 } from './llmHelpers';
+import { hardwareService } from './hardware';
 import { formatLlamaMessages, extractImageUris, buildOAIMessages } from './llmMessages';
 import { generateWithToolsImpl } from './llmToolGeneration';
 import type { ToolCall } from './tools/types';
@@ -91,23 +92,25 @@ class LLMService {
     }
   }
 
-  /**
-   * Load context and auto-scale to model's trained context length when the user
-   * hasn't set a custom value. Capped at 8192 to avoid OOM on mobile devices.
-   */
+  /** Auto-scale context and cap GPU layers based on device RAM to prevent abort() on low-RAM devices. */
   private async initWithAutoContext(
     params: { baseParams: object; ctxLen: number; nGpuLayers: number },
   ): Promise<{ context: LlamaContext; gpuAttemptFailed: boolean; actualLength: number }> {
-    const initial = await initContextWithFallback(params.baseParams, params.ctxLen, params.nGpuLayers);
+    const deviceInfo = await hardwareService.getDeviceInfo();
+    const safeGpuLayers = getGpuLayersForDevice(deviceInfo.totalMemory, params.nGpuLayers);
+    if (safeGpuLayers !== params.nGpuLayers) {
+      logger.log(`[LLM] Low RAM (${(deviceInfo.totalMemory / (1024 * 1024 * 1024)).toFixed(1)}GB), GPU layers ${params.nGpuLayers} → ${safeGpuLayers}`);
+    }
+    const initial = await initContextWithFallback(params.baseParams, params.ctxLen, safeGpuLayers);
     const modelMax = getModelMaxContext(initial.context);
     const userIsOnDefault = this.currentSettings.contextLength === APP_CONFIG.maxContextLength;
-    if (!modelMax || !userIsOnDefault || modelMax <= initial.actualLength) {
-      return initial;
-    }
-    const targetCtx = Math.min(modelMax, 4096);
-    logger.log(`[LLM] Model supports ${modelMax} context, scaling up from ${initial.actualLength} to ${targetCtx}`);
+    if (!modelMax || !userIsOnDefault || modelMax <= initial.actualLength) return initial;
+    const deviceMaxCtx = getMaxContextForDevice(deviceInfo.totalMemory);
+    const targetCtx = Math.min(modelMax, 4096, deviceMaxCtx);
+    if (targetCtx <= initial.actualLength) return initial;
+    logger.log(`[LLM] Model supports ${modelMax} ctx, RAM cap ${deviceMaxCtx}, scaling ${initial.actualLength} → ${targetCtx}`);
     await initial.context.release();
-    return initContextWithFallback(params.baseParams, targetCtx, params.nGpuLayers);
+    return initContextWithFallback(params.baseParams, targetCtx, safeGpuLayers);
   }
 
   async initializeMultimodal(mmProjPath: string): Promise<boolean> {
@@ -122,8 +125,9 @@ class LLMService {
     } catch (statErr) {
       console.error('[LLM] Failed to stat mmproj file:', statErr);
     }
-    const deviceInfo = useAppStore.getState().deviceInfo;
-    const useGpuForClip = Platform.OS === 'ios' && !deviceInfo?.isEmulator;
+    const devInfo = useAppStore.getState().deviceInfo;
+    const mem = devInfo?.totalMemory ?? 0;
+    const useGpuForClip = Platform.OS === 'ios' && !devInfo?.isEmulator && !(mem > 0 && mem <= 4 * 1024 * 1024 * 1024);
     logger.log('[LLM] Calling initMultimodal, use_gpu:', useGpuForClip);
     const { initialized, support } = await initMultimodal(this.context, mmProjPath, useGpuForClip);
     this.multimodalInitialized = initialized;
@@ -292,17 +296,10 @@ class LLMService {
   async getModelInfo(): Promise<{ contextLength: number; vocabSize: number } | null> {
     return this.context ? { contextLength: APP_CONFIG.maxContextLength, vocabSize: 0 } : null;
   }
-  async tokenize(text: string): Promise<number[]> {
-    if (!this.context) throw new Error('No model loaded');
-    return (await this.context.tokenize(text)).tokens || [];
-  }
-  async getTokenCount(text: string): Promise<number> {
-    if (!this.context) throw new Error('No model loaded');
-    return (await this.context.tokenize(text)).tokens?.length || 0;
-  }
+  async tokenize(text: string): Promise<number[]> { if (!this.context) throw new Error('No model loaded'); return (await this.context.tokenize(text)).tokens || []; }
+  async getTokenCount(text: string): Promise<number> { if (!this.context) throw new Error('No model loaded'); return (await this.context.tokenize(text)).tokens?.length || 0; }
   async estimateContextUsage(messages: Message[]): Promise<{ tokenCount: number; percentUsed: number; willFit: boolean }> {
-    const prompt = this.formatMessages(messages);
-    const tokenCount = await this.getTokenCount(prompt);
+    const prompt = this.formatMessages(messages); const tokenCount = await this.getTokenCount(prompt);
     const ctxLen = this.currentSettings.contextLength || APP_CONFIG.maxContextLength;
     return { tokenCount, percentUsed: (tokenCount / ctxLen) * 100, willFit: tokenCount < ctxLen * 0.9 };
   }

@@ -258,6 +258,29 @@ export async function fitMessagesInBudget(
   return result;
 }
 
+/**
+ * Returns the maximum safe context length based on device RAM.
+ * Prevents OOM crashes on low-RAM devices (e.g. iPhone XS with 4GB).
+ */
+export function getMaxContextForDevice(totalMemoryBytes: number): number {
+  const totalGB = totalMemoryBytes / (1024 * 1024 * 1024);
+  if (totalGB <= 6) return 2048;
+  if (totalGB <= 8) return 4096;
+  return 8192;
+}
+
+/**
+ * Returns safe GPU layer count based on device RAM.
+ * On low-RAM devices (≤4GB like iPhone XS), Metal allocation can call
+ * abort() which bypasses JS try/catch, killing the app instantly.
+ * Skip GPU entirely on these devices to prevent the uncatchable crash.
+ */
+export function getGpuLayersForDevice(totalMemoryBytes: number, requestedLayers: number): number {
+  const totalGB = totalMemoryBytes / (1024 * 1024 * 1024);
+  if (totalGB <= 4) return 0;
+  return requestedLayers;
+}
+
 export const STOP_TOKENS = ['</s>', '<|end|>', '<|eot_id|>', '<|im_end|>', '<|im_start|>'];
 
 export function buildCompletionParams(settings: {

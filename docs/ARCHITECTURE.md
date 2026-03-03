@@ -324,6 +324,23 @@ requiredRAM = fileSize * 1.8  // MNN/QNN runtime overhead
 device safe limit of 4.8GB. Unload current model or choose smaller."
 ```
 
+**RAM-Aware Runtime Safeguards:**
+
+On low-RAM devices (e.g. iPhone XS with 4GB), llama.cpp and CLIP can call `abort()` during Metal GPU allocation, which is a POSIX signal that bypasses JavaScript try/catch and kills the app instantly. To prevent this, `initWithAutoContext()` applies device-RAM-based caps before any native call:
+
+| Device RAM | GPU Layers | Context Cap | CLIP GPU |
+|---|---|---|---|
+| ≤4GB | 0 (CPU-only) | 2048 | Off |
+| 4-6GB | Requested | 2048 | On |
+| 6-8GB | Requested | 4096 | On |
+| >8GB | Requested | 8192 | On |
+
+Helpers in `src/services/llmHelpers.ts`:
+- `getMaxContextForDevice(totalMemoryBytes)` — caps auto-scaled context length
+- `getGpuLayersForDevice(totalMemoryBytes, requestedLayers)` — disables Metal on ≤4GB devices
+
+The GPU check runs before `initContextWithFallback()` so the dangerous Metal allocation is never attempted. The CLIP/multimodal GPU flag (`useGpuForClip`) is also disabled on ≤4GB devices in `initializeMultimodal()`.
+
 ### Performance Settings Deep Dive
 
 **CPU Threads:**
@@ -351,6 +368,7 @@ device safe limit of 4.8GB. Unload current model or choose smaller."
 - OpenCL backend experimental (can crash)
 - Start with 0, incrementally increase
 - Automatic fallback to CPU if fails
+- Devices with ≤4GB RAM: GPU layers forced to 0 (Metal/OpenCL allocation can `abort()` before JS catches the error)
 
 ---
 
@@ -871,11 +889,16 @@ export const SPACING = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
 
 ### GPU Acceleration
 
-**OpenCL Stability:**
+**OpenCL Stability (Android):**
 - OpenCL backend can crash on some Qualcomm devices
 - Crash typically happens during layer offload initialization
 - Automatic fallback to CPU if GPU initialization fails
 - User can manually reduce GPU layers or disable entirely
+
+**Metal Stability (iOS):**
+- On devices with ≤4GB RAM (iPhone XS, iPhone 8, etc.), Metal buffer allocation for LLM inference and CLIP warmup can call `abort()`, killing the app before JavaScript can catch the error
+- GPU layers and CLIP GPU are automatically disabled on these devices
+- Devices with 6GB+ RAM use Metal normally
 
 **Recommendation:** Start with 0 GPU layers, incrementally increase while monitoring stability.
 

@@ -103,7 +103,7 @@ class LLMService {
     if (!modelMax || !userIsOnDefault || modelMax <= initial.actualLength) {
       return initial;
     }
-    const targetCtx = Math.min(modelMax, 8192);
+    const targetCtx = Math.min(modelMax, 4096);
     logger.log(`[LLM] Model supports ${modelMax} context, scaling up from ${initial.actualLength} to ${targetCtx}`);
     await initial.context.release();
     return initContextWithFallback(params.baseParams, targetCtx, params.nGpuLayers);

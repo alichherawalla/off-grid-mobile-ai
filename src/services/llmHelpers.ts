@@ -14,7 +14,7 @@ import logger from '../utils/logger';
 
 const DEFAULT_THREADS = Platform.OS === 'android' ? 6 : 4;
 const DEFAULT_BATCH = 512;
-export const DEFAULT_GPU_LAYERS = 99;
+export const DEFAULT_GPU_LAYERS = Platform.OS === 'ios' ? 99 : 0;
 
 export function getOptimalThreadCount(): number {
   return DEFAULT_THREADS;

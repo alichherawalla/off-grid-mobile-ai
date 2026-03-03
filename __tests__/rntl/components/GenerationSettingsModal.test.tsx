@@ -83,7 +83,7 @@ const defaultSettings = {
   contextLength: 2048,
   nThreads: 6,
   nBatch: 512,
-  enableGpu: true,
+  enableGpu: false,
   gpuLayers: 99,
   flashAttn: false,
   modelLoadingStrategy: 'memory',

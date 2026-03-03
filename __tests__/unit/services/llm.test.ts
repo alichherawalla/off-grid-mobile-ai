@@ -2129,7 +2129,7 @@ describe('LLMService', () => {
       expect(initLlama).toHaveBeenCalledTimes(1);
     });
 
-    it('caps auto-scaled context at 8192', async () => {
+    it('caps auto-scaled context at 4096', async () => {
       mockedRNFS.exists.mockResolvedValue(true);
       const ctx1 = createMockLlamaContext({
         model: { metadata: { 'llama.context_length': '131072' } },
@@ -2148,7 +2148,7 @@ describe('LLMService', () => {
       await llmService.loadModel('/models/test.gguf');
 
       expect(initLlama).toHaveBeenLastCalledWith(
-        expect.objectContaining({ n_ctx: 8192 }),
+        expect.objectContaining({ n_ctx: 4096 }),
       );
     });
   });

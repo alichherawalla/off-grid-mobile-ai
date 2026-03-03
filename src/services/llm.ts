@@ -5,7 +5,7 @@ import { Message } from '../types';
 import { APP_CONFIG } from '../constants';
 import { useAppStore } from '../stores';
 import {
-  initContextWithFallback, captureGpuInfo, logContextMetadata,
+  initContextWithFallback, captureGpuInfo, logContextMetadata, getModelMaxContext,
   initMultimodal, checkContextMultimodal,
   recordGenerationStats,
   hashString, ensureSessionCacheDir, getSessionPath, buildModelParams,
@@ -63,10 +63,11 @@ class LLMService {
     this.currentSettings = { nThreads, nBatch, contextLength: ctxLen };
     logger.log(`[LLM] Loading model: ctx=${ctxLen}, threads=${nThreads}, batch=${nBatch}`);
     try {
-      const { context, gpuAttemptFailed, actualLength } = await initContextWithFallback(baseParams, ctxLen, nGpuLayers);
+      const result = await this.initWithAutoContext({ baseParams, ctxLen, nGpuLayers });
+      const { context, gpuAttemptFailed, actualLength } = result;
       this.context = context;
       if (actualLength !== ctxLen) this.currentSettings.contextLength = actualLength;
-      await logContextMetadata(context, actualLength);
+      logContextMetadata(context, actualLength);
       Object.assign(this, captureGpuInfo(context, gpuAttemptFailed, nGpuLayers));
       logger.log(`[LLM] Native lib: ${(context as any).androidLib || 'N/A'}`);
       this.currentModelPath = modelPath;
@@ -87,6 +88,25 @@ class LLMService {
       Object.assign(this, { gpuEnabled: false, gpuReason: '', activeGpuLayers: 0, gpuDevices: [] });
       throw new Error(error?.message || 'Unknown error loading model');
     }
+  }
+
+  /**
+   * Load context and auto-scale to model's trained context length when the user
+   * hasn't set a custom value. Capped at 8192 to avoid OOM on mobile devices.
+   */
+  private async initWithAutoContext(
+    params: { baseParams: object; ctxLen: number; nGpuLayers: number },
+  ): Promise<{ context: LlamaContext; gpuAttemptFailed: boolean; actualLength: number }> {
+    const initial = await initContextWithFallback(params.baseParams, params.ctxLen, params.nGpuLayers);
+    const modelMax = getModelMaxContext(initial.context);
+    const userIsOnDefault = this.currentSettings.contextLength === APP_CONFIG.maxContextLength;
+    if (!modelMax || !userIsOnDefault || modelMax <= initial.actualLength) {
+      return initial;
+    }
+    const targetCtx = Math.min(modelMax, 8192);
+    logger.log(`[LLM] Model supports ${modelMax} context, scaling up from ${initial.actualLength} to ${targetCtx}`);
+    await initial.context.release();
+    return initContextWithFallback(params.baseParams, targetCtx, params.nGpuLayers);
   }
 
   async initializeMultimodal(mmProjPath: string): Promise<boolean> {

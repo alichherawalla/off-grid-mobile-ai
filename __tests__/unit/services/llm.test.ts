@@ -2078,4 +2078,78 @@ describe('LLMService', () => {
       expect(prompt).toContain('<|im_end|>');
     });
   });
+
+  // ========================================================================
+  // Auto context scaling
+  // ========================================================================
+  describe('auto context scaling', () => {
+    it('scales context to model max when user is on default setting', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx1 = createMockLlamaContext({
+        model: { metadata: { 'llama.context_length': '4096' } },
+      });
+      const ctx2 = createMockLlamaContext({
+        model: { metadata: { 'llama.context_length': '4096' } },
+      });
+      mockedInitLlama
+        .mockResolvedValueOnce(ctx1 as any)
+        .mockResolvedValueOnce(ctx2 as any);
+
+      // User is on default contextLength (2048)
+      useAppStore.setState({
+        settings: { ...useAppStore.getState().settings, contextLength: 2048 },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+
+      // Should have been called twice: initial load + reload with model max
+      expect(initLlama).toHaveBeenCalledTimes(2);
+      expect(initLlama).toHaveBeenLastCalledWith(
+        expect.objectContaining({ n_ctx: 4096 }),
+      );
+      // First context should have been released
+      expect(ctx1.release).toHaveBeenCalled();
+    });
+
+    it('does not scale when user set a custom context length', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext({
+        model: { metadata: { 'llama.context_length': '4096' } },
+      });
+      mockedInitLlama.mockResolvedValue(ctx as any);
+
+      // User explicitly set 1024
+      useAppStore.setState({
+        settings: { ...useAppStore.getState().settings, contextLength: 1024 },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+
+      // Should only be called once — no reload
+      expect(initLlama).toHaveBeenCalledTimes(1);
+    });
+
+    it('caps auto-scaled context at 8192', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx1 = createMockLlamaContext({
+        model: { metadata: { 'llama.context_length': '131072' } },
+      });
+      const ctx2 = createMockLlamaContext({
+        model: { metadata: { 'llama.context_length': '131072' } },
+      });
+      mockedInitLlama
+        .mockResolvedValueOnce(ctx1 as any)
+        .mockResolvedValueOnce(ctx2 as any);
+
+      useAppStore.setState({
+        settings: { ...useAppStore.getState().settings, contextLength: 2048 },
+      });
+
+      await llmService.loadModel('/models/test.gguf');
+
+      expect(initLlama).toHaveBeenLastCalledWith(
+        expect.objectContaining({ n_ctx: 8192 }),
+      );
+    });
+  });
 });

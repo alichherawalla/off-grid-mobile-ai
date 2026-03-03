@@ -147,19 +147,29 @@ export function captureGpuInfo(
   return { gpuEnabled, gpuReason, gpuDevices, activeGpuLayers };
 }
 
-export async function logContextMetadata(context: LlamaContext, contextLength: number): Promise<void> {
+/**
+ * Reads the model's trained context length from metadata.
+ * Returns the max context the model supports, or null if unavailable.
+ */
+export function getModelMaxContext(context: LlamaContext): number | null {
   try {
     const metadata = (context as any).model?.metadata;
-    if (!metadata) return;
+    if (!metadata) return null;
     const trainCtx = metadata['llama.context_length'] || metadata['general.context_length'] || metadata.context_length;
-    if (!trainCtx) return;
+    if (!trainCtx) return null;
     const maxModelCtx = parseInt(trainCtx, 10);
-    logger.log(`[LLM] Model trained context: ${maxModelCtx}, using: ${contextLength}`);
-    if (contextLength > maxModelCtx) {
-      logger.warn(`[LLM] Requested context (${contextLength}) exceeds model max (${maxModelCtx})`);
-    }
+    return isNaN(maxModelCtx) || maxModelCtx <= 0 ? null : maxModelCtx;
   } catch {
-    // Metadata reading is best-effort
+    return null;
+  }
+}
+
+export function logContextMetadata(context: LlamaContext, contextLength: number): void {
+  const maxModelCtx = getModelMaxContext(context);
+  if (maxModelCtx == null) return;
+  logger.log(`[LLM] Model trained context: ${maxModelCtx}, using: ${contextLength}`);
+  if (contextLength > maxModelCtx) {
+    logger.warn(`[LLM] Requested context (${contextLength}) exceeds model max (${maxModelCtx})`);
   }
 }
 

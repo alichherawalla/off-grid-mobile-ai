@@ -5,11 +5,13 @@
  * - Rendering markdown elements (bold, italic, headers, code, lists, blockquotes)
  * - dimmed prop changes the text color to secondary
  * - Empty and plain text content
+ * - Asterisk-as-multiplication escaping
+ * - Link rendering
  */
 
 import React from 'react';
 import { render } from '@testing-library/react-native';
-import { MarkdownText } from '../../../src/components/MarkdownText';
+import { MarkdownText, preprocessMarkdown } from '../../../src/components/MarkdownText';
 
 describe('MarkdownText', () => {
   it('renders plain text', () => {
@@ -87,5 +89,51 @@ describe('MarkdownText', () => {
     );
     expect(getByText(/Paragraph one/)).toBeTruthy();
     expect(getByText(/Paragraph two/)).toBeTruthy();
+  });
+
+  it('renders multiplication expression without italic formatting', () => {
+    const { getByText } = render(
+      <MarkdownText>{'Result: 5*5*5*5*6*7'}</MarkdownText>
+    );
+    // The literal text with asterisks should appear (escaped, not rendered as emphasis)
+    expect(getByText(/5\*5\*5\*5\*6\*7/)).toBeTruthy();
+  });
+
+  it('preserves intentional markdown emphasis', () => {
+    const { getByText } = render(
+      <MarkdownText>{'This is *important* text'}</MarkdownText>
+    );
+    expect(getByText(/important/)).toBeTruthy();
+  });
+
+  it('renders long URLs without crashing', () => {
+    const longUrl =
+      '[Link](https://example.com/very/long/path/that/might/overflow/the/container/width/in/a/chat/bubble)';
+    const { toJSON } = render(<MarkdownText>{longUrl}</MarkdownText>);
+    expect(toJSON()).toBeTruthy();
+  });
+});
+
+describe('preprocessMarkdown', () => {
+  it('escapes digit*digit patterns', () => {
+    expect(preprocessMarkdown('5*5')).toBe('5\\*5');
+  });
+
+  it('escapes chained multiplication', () => {
+    expect(preprocessMarkdown('5*5*5*5*6*7')).toBe('5\\*5\\*5\\*5\\*6\\*7');
+  });
+
+  it('does not escape word emphasis', () => {
+    expect(preprocessMarkdown('*italic*')).toBe('*italic*');
+  });
+
+  it('does not escape bold markers', () => {
+    expect(preprocessMarkdown('**bold**')).toBe('**bold**');
+  });
+
+  it('handles mixed content', () => {
+    expect(preprocessMarkdown('The result of 3*4 is *twelve*')).toBe(
+      'The result of 3\\*4 is *twelve*'
+    );
   });
 });

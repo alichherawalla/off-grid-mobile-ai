@@ -19,10 +19,8 @@ import type { ToolCall } from './tools/types';
 export type { MultimodalSupport, LLMPerformanceSettings, LLMPerformanceStats } from './llmTypes';
 import type { MultimodalSupport, LLMPerformanceSettings, LLMPerformanceStats } from './llmTypes';
 import logger from '../utils/logger';
-
 type StreamCallback = (token: string) => void;
 type CompleteCallback = (fullResponse: string) => void;
-
 class LLMService {
   private context: LlamaContext | null = null;
   private currentModelPath: string | null = null;
@@ -91,7 +89,6 @@ class LLMService {
       throw new Error(error?.message || 'Unknown error loading model');
     }
   }
-
   /** Auto-scale context and cap GPU layers based on device RAM to prevent abort() on low-RAM devices. */
   private async initWithAutoContext(
     params: { baseParams: object; ctxLen: number; nGpuLayers: number },
@@ -140,13 +137,10 @@ class LLMService {
     this.multimodalSupport = await checkContextMultimodal(this.context);
     return this.multimodalSupport;
   }
-
   getMultimodalSupport(): MultimodalSupport | null { return this.multimodalSupport; }
   supportsVision(): boolean { return this.multimodalSupport?.vision || false; }
-
   supportsToolCalling(): boolean { return this.toolCallingSupported; }
   supportsThinking(): boolean { return this.thinkingSupported; }
-
   private detectToolCallingSupport(): void {
     if (!this.context) { this.toolCallingSupported = false; return; }
     try {
@@ -186,7 +180,6 @@ class LLMService {
       });
     }
   }
-
   isModelLoaded(): boolean { return this.context !== null; }
   getLoadedModelPath(): string | null { return this.currentModelPath; }
 
@@ -215,7 +208,7 @@ class LLMService {
       let firstReceived = false;
       const thinkStream = this.thinkingSupported && onStream
         ? createThinkInjector(t => onStream(t)) : null;
-      await this.context.completion({
+      const completionResult = await this.context.completion({
         messages: oaiMessages,
         ...buildCompletionParams(settings),
       }, (data) => {
@@ -227,6 +220,10 @@ class LLMService {
       });
       this.performanceStats = recordGenerationStats(startTime, firstTokenMs, tokenCount);
       this.isGenerating = false;
+      if (completionResult?.context_full) {
+        logger.log('[LLM] Context full detected — signalling for compaction');
+        throw new Error('Context is full');
+      }
       onComplete?.(fullResponse);
       return fullResponse;
     } catch (error) {
@@ -248,20 +245,23 @@ class LLMService {
     }, messages, options);
   }
 
-  /**
-   * Pass all messages through to llama.rn and let its native context shifting
-   * (ctx_shift) handle overflow. This preserves a stable prompt prefix between
-   * turns, enabling automatic KV cache reuse — the engine skips re-processing
-   * tokens it has already seen, dramatically reducing time-to-first-token.
-   *
-   * JS-side truncation was removed because it changed the prompt prefix every
-   * time old messages were dropped, which invalidated the KV cache and forced
-   * full re-computation on every turn.
-   */
+  /** No-op pass-through — lets llama.rn's native ctx_shift handle overflow for KV cache reuse. */
   private async manageContextWindow(messages: Message[], _extraReserve = 0): Promise<Message[]> {
     return messages;
   }
 
+  /** Generate a completion with a hard token cap (used for summarization, not user-facing). */
+  async generateWithMaxTokens(messages: Message[], maxTokens: number): Promise<string> {
+    if (!this.context) throw new Error('No model loaded');
+    const oaiMessages = this.convertToOAIMessages(messages);
+    const { settings } = useAppStore.getState();
+    let fullResponse = '';
+    await this.context.completion(
+      { messages: oaiMessages, ...buildCompletionParams(settings), n_predict: maxTokens },
+      (data) => { if (data.token) fullResponse += data.token; },
+    );
+    return fullResponse.trim();
+  }
   async stopGeneration(): Promise<void> {
     if (this.context) { try { await this.context.stopCompletion(); } catch (e) { logger.log('[LLM] Stop error:', e); } }
     this.isGenerating = false;

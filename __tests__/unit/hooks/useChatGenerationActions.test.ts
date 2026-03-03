@@ -103,7 +103,7 @@ jest.mock('../../../src/stores/appStore', () => ({
 
 jest.mock('../../../src/stores/chatStore', () => ({
   useChatStore: {
-    getState: () => ({ conversations: [] }),
+    getState: () => ({ conversations: [], updateCompactionState: jest.fn() }),
   },
 }));
 

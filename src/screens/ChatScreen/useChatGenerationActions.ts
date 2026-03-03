@@ -63,23 +63,25 @@ type GenerationDeps = {
   setShowSettingsPanel?: SetState<boolean>;
   ensureModelLoaded: () => Promise<void>;
 };
+/** Prepend system prompt + compaction summary (if persisted) to a prefix array. Returns messages after cutoff. */
+function applyCompactionPrefix(conversation: any, systemPrompt: string, messages: Message[]): { prefix: Message[]; filtered: Message[] } {
+  const prefix: Message[] = [{ id: 'system', role: 'system', content: systemPrompt, timestamp: 0 }];
+  let filtered = messages;
+  if (conversation?.compactionSummary && conversation?.compactionCutoffMessageId) {
+    prefix.push({ id: 'compaction-summary', role: 'system', content: `[Previous conversation summary]\n${conversation.compactionSummary}`, timestamp: 0 });
+    const cutoffIdx = messages.findIndex(m => m.id === conversation.compactionCutoffMessageId);
+    if (cutoffIdx !== -1) filtered = messages.slice(cutoffIdx + 1);
+  }
+  return { prefix, filtered };
+}
 
-function buildMessagesForContext(
-  conversationId: string,
-  messageText: string,
-  systemPrompt: string,
-): Message[] {
+function buildMessagesForContext(conversationId: string, messageText: string, systemPrompt: string): Message[] {
   const conversation = useChatStore.getState().conversations.find(c => c.id === conversationId);
-  const conversationMessages = (conversation?.messages || []).filter(m => !m.isSystemInfo);
-  const lastUserMsg = conversationMessages.at(-1);
-  const userMessageForContext = (lastUserMsg?.role === 'user'
-    ? { ...lastUserMsg, content: messageText }
-    : lastUserMsg) as Message;
-  return [
-    { id: 'system', role: 'system', content: systemPrompt, timestamp: 0 },
-    ...conversationMessages.slice(0, -1),
-    userMessageForContext,
-  ];
+  const allMessages = (conversation?.messages || []).filter(m => !m.isSystemInfo);
+  const { prefix, filtered } = applyCompactionPrefix(conversation, systemPrompt, allMessages);
+  const lastMsg = filtered.at(-1);
+  const userMessageForContext = (lastMsg?.role === 'user' ? { ...lastMsg, content: messageText } : lastMsg) as Message;
+  return [...prefix, ...filtered.slice(0, -1), userMessageForContext];
 }
 
 export async function shouldRouteToImageGenerationFn(
@@ -181,7 +183,15 @@ async function generateWithCompactionRetry(
     if (!contextCompactionService.isContextFullError(error)) throw error;
     logger.log('[ChatGen] Context full — compacting');
     await llmService.stopGeneration().catch(() => {});
-    await gen(await contextCompactionService.compact(opts.id, opts.prompt, opts.messages));
+    const conversation = useChatStore.getState().conversations.find(c => c.id === opts.id);
+    const previousSummary = conversation?.compactionSummary;
+    const compacted = await contextCompactionService.compact({ conversationId: opts.id, systemPrompt: opts.prompt, allMessages: opts.messages, previousSummary }).catch(async () => {
+      logger.log('[ChatGen] Compaction failed — falling back to last 2 messages');
+      await llmService.clearKVCache(true).catch(() => {});
+      const recent = opts.messages.filter(m => m.role !== 'system').slice(-2);
+      return [{ id: 'system', role: 'system', content: opts.prompt, timestamp: 0 } as Message, ...recent];
+    });
+    await gen(compacted);
   }
 }
 
@@ -204,7 +214,9 @@ export async function startGenerationFn(deps: GenerationDeps, call: StartGenerat
   try {
     await generateWithCompactionRetry({ id: targetConversationId, prompt: systemPrompt, messages: messagesForContext }, enabledTools);
   } catch (error: any) {
-    deps.setAlertState(showAlert('Generation Error', error.message || 'Failed to generate response'));
+    const msg = error?.message || error?.toString?.() || 'Failed to generate response';
+    logger.error('[ChatGen] Generation failed:', msg, error);
+    deps.setAlertState(showAlert('Generation Error', msg));
     deps.generatingForConversationRef.current = null;
     return;
   }
@@ -290,9 +302,7 @@ export async function executeDeleteConversationFn(
     deps.clearStreamingMessage();
   }
   const imageIds = deps.removeImagesByConversationId(deps.activeConversationId);
-  for (const imageId of imageIds) {
-    await onnxImageGeneratorService.deleteGeneratedImage(imageId);
-  }
+  for (const id of imageIds) await onnxImageGeneratorService.deleteGeneratedImage(id);
   contextCompactionService.clearSummary(deps.activeConversationId);
   deps.deleteConversation(deps.activeConversationId);
   deps.setActiveConversation(null);
@@ -312,16 +322,12 @@ export async function regenerateResponseFn(deps: GenerationDeps, call: Regenerat
   }
   if (!llmService.isModelLoaded()) return;
   deps.generatingForConversationRef.current = targetConversationId;
-  const messages = deps.activeConversation?.messages || [];
-  const messageIndex = messages.findIndex((m: Message) => m.id === userMessage.id);
-  const messagesUpToUser = messages.slice(0, messageIndex + 1);
-  const systemPrompt = deps.activeProject?.systemPrompt
-    || deps.settings.systemPrompt
-    || APP_CONFIG.defaultSystemPrompt;
-  const messagesForContext: Message[] = [
-    { id: 'system', role: 'system', content: systemPrompt, timestamp: 0 },
-    ...messagesUpToUser,
-  ];
+  const conversation = useChatStore.getState().conversations.find(c => c.id === targetConversationId);
+  const messages = (conversation?.messages || []).filter((m: Message) => !m.isSystemInfo);
+  const messagesUpToUser = messages.slice(0, messages.findIndex((m: Message) => m.id === userMessage.id) + 1);
+  const systemPrompt = deps.activeProject?.systemPrompt || deps.settings.systemPrompt || APP_CONFIG.defaultSystemPrompt;
+  const { prefix, filtered } = applyCompactionPrefix(conversation, systemPrompt, messagesUpToUser);
+  const messagesForContext = [...prefix, ...filtered];
   try {
     await generateWithCompactionRetry({ id: targetConversationId, prompt: systemPrompt, messages: messagesForContext }, []);
   } catch (error: any) {

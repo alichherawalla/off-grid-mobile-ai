@@ -68,7 +68,7 @@ function applyCompactionPrefix(conversation: any, systemPrompt: string, messages
   const prefix: Message[] = [{ id: 'system', role: 'system', content: systemPrompt, timestamp: 0 }];
   let filtered = messages;
   if (conversation?.compactionSummary && conversation?.compactionCutoffMessageId) {
-    prefix.push({ id: 'compaction-summary', role: 'system', content: `[Previous conversation summary]\n${conversation.compactionSummary}`, timestamp: 0 });
+    prefix.push({ id: 'compaction-summary', role: 'assistant', content: `[Previous conversation summary]\n${conversation.compactionSummary}`, timestamp: 0 });
     const cutoffIdx = messages.findIndex(m => m.id === conversation.compactionCutoffMessageId);
     if (cutoffIdx !== -1) filtered = messages.slice(cutoffIdx + 1);
   }

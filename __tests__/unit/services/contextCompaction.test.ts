@@ -270,9 +270,9 @@ describe('compact', () => {
     const result = await contextCompactionService.compact({ conversationId: 'conv-1', systemPrompt: 'System', allMessages: messages });
 
     // 512 * 0.40 = 204 recent budget, each msg=200
-    // Can only fit 1 recent message
-    const nonSystemNonSummary = result.filter(m => m.role !== 'system');
-    expect(nonSystemNonSummary.length).toBe(1);
+    // Can only fit 1 recent message (exclude system + compaction summary)
+    const contentMessages = result.filter(m => m.role !== 'system' && m.id !== 'compaction-summary');
+    expect(contentMessages.length).toBe(1);
   });
 
   it('falls back to char estimate when tokenizer fails', async () => {

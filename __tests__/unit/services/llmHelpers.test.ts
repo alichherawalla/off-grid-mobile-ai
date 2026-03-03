@@ -1,6 +1,6 @@
-import { getMaxContextForDevice, getGpuLayersForDevice } from '../../../src/services/llmHelpers';
+import { getMaxContextForDevice, getGpuLayersForDevice, BYTES_PER_GB } from '../../../src/services/llmHelpers';
 
-const GB = 1024 * 1024 * 1024;
+const GB = BYTES_PER_GB;
 
 describe('getMaxContextForDevice', () => {
   it('caps at 2048 for 3GB RAM', () => {

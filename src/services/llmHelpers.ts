@@ -262,8 +262,10 @@ export async function fitMessagesInBudget(
  * Returns the maximum safe context length based on device RAM.
  * Prevents OOM crashes on low-RAM devices (e.g. iPhone XS with 4GB).
  */
+export const BYTES_PER_GB = 1024 * 1024 * 1024;
+
 export function getMaxContextForDevice(totalMemoryBytes: number): number {
-  const totalGB = totalMemoryBytes / (1024 * 1024 * 1024);
+  const totalGB = totalMemoryBytes / BYTES_PER_GB;
   if (totalGB <= 6) return 2048;
   if (totalGB <= 8) return 4096;
   return 8192;
@@ -276,7 +278,7 @@ export function getMaxContextForDevice(totalMemoryBytes: number): number {
  * Skip GPU entirely on these devices to prevent the uncatchable crash.
  */
 export function getGpuLayersForDevice(totalMemoryBytes: number, requestedLayers: number): number {
-  const totalGB = totalMemoryBytes / (1024 * 1024 * 1024);
+  const totalGB = totalMemoryBytes / BYTES_PER_GB;
   if (totalGB <= 4) return 0;
   return requestedLayers;
 }

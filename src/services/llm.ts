@@ -9,7 +9,7 @@ import {
   initMultimodal, checkContextMultimodal,
   recordGenerationStats,
   hashString, ensureSessionCacheDir, getSessionPath, buildModelParams,
-  buildCompletionParams, createThinkInjector, getMaxContextForDevice, getGpuLayersForDevice,
+  buildCompletionParams, createThinkInjector, getMaxContextForDevice, getGpuLayersForDevice, BYTES_PER_GB,
 } from './llmHelpers';
 import { hardwareService } from './hardware';
 import { formatLlamaMessages, extractImageUris, buildOAIMessages } from './llmMessages';
@@ -99,7 +99,7 @@ class LLMService {
     const deviceInfo = await hardwareService.getDeviceInfo();
     const safeGpuLayers = getGpuLayersForDevice(deviceInfo.totalMemory, params.nGpuLayers);
     if (safeGpuLayers !== params.nGpuLayers) {
-      logger.log(`[LLM] Low RAM (${(deviceInfo.totalMemory / (1024 * 1024 * 1024)).toFixed(1)}GB), GPU layers ${params.nGpuLayers} → ${safeGpuLayers}`);
+      logger.log(`[LLM] Low RAM (${(deviceInfo.totalMemory / BYTES_PER_GB).toFixed(1)}GB), GPU layers ${params.nGpuLayers} → ${safeGpuLayers}`);
     }
     const initial = await initContextWithFallback(params.baseParams, params.ctxLen, safeGpuLayers);
     const modelMax = getModelMaxContext(initial.context);
@@ -127,7 +127,7 @@ class LLMService {
     }
     const devInfo = useAppStore.getState().deviceInfo;
     const mem = devInfo?.totalMemory ?? 0;
-    const useGpuForClip = Platform.OS === 'ios' && !devInfo?.isEmulator && !(mem > 0 && mem <= 4 * 1024 * 1024 * 1024);
+    const useGpuForClip = Platform.OS === 'ios' && !devInfo?.isEmulator && mem > 4 * BYTES_PER_GB;
     logger.log('[LLM] Calling initMultimodal, use_gpu:', useGpuForClip);
     const { initialized, support } = await initMultimodal(this.context, mmProjPath, useGpuForClip);
     this.multimodalInitialized = initialized;
@@ -263,16 +263,12 @@ class LLMService {
   }
 
   async stopGeneration(): Promise<void> {
-    if (this.context) {
-      try { await this.context.stopCompletion(); }
-      catch (e) { logger.log('[LLM] Stop completion error (may be already stopped):', e); }
-    }
+    if (this.context) { try { await this.context.stopCompletion(); } catch (e) { logger.log('[LLM] Stop error:', e); } }
     this.isGenerating = false;
   }
   async clearKVCache(clearData: boolean = false): Promise<void> {
     if (!this.context || this.isGenerating) return;
-    try { await (this.context as any).clearCache(clearData); logger.log('[LLM] KV cache cleared'); }
-    catch (e) { logger.log('[LLM] Failed to clear KV cache:', e); }
+    try { await (this.context as any).clearCache(clearData); } catch (e) { logger.log('[LLM] Clear cache error:', e); }
   }
   getEstimatedMemoryUsage(): { contextMemoryMB: number; totalEstimatedMB: number } {
     if (!this.context) return { contextMemoryMB: 0, totalEstimatedMB: 0 };
@@ -296,10 +292,17 @@ class LLMService {
   async getModelInfo(): Promise<{ contextLength: number; vocabSize: number } | null> {
     return this.context ? { contextLength: APP_CONFIG.maxContextLength, vocabSize: 0 } : null;
   }
-  async tokenize(text: string): Promise<number[]> { if (!this.context) throw new Error('No model loaded'); return (await this.context.tokenize(text)).tokens || []; }
-  async getTokenCount(text: string): Promise<number> { if (!this.context) throw new Error('No model loaded'); return (await this.context.tokenize(text)).tokens?.length || 0; }
+  async tokenize(text: string): Promise<number[]> {
+    if (!this.context) throw new Error('No model loaded');
+    return (await this.context.tokenize(text)).tokens || [];
+  }
+  async getTokenCount(text: string): Promise<number> {
+    if (!this.context) throw new Error('No model loaded');
+    return (await this.context.tokenize(text)).tokens?.length || 0;
+  }
   async estimateContextUsage(messages: Message[]): Promise<{ tokenCount: number; percentUsed: number; willFit: boolean }> {
-    const prompt = this.formatMessages(messages); const tokenCount = await this.getTokenCount(prompt);
+    const prompt = this.formatMessages(messages);
+    const tokenCount = await this.getTokenCount(prompt);
     const ctxLen = this.currentSettings.contextLength || APP_CONFIG.maxContextLength;
     return { tokenCount, percentUsed: (tokenCount / ctxLen) * 100, willFit: tokenCount < ctxLen * 0.9 };
   }
@@ -307,15 +310,15 @@ class LLMService {
 
   async getContextDebugInfo(messages: Message[]) {
     const managed = await this.manageContextWindow(messages);
-    const formatted = this.formatMessages(managed);
-    let estimatedTokens = 0;
-    try { if (this.context) estimatedTokens = (await this.context.tokenize(formatted)).tokens?.length || 0; }
-    catch { estimatedTokens = Math.ceil(formatted.length / 4); }
-    const sysCount = (msgs: Message[]) => msgs.filter(m => m.role === 'system').length;
-    const truncated = (messages.length - sysCount(messages)) - (managed.length - sysCount(managed));
-    const ctxLen = this.currentSettings.contextLength || APP_CONFIG.maxContextLength;
-    return { originalMessageCount: messages.length, managedMessageCount: managed.length, truncatedCount: truncated,
-      formattedPrompt: formatted, estimatedTokens, maxContextLength: ctxLen, contextUsagePercent: (estimatedTokens / ctxLen) * 100 };
+    const fmt = this.formatMessages(managed);
+    let tokens = 0;
+    try { if (this.context) tokens = (await this.context.tokenize(fmt)).tokens?.length || 0; }
+    catch { tokens = Math.ceil(fmt.length / 4); }
+    const sys = (m: Message[]) => m.filter(x => x.role === 'system').length;
+    const ctx = this.currentSettings.contextLength || APP_CONFIG.maxContextLength;
+    return { originalMessageCount: messages.length, managedMessageCount: managed.length,
+      truncatedCount: (messages.length - sys(messages)) - (managed.length - sys(managed)),
+      formattedPrompt: fmt, estimatedTokens: tokens, maxContextLength: ctx, contextUsagePercent: (tokens / ctx) * 100 };
   }
   updatePerformanceSettings(settings: Partial<LLMPerformanceSettings>): void {
     this.currentSettings = { ...this.currentSettings, ...settings };

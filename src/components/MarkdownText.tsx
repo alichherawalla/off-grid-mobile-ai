@@ -5,6 +5,21 @@ import { useTheme } from '../theme';
 import type { ThemeColors } from '../theme';
 import { TYPOGRAPHY, SPACING, FONTS } from '../constants';
 
+/**
+ * Escape asterisks used as multiplication operators (digit*digit) so
+ * markdown-it doesn't treat them as emphasis markers.
+ * Applied repeatedly to handle chains like 5*5*5*5.
+ */
+const DIGIT_STAR_DIGIT = /(\d)\*(\d)/g;
+
+export function preprocessMarkdown(text: string): string {
+  // Two passes handle adjacent matches that overlap (e.g. 5*5*5 → first
+  // pass catches 5\*5*5, second pass catches 5\*5\*5).
+  let result = text.replace(DIGIT_STAR_DIGIT, '$1\\*$2');
+  result = result.replace(DIGIT_STAR_DIGIT, '$1\\*$2');
+  return result;
+}
+
 interface MarkdownTextProps {
   children: string;
   dimmed?: boolean;
@@ -22,8 +37,12 @@ export function MarkdownText({ children, dimmed }: MarkdownTextProps) {
     return false;
   }, []);
 
+  const processed = useMemo(() => preprocessMarkdown(children), [children]);
+
   return (
-    <Markdown style={markdownStyles} onLinkPress={handleLinkPress}>{children}</Markdown>
+    <Markdown style={markdownStyles} onLinkPress={handleLinkPress}>
+      {processed}
+    </Markdown>
   );
 }
 
@@ -154,6 +173,7 @@ function createMarkdownStyles(colors: ThemeColors, dimmed?: boolean) {
     link: {
       color: colors.primary,
       textDecorationLine: 'underline' as const,
+      flexShrink: 1,
     },
     paragraph: {
       marginTop: 0,

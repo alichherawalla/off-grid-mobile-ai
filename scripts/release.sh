@@ -79,14 +79,14 @@ NOTES_FILE="$ROOT_DIR/release-notes.md"
 {
   echo "## What's Changed in v${NEW_VERSION}"
   echo ""
-  [ -n "$FEATURES" ]   && echo "### Features"      && echo -e "$FEATURES"
-  [ -n "$FIXES" ]      && echo "### Bug Fixes"      && echo -e "$FIXES"
-  [ -n "$REFACTORS" ]  && echo "### Refactors"      && echo -e "$REFACTORS"
-  [ -n "$CHORES" ]     && echo "### Chores"          && echo -e "$CHORES"
-  [ -n "$TESTS" ]      && echo "### Tests"           && echo -e "$TESTS"
-  [ -n "$DOCS" ]       && echo "### Documentation"   && echo -e "$DOCS"
-  [ -n "$CI_CHANGES" ] && echo "### CI/CD"           && echo -e "$CI_CHANGES"
-  [ -n "$OTHER" ]      && echo "### Other"           && echo -e "$OTHER"
+  [ -n "$FEATURES" ]   && echo "### Features"      && printf '%b' "$FEATURES"
+  [ -n "$FIXES" ]      && echo "### Bug Fixes"      && printf '%b' "$FIXES"
+  [ -n "$REFACTORS" ]  && echo "### Refactors"      && printf '%b' "$REFACTORS"
+  [ -n "$CHORES" ]     && echo "### Chores"          && printf '%b' "$CHORES"
+  [ -n "$TESTS" ]      && echo "### Tests"           && printf '%b' "$TESTS"
+  [ -n "$DOCS" ]       && echo "### Documentation"   && printf '%b' "$DOCS"
+  [ -n "$CI_CHANGES" ] && echo "### CI/CD"           && printf '%b' "$CI_CHANGES"
+  [ -n "$OTHER" ]      && echo "### Other"           && printf '%b' "$OTHER"
   echo "---"
   echo "**Full Changelog**: https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/compare/${LAST_TAG:-v0.0.0}...v${NEW_VERSION}"
 } > "$NOTES_FILE"
@@ -97,9 +97,7 @@ echo ""
 
 # ── 3. Build APK ───────────────────────────────────────────────────
 info "Building release APK..."
-cd android
-./gradlew assembleRelease
-cd "$ROOT_DIR"
+(cd android && ./gradlew assembleRelease)
 
 APK_SRC="android/app/build/outputs/apk/release/app-release.apk"
 APK_DST="android/app/build/outputs/apk/release/OffgridMobile-v${NEW_VERSION}.apk"
@@ -109,9 +107,7 @@ info "APK ready: $APK_DST"
 
 # ── 4. Build AAB ───────────────────────────────────────────────────
 info "Building release AAB..."
-cd android
-./gradlew bundleRelease
-cd "$ROOT_DIR"
+(cd android && ./gradlew bundleRelease)
 
 AAB_SRC="android/app/build/outputs/bundle/release/app-release.aab"
 AAB_DST="android/app/build/outputs/bundle/release/OffgridMobile-v${NEW_VERSION}.aab"
@@ -132,8 +128,7 @@ xcodebuild archive \
   -archivePath "$ARCHIVE_PATH" \
   -destination "generic/platform=iOS" \
   CODE_SIGN_IDENTITY=- \
-  AD_HOC_CODE_SIGNING_ALLOWED=YES \
-  | tail -5
+  AD_HOC_CODE_SIGNING_ALLOWED=YES
 
 [ -d "$ARCHIVE_PATH" ] || error "iOS archive not found at $ARCHIVE_PATH"
 info "iOS archive ready: $ARCHIVE_PATH"

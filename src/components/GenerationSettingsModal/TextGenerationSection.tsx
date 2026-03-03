@@ -64,10 +64,10 @@ const SETTINGS_CONFIG: SettingConfig[] = [
     key: 'contextLength',
     label: 'Context Length',
     min: 512,
-    max: 32768,
-    step: 512,
-    format: (v) => v >= 1024 ? `${(v / 1024).toFixed(1)}K` : v.toString(),
-    description: 'Max conversation memory (requires model reload)',
+    max: 131072,
+    step: 1024,
+    format: (v) => v >= 1024 ? `${(v / 1024).toFixed(0)}K` : v.toString(),
+    description: 'KV cache size — larger uses more RAM (requires reload)',
   },
 ];
 

@@ -26,15 +26,17 @@ export function getOptimalBatchSize(): number {
   return DEFAULT_BATCH;
 }
 
+const REPACKABLE_QUANTS = ['q4_0', 'iq4_nl'];
+
 /**
- * Detect if a model uses repackable quantization formats (Q4_0, IQ4_NL).
+ * Detect if a model uses repackable quantization formats.
  * For these formats, disabling mmap allows llama.cpp to repack weights into
  * a more efficient layout at load time, improving inference speed.
  */
 export function shouldDisableMmap(modelPath: string): boolean {
   if (Platform.OS !== 'android') return false;
   const lower = modelPath.toLowerCase();
-  return lower.includes('q4_0') || lower.includes('iq4_nl');
+  return REPACKABLE_QUANTS.some(q => lower.includes(q));
 }
 
 export function hashString(str: string): string {
@@ -268,6 +270,7 @@ export function buildCompletionParams(settings: {
     top_p: settings.topP ?? 0.95,
     penalty_repeat: settings.repeatPenalty ?? 1.1,
     stop: STOP_TOKENS,
+    ctx_shift: true,
   };
 }
 

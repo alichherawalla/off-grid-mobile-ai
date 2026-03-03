@@ -2083,21 +2083,52 @@ describe('LLMService', () => {
   // Auto context scaling
   // ========================================================================
   describe('auto context scaling', () => {
-    it('scales context to model max when user is on default setting', async () => {
+    /**
+     * Helper: sets up mocks for auto context scaling tests.
+     * Creates mock contexts with the given model context length,
+     * wires up initLlama to return them, and sets the user's contextLength setting.
+     * Returns the created mock contexts for assertions.
+     */
+    function setupScalingTest({
+      modelContextLength,
+      userContextLength,
+      contextCount = 1,
+    }: {
+      modelContextLength: string;
+      userContextLength: number;
+      contextCount?: number;
+    }) {
       mockedRNFS.exists.mockResolvedValue(true);
-      const ctx1 = createMockLlamaContext({
-        model: { metadata: { 'llama.context_length': '4096' } },
-      });
-      const ctx2 = createMockLlamaContext({
-        model: { metadata: { 'llama.context_length': '4096' } },
-      });
-      mockedInitLlama
-        .mockResolvedValueOnce(ctx1 as any)
-        .mockResolvedValueOnce(ctx2 as any);
 
-      // User is on default contextLength (2048)
+      const contexts = Array.from({ length: contextCount }, () =>
+        createMockLlamaContext({
+          model: { metadata: { 'llama.context_length': modelContextLength } },
+        }),
+      );
+
+      if (contextCount === 1) {
+        mockedInitLlama.mockResolvedValue(contexts[0] as any);
+      } else {
+        contexts.forEach((ctx) =>
+          mockedInitLlama.mockResolvedValueOnce(ctx as any),
+        );
+      }
+
       useAppStore.setState({
-        settings: { ...useAppStore.getState().settings, contextLength: 2048 },
+        settings: {
+          ...useAppStore.getState().settings,
+          contextLength: userContextLength,
+        },
+      });
+
+      return contexts;
+    }
+
+    it('scales context to model max when user is on default setting', async () => {
+      const [ctx1] = setupScalingTest({
+        modelContextLength: '4096',
+        userContextLength: 2048,
+        contextCount: 2,
       });
 
       await llmService.loadModel('/models/test.gguf');
@@ -2112,15 +2143,9 @@ describe('LLMService', () => {
     });
 
     it('does not scale when user set a custom context length', async () => {
-      mockedRNFS.exists.mockResolvedValue(true);
-      const ctx = createMockLlamaContext({
-        model: { metadata: { 'llama.context_length': '4096' } },
-      });
-      mockedInitLlama.mockResolvedValue(ctx as any);
-
-      // User explicitly set 1024
-      useAppStore.setState({
-        settings: { ...useAppStore.getState().settings, contextLength: 1024 },
+      setupScalingTest({
+        modelContextLength: '4096',
+        userContextLength: 1024,
       });
 
       await llmService.loadModel('/models/test.gguf');
@@ -2130,19 +2155,10 @@ describe('LLMService', () => {
     });
 
     it('caps auto-scaled context at 4096', async () => {
-      mockedRNFS.exists.mockResolvedValue(true);
-      const ctx1 = createMockLlamaContext({
-        model: { metadata: { 'llama.context_length': '131072' } },
-      });
-      const ctx2 = createMockLlamaContext({
-        model: { metadata: { 'llama.context_length': '131072' } },
-      });
-      mockedInitLlama
-        .mockResolvedValueOnce(ctx1 as any)
-        .mockResolvedValueOnce(ctx2 as any);
-
-      useAppStore.setState({
-        settings: { ...useAppStore.getState().settings, contextLength: 2048 },
+      setupScalingTest({
+        modelContextLength: '131072',
+        userContextLength: 2048,
+        contextCount: 2,
       });
 
       await llmService.loadModel('/models/test.gguf');

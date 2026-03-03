@@ -428,12 +428,12 @@ describe('ModelSettingsScreen', () => {
     it('shows Context Length slider label and default value', () => {
       const { getByText } = renderWithSections('text');
       expect(getByText('Context Length')).toBeTruthy();
-      expect(getByText('2.0K')).toBeTruthy(); // 2048 -> 2.0K
+      expect(getByText('2K')).toBeTruthy(); // 2048 -> 2K
     });
 
     it('shows context length description', () => {
       const { getByText } = renderWithSections('text');
-      expect(getByText(/Max conversation memory/)).toBeTruthy();
+      expect(getByText(/KV cache size/)).toBeTruthy();
     });
   });
 

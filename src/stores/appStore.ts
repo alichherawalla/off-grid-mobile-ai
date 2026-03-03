@@ -45,6 +45,8 @@ interface AppState {
   setActiveModelId: (modelId: string | null) => void;
   isLoadingModel: boolean;
   setIsLoadingModel: (loading: boolean) => void;
+  modelMaxContext: number | null;
+  setModelMaxContext: (ctx: number | null) => void;
   downloadProgress: Record<string, DownloadProgressInfo>;
   setDownloadProgress: (modelId: string, progress: DownloadProgressInfo | null) => void;
   activeBackgroundDownloads: Record<number, PersistedDownloadInfo>;
@@ -150,6 +152,8 @@ export const useAppStore = create<AppState>()(
       setActiveModelId: (modelId) => set({ activeModelId: modelId }),
       isLoadingModel: false,
       setIsLoadingModel: (loading) => set({ isLoadingModel: loading }),
+      modelMaxContext: null,
+      setModelMaxContext: (ctx) => set({ modelMaxContext: ctx }),
       downloadProgress: {},
       setDownloadProgress: (modelId, progress) =>
         set((state) => {

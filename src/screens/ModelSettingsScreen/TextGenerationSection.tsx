@@ -6,10 +6,14 @@ import { useTheme, useThemedStyles } from '../../theme';
 import { useAppStore } from '../../stores';
 import { createStyles } from './styles';
 
+const FALLBACK_MAX_CONTEXT = 32768;
+const HIGH_CONTEXT_THRESHOLD = 8192;
+
 export const TextGenerationSection: React.FC = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { settings, updateSettings } = useAppStore();
+  const modelMaxContext = useAppStore((s) => s.modelMaxContext);
 
   const trackColor = { false: colors.surfaceLight, true: `${colors.primary}80` };
   const maxTokens = settings?.maxTokens || 512;
@@ -18,8 +22,9 @@ export const TextGenerationSection: React.FC = () => {
     : String(maxTokens);
   const contextLength = settings?.contextLength || 2048;
   const contextLengthLabel = contextLength >= 1024
-    ? `${(contextLength / 1024).toFixed(1)}K`
+    ? `${(contextLength / 1024).toFixed(0)}K`
     : String(contextLength);
+  const ctxSliderMax = modelMaxContext || FALLBACK_MAX_CONTEXT;
 
   return (
     <Card style={styles.section}>
@@ -121,12 +126,17 @@ export const TextGenerationSection: React.FC = () => {
           <Text style={styles.sliderLabel}>Context Length</Text>
           <Text style={styles.sliderValue}>{contextLengthLabel}</Text>
         </View>
-        <Text style={styles.sliderDesc}>Max conversation memory (requires reload)</Text>
+        <Text style={styles.sliderDesc}>KV cache size — larger uses more RAM (requires reload)</Text>
+        {contextLength > HIGH_CONTEXT_THRESHOLD && (
+          <Text style={[styles.sliderDesc, { color: colors.error }]}>
+            High context uses significant RAM and may crash on some devices
+          </Text>
+        )}
         <Slider
           style={styles.slider}
           minimumValue={512}
-          maximumValue={32768}
-          step={512}
+          maximumValue={ctxSliderMax}
+          step={1024}
           value={contextLength}
           onSlidingComplete={(value) => updateSettings({ contextLength: value })}
           minimumTrackTintColor={colors.primary}

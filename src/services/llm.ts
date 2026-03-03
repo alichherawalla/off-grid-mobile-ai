@@ -68,6 +68,7 @@ class LLMService {
       this.context = context;
       if (actualLength !== ctxLen) this.currentSettings.contextLength = actualLength;
       logContextMetadata(context, actualLength);
+      useAppStore.getState().setModelMaxContext(getModelMaxContext(context));
       Object.assign(this, captureGpuInfo(context, gpuAttemptFailed, nGpuLayers));
       logger.log(`[LLM] Native lib: ${(context as any).androidLib || 'N/A'}`);
       this.currentModelPath = modelPath;
@@ -173,6 +174,7 @@ class LLMService {
   async unloadModel(): Promise<void> {
     if (this.context) {
       await this.context.release();
+      useAppStore.getState().setModelMaxContext(null);
       Object.assign(this, {
         context: null, currentModelPath: null, multimodalSupport: null,
         multimodalInitialized: false, toolCallingSupported: false,

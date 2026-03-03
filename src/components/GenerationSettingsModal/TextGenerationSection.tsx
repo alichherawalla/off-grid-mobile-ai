@@ -13,6 +13,7 @@ interface SettingConfig {
   step: number;
   format: (value: number) => string;
   description?: string;
+  warning?: (value: number) => string | null;
 }
 
 const DEFAULT_SETTINGS: Record<string, number> = {
@@ -23,7 +24,15 @@ const DEFAULT_SETTINGS: Record<string, number> = {
   contextLength: 2048,
 };
 
-const SETTINGS_CONFIG: SettingConfig[] = [
+const FALLBACK_MAX_CONTEXT = 32768;
+const HIGH_CONTEXT_THRESHOLD = 8192;
+
+const formatContext = (v: number) => v >= 1024 ? `${(v / 1024).toFixed(0)}K` : v.toString();
+
+const contextWarning = (v: number): string | null =>
+  v > HIGH_CONTEXT_THRESHOLD ? 'High context uses significant RAM and may crash on some devices' : null;
+
+const buildSettingsConfig = (modelMaxContext: number | null): SettingConfig[] => [
   {
     key: 'temperature',
     label: 'Temperature',
@@ -64,10 +73,11 @@ const SETTINGS_CONFIG: SettingConfig[] = [
     key: 'contextLength',
     label: 'Context Length',
     min: 512,
-    max: 131072,
+    max: modelMaxContext || FALLBACK_MAX_CONTEXT,
     step: 1024,
-    format: (v) => v >= 1024 ? `${(v / 1024).toFixed(0)}K` : v.toString(),
+    format: formatContext,
     description: 'KV cache size — larger uses more RAM (requires reload)',
+    warning: contextWarning,
   },
 ];
 
@@ -81,6 +91,7 @@ const SettingSlider: React.FC<SettingSliderProps> = ({ config }) => {
   const { settings, updateSettings } = useAppStore();
   const rawValue = (settings as Record<string, unknown>)[config.key];
   const value = (rawValue ?? DEFAULT_SETTINGS[config.key]) as number;
+  const warningText = config.warning?.(value) ?? null;
 
   return (
     <View style={styles.settingGroup}>
@@ -90,6 +101,9 @@ const SettingSlider: React.FC<SettingSliderProps> = ({ config }) => {
       </View>
       {config.description && (
         <Text style={styles.settingDescription}>{config.description}</Text>
+      )}
+      {warningText && (
+        <Text style={[styles.settingDescription, { color: colors.error }]}>{warningText}</Text>
       )}
       <Slider
         style={styles.slider}
@@ -113,10 +127,12 @@ const SettingSlider: React.FC<SettingSliderProps> = ({ config }) => {
 
 export const TextGenerationSection: React.FC = () => {
   const styles = useThemedStyles(createStyles);
+  const modelMaxContext = useAppStore((s) => s.modelMaxContext);
+  const settingsConfig = buildSettingsConfig(modelMaxContext);
 
   return (
     <View style={styles.sectionCard}>
-      {SETTINGS_CONFIG.map((config) => (
+      {settingsConfig.map((config) => (
         <SettingSlider key={config.key} config={config} />
       ))}
     </View>

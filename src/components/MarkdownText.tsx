@@ -13,10 +13,13 @@ import { TYPOGRAPHY, SPACING, FONTS } from '../constants';
 const DIGIT_STAR_DIGIT = /(\d)\*(\d)/g;
 
 export function preprocessMarkdown(text: string): string {
-  // Two passes handle adjacent matches that overlap (e.g. 5*5*5 → first
-  // pass catches 5\*5*5, second pass catches 5\*5\*5).
-  let result = text.replace(DIGIT_STAR_DIGIT, '$1\\*$2');
-  result = result.replace(DIGIT_STAR_DIGIT, '$1\\*$2');
+  let result = text;
+  let prev = '';
+  // Loop until stable — handles overlapping matches in chains of any length.
+  while (result !== prev) {
+    prev = result;
+    result = result.replace(DIGIT_STAR_DIGIT, '$1\\*$2');
+  }
   return result;
 }
 

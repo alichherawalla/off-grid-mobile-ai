@@ -17,6 +17,7 @@ import {
   onnxImageGeneratorService,
   ImageGenerationState,
   buildToolSystemPromptHint,
+  contextCompactionService,
 } from '../../services';
 import { useChatStore, useProjectStore } from '../../stores';
 import { Message, MediaAttachment, Project, DownloadedModel, ModelLoadingStrategy, CacheType } from '../../types';
@@ -168,6 +169,22 @@ async function prepareContext(setDebugInfo: SetState<any>, systemPrompt: string,
   } catch (e) { logger.log('Debug info error:', e); }
 }
 
+/** Run generation; if context is full, compact old messages and retry once. */
+async function generateWithCompactionRetry(
+  opts: { id: string; prompt: string; messages: Message[] },
+  enabledTools: string[],
+): Promise<void> {
+  const gen = (msgs: Message[]) => enabledTools.length > 0
+    ? generationService.generateWithTools(opts.id, msgs, { enabledToolIds: enabledTools })
+    : generationService.generateResponse(opts.id, msgs);
+  try { await gen(opts.messages); } catch (error: any) {
+    if (!contextCompactionService.isContextFullError(error)) throw error;
+    logger.log('[ChatGen] Context full — compacting');
+    await llmService.stopGeneration().catch(() => {});
+    await gen(await contextCompactionService.compact(opts.id, opts.prompt, opts.messages));
+  }
+}
+
 export async function startGenerationFn(deps: GenerationDeps, call: StartGenerationCall): Promise<void> {
   const { setDebugInfo, targetConversationId, messageText } = call;
   if (!deps.activeModel) return;
@@ -185,16 +202,7 @@ export async function startGenerationFn(deps: GenerationDeps, call: StartGenerat
   const messagesForContext = buildMessagesForContext(targetConversationId, messageText, systemPrompt);
   await prepareContext(setDebugInfo, systemPrompt, messagesForContext);
   try {
-    if (enabledTools.length > 0) {
-      await generationService.generateWithTools(targetConversationId, messagesForContext, {
-        enabledToolIds: enabledTools,
-        onFirstToken: () => { logger.log('[ChatScreen] First token received'); },
-        onToolCallStart: (name) => { logger.log(`[ChatScreen] Tool call: ${name}`); },
-        onToolCallComplete: (name, result) => { logger.log(`[ChatScreen] Tool result: ${name} ${result.durationMs}ms`); },
-      });
-    } else {
-      await generationService.generateResponse(targetConversationId, messagesForContext);
-    }
+    await generateWithCompactionRetry({ id: targetConversationId, prompt: systemPrompt, messages: messagesForContext }, enabledTools);
   } catch (error: any) {
     deps.setAlertState(showAlert('Generation Error', error.message || 'Failed to generate response'));
     deps.generatingForConversationRef.current = null;
@@ -266,19 +274,10 @@ export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promis
 }
 
 export async function handleStopFn(deps: Pick<GenerationDeps, 'isGeneratingImage' | 'generatingForConversationRef'>): Promise<void> {
-  logger.log('[ChatScreen] handleStop called');
   deps.generatingForConversationRef.current = null;
-  try {
-    await Promise.all([
-      generationService.stopGeneration().catch(() => {}),
-      llmService.stopGeneration().catch(() => {}),
-    ]);
-  } catch (error_) {
-    logger.error('Error stopping generation:', error_);
-  }
-  if (deps.isGeneratingImage) {
-    imageGenerationService.cancelGeneration().catch(() => {});
-  }
+  try { await Promise.all([generationService.stopGeneration().catch(() => {}), llmService.stopGeneration().catch(() => {})]); }
+  catch (e) { logger.error('Error stopping generation:', e); }
+  if (deps.isGeneratingImage) imageGenerationService.cancelGeneration().catch(() => {});
 }
 
 export async function executeDeleteConversationFn(
@@ -294,6 +293,7 @@ export async function executeDeleteConversationFn(
   for (const imageId of imageIds) {
     await onnxImageGeneratorService.deleteGeneratedImage(imageId);
   }
+  contextCompactionService.clearSummary(deps.activeConversationId);
   deps.deleteConversation(deps.activeConversationId);
   deps.setActiveConversation(null);
   deps.navigation.goBack();
@@ -323,7 +323,7 @@ export async function regenerateResponseFn(deps: GenerationDeps, call: Regenerat
     ...messagesUpToUser,
   ];
   try {
-    await generationService.generateResponse(targetConversationId, messagesForContext);
+    await generateWithCompactionRetry({ id: targetConversationId, prompt: systemPrompt, messages: messagesForContext }, []);
   } catch (error: any) {
     deps.setAlertState(showAlert('Generation Error', error.message || 'Failed to generate response'));
   }

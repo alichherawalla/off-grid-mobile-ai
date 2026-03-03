@@ -6,6 +6,7 @@ import {
   llmService, modelManager, activeModelService,
   generationService, imageGenerationService,
   ImageGenerationState, hardwareService, QueuedMessage,
+  contextCompactionService,
 } from '../../services';
 import { Message, MediaAttachment, Project, DownloadedModel, DebugInfo } from '../../types';
 import { RootStackParamList } from '../../navigation/types';
@@ -44,6 +45,7 @@ export const useChatScreen = () => {
   const [imageGenState, setImageGenState] = useState<ImageGenerationState>(imageGenerationService.getState());
   const [showToolPicker, setShowToolPicker] = useState(false);
   const [supportsToolCalling, setSupportsToolCalling] = useState(false);
+  const [isCompacting, setIsCompacting] = useState(false);
   const lastMessageCountRef = useRef(0);
   const generatingForConversationRef = useRef<string | null>(null);
   const modelLoadStartTimeRef = useRef<number | null>(null);
@@ -92,7 +94,11 @@ export const useChatScreen = () => {
     setAlertState, modelLoadStartTimeRef,
   };
 
-  useEffect(() => { return imageGenerationService.subscribe(state => setImageGenState(state)); }, []);
+  useEffect(() => {
+    const unsub1 = imageGenerationService.subscribe(state => setImageGenState(state));
+    const unsub2 = contextCompactionService.subscribeCompacting(setIsCompacting);
+    return () => { unsub1(); unsub2(); };
+  }, []);
   useEffect(() => {
     return generationService.subscribe(state => {
       setQueueCount(state.queuedMessages.length);
@@ -173,32 +179,24 @@ export const useChatScreen = () => {
     setSupportsToolCalling(llmService.isModelLoaded() ? llmService.supportsToolCalling() : false);
   }, [activeModelId, isModelLoading]);
 
-  const displayMessages = getDisplayMessages(
-    activeConversation?.messages || [],
-    { isThinking, streamingMessage, isStreamingForThisConversation },
-  );
+  const displayMessages = getDisplayMessages(activeConversation?.messages || [], { isThinking, streamingMessage, isStreamingForThisConversation });
 
   useEffect(() => {
-    const prev = lastMessageCountRef.current;
-    const curr = displayMessages.length;
+    const prev = lastMessageCountRef.current, curr = displayMessages.length;
     if (curr > prev && prev > 0) setAnimateLastN(curr - prev);
     lastMessageCountRef.current = curr;
   }, [displayMessages.length]);
-
   useEffect(() => { lastMessageCountRef.current = 0; setAnimateLastN(0); }, [activeConversationId]);
 
   const startGeneration = async (targetConversationId: string, messageText: string) => {
     await startGenerationFn(genDeps, { setDebugInfo, targetConversationId, messageText });
   };
   startGenerationRef.current = startGeneration;
-
   const enabledTools = supportsToolCalling ? (settings.enabledTools || []) : [];
-
   const handleToggleTool = (toolId: string) => {
     const cur = settings.enabledTools || [];
     useAppStore.getState().updateSettings({ enabledTools: cur.includes(toolId) ? cur.filter((id: string) => id !== toolId) : [...cur, toolId] });
   };
-
   return {
     isModelLoading, loadingModel, supportsVision,
     showProjectSelector, setShowProjectSelector,
@@ -216,7 +214,7 @@ export const useChatScreen = () => {
     imageGenerationProgress: imageGenState.progress,
     imageGenerationStatus: imageGenState.status,
     imagePreviewPath: imageGenState.previewPath,
-    isStreaming, isThinking, displayMessages, downloadedModels, projects, settings,
+    isStreaming, isThinking, isCompacting, displayMessages, downloadedModels, projects, settings,
     navigation, hardwareService,
     handleSend: (text: string, attachments?: MediaAttachment[], imageMode?: 'auto' | 'force' | 'disabled') =>
       handleSendFn(genDeps, { text, attachments, imageMode, startGeneration, setDebugInfo }),

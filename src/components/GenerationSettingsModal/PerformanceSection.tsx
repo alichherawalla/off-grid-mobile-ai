@@ -296,7 +296,7 @@ const BatchSizeSlider: React.FC = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { settings, updateSettings } = useAppStore();
-  const value = settings.nBatch ?? 256;
+  const value = settings.nBatch ?? 512;
 
   return (
     <View style={styles.modeToggleContainer}>

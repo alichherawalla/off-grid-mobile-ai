@@ -41,7 +41,7 @@ describe('LLMService', () => {
     };
     (llmService as any).currentSettings = {
       nThreads: 6,
-      nBatch: 256,
+      nBatch: 512,
       contextLength: 2048,
     };
   });
@@ -586,16 +586,12 @@ describe('LLMService', () => {
       expect(contents).toContain('Q2');
     });
 
-    it('truncates old messages while keeping recent ones', async () => {
+    it('passes all messages through to llama.rn for native context shifting', async () => {
       const ctx = await setupForContextTest();
 
-      // Large context so system + recent fit, but not all messages
-      // contextLength=200, safety=0.85 → 170 tokens budget
-      // minus SYSTEM_PROMPT_RESERVE(256) + RESPONSE_RESERVE(512) → negative, so use default
-      // Instead, make context large enough to partially fit
       (llmService as any).currentSettings.contextLength = 2048;
 
-      // Create many messages to force some truncation
+      // Create many messages — all should be passed through
       const messages = [
         createSystemMessage('System prompt'),
         ...Array.from({ length: 50 }, (_, i) =>
@@ -610,32 +606,10 @@ describe('LLMService', () => {
 
       const oaiMessages = ctx.completion.mock.calls[0]![0]!.messages;
       const contents = oaiMessages.map((m: any) => m.content);
-      // The final question should always be included
+      // All messages should be present — no JS-side truncation
       expect(contents).toContain('Final question');
-      // System prompt should be preserved
+      expect(contents).toContain(`Question 0 ${'x'.repeat(100)}`);
       expect(contents.join(' ')).toContain('System prompt');
-    });
-
-    it('adds context-note when truncating messages', async () => {
-      const ctx = await setupForContextTest();
-
-      // Very small context to force truncation
-      (llmService as any).currentSettings.contextLength = 200;
-
-      const messages = [
-        createSystemMessage('System'),
-        ...Array.from({ length: 20 }, (_, i) =>
-          i % 2 === 0
-            ? createUserMessage(`Question ${i} with some longer content here`)
-            : createAssistantMessage(`Response ${i} with more content to fill`)
-        ),
-      ];
-
-      await llmService.generateResponse(messages);
-
-      const oaiMessages = ctx.completion.mock.calls[0]![0]!.messages;
-      const allContent = oaiMessages.map((m: any) => m.content).join(' ');
-      expect(allContent).toContain('earlier message(s)');
     });
   });
 
@@ -795,7 +769,7 @@ describe('LLMService', () => {
 
       const settings = llmService.getPerformanceSettings();
       expect(settings.nThreads).toBe(8);
-      expect(settings.nBatch).toBe(256); // unchanged
+      expect(settings.nBatch).toBe(512); // unchanged
     });
   });
 
@@ -1401,7 +1375,7 @@ describe('LLMService', () => {
       await llmService.loadModel('/models/test.gguf');
       await llmService.reloadWithSettings('/models/test.gguf', {
         nThreads: 4,
-        nBatch: 256,
+        nBatch: 512,
         contextLength: 2048,
       });
 
@@ -1431,7 +1405,7 @@ describe('LLMService', () => {
       await llmService.loadModel('/models/test.gguf');
       await llmService.reloadWithSettings('/models/test.gguf', {
         nThreads: 4,
-        nBatch: 256,
+        nBatch: 512,
         contextLength: 2048,
       });
 
@@ -1460,7 +1434,7 @@ describe('LLMService', () => {
       await llmService.loadModel('/models/test.gguf');
       await llmService.reloadWithSettings('/models/test.gguf', {
         nThreads: 4,
-        nBatch: 256,
+        nBatch: 512,
         contextLength: 2048,
       });
 
@@ -1489,7 +1463,7 @@ describe('LLMService', () => {
 
       await llmService.reloadWithSettings('/models/test.gguf', {
         nThreads: 4,
-        nBatch: 256,
+        nBatch: 512,
         contextLength: 2048,
       });
 
@@ -1770,8 +1744,9 @@ describe('LLMService', () => {
 
       const debugInfo = await llmService.getContextDebugInfo(messages);
 
-      expect(debugInfo.truncatedCount).toBeGreaterThan(0);
-      expect(debugInfo.managedMessageCount).toBeLessThan(debugInfo.originalMessageCount);
+      // With native context shifting, all messages are passed through
+      expect(debugInfo.managedMessageCount).toBe(debugInfo.originalMessageCount);
+      expect(debugInfo.truncatedCount).toBe(0);
     });
 
     it('uses char/4 estimation when tokenize throws in debug info', async () => {
@@ -1966,7 +1941,7 @@ describe('LLMService', () => {
       mockedInitLlama.mockResolvedValue(ctx as any);
 
       useAppStore.setState({
-        settings: { ...useAppStore.getState().settings, nThreads: 0, nBatch: 256 },
+        settings: { ...useAppStore.getState().settings, nThreads: 0, nBatch: 512 },
       });
 
       await llmService.loadModel('/models/test.gguf');
@@ -1989,9 +1964,9 @@ describe('LLMService', () => {
 
       await llmService.loadModel('/models/test.gguf');
 
-      // nBatch=0 is falsy, so getOptimalBatchSize() (returns DEFAULT_BATCH=256) is used
+      // nBatch=0 is falsy, so getOptimalBatchSize() (returns DEFAULT_BATCH=512) is used
       expect(initLlama).toHaveBeenCalledWith(
-        expect.objectContaining({ n_batch: 256 })
+        expect.objectContaining({ n_batch: 512 })
       );
     });
   });
@@ -2073,19 +2048,19 @@ describe('LLMService', () => {
       // conversationMessages.length === 0 → early return at line 537
     });
 
-    it('includes oversized last message even when it exceeds token budget', async () => {
+    it('passes all messages through regardless of size (native ctx_shift handles overflow)', async () => {
       await setupForEdgeTest();
 
-      // contextLength=2048 → availableTokens=floor(2048*0.85)-256-512=972
-      // A 4000-char message → ~1010 tokens > 972 → triggers the "always include last" fallback
       (llmService as any).currentSettings.contextLength = 2048;
       const hugeMessage = createUserMessage('x'.repeat(4000));
 
       const ctx = (llmService as any).context;
       await llmService.generateResponse([hugeMessage]);
 
-      // Completion was called — the oversized message was included despite exceeding budget
+      // Completion was called with the message — llama.rn handles overflow natively
       expect(ctx.completion).toHaveBeenCalled();
+      const oaiMessages = ctx.completion.mock.calls[0]![0]!.messages;
+      expect(oaiMessages[0].content).toBe('x'.repeat(4000));
     });
   });
 

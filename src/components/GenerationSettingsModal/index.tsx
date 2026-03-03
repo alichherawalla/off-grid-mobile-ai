@@ -18,7 +18,7 @@ const DEFAULT_SETTINGS = {
   repeatPenalty: 1.1,
   contextLength: 2048,
   nThreads: 6,
-  nBatch: 256,
+  nBatch: 512,
 };
 
 interface GenerationSettingsModalProps {

@@ -5,10 +5,9 @@ import { Message } from '../types';
 import { APP_CONFIG } from '../constants';
 import { useAppStore } from '../stores';
 import {
-  SYSTEM_PROMPT_RESERVE, RESPONSE_RESERVE, CONTEXT_SAFETY_MARGIN,
   initContextWithFallback, captureGpuInfo, logContextMetadata,
   initMultimodal, checkContextMultimodal,
-  estimateTokens, fitMessagesInBudget, recordGenerationStats,
+  recordGenerationStats,
   hashString, ensureSessionCacheDir, getSessionPath, buildModelParams,
   buildCompletionParams, createThinkInjector,
 } from './llmHelpers';
@@ -35,7 +34,7 @@ class LLMService {
   };
   private currentSettings: LLMPerformanceSettings = {
     nThreads: Platform.OS === 'android' ? 6 : 4,
-    nBatch: 256,
+    nBatch: 512,
     contextLength: 2048,
   };
   private gpuEnabled: boolean = false;
@@ -223,25 +222,18 @@ class LLMService {
     }, messages, options);
   }
 
-  private async manageContextWindow(messages: Message[], extraReserve = 0): Promise<Message[]> {
-    if (!this.context || messages.length === 0) return messages;
-    const ctxLen = this.currentSettings.contextLength || APP_CONFIG.maxContextLength;
-    const budget = Math.floor(ctxLen * CONTEXT_SAFETY_MARGIN) - SYSTEM_PROMPT_RESERVE - RESPONSE_RESERVE - extraReserve;
-    const system = messages.find(m => m.role === 'system');
-    const conv = messages.filter(m => m.role !== 'system');
-    if (!conv.length) return messages;
-    const systemTokens = system ? await estimateTokens(this.context, system.content) : 0;
-    const fitted = await fitMessagesInBudget(this.context, conv, budget - systemTokens);
-    const result: Message[] = system ? [system] : [];
-    const truncated = conv.length - fitted.length;
-    if (truncated > 0) {
-      result.push({
-        id: 'context-note', role: 'user', timestamp: 0,
-        content: `[Note: ${truncated} earlier message(s) were trimmed to fit context. Continue naturally from the recent messages.]`,
-      });
-    }
-    result.push(...fitted);
-    return result;
+  /**
+   * Pass all messages through to llama.rn and let its native context shifting
+   * (ctx_shift) handle overflow. This preserves a stable prompt prefix between
+   * turns, enabling automatic KV cache reuse — the engine skips re-processing
+   * tokens it has already seen, dramatically reducing time-to-first-token.
+   *
+   * JS-side truncation was removed because it changed the prompt prefix every
+   * time old messages were dropped, which invalidated the KV cache and forced
+   * full re-computation on every turn.
+   */
+  private async manageContextWindow(messages: Message[], _extraReserve = 0): Promise<Message[]> {
+    return messages;
   }
 
   async stopGeneration(): Promise<void> {

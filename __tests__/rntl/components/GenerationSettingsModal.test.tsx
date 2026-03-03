@@ -82,9 +82,9 @@ const defaultSettings = {
   repeatPenalty: 1.1,
   contextLength: 2048,
   nThreads: 6,
-  nBatch: 256,
-  enableGpu: false,
-  gpuLayers: 6,
+  nBatch: 512,
+  enableGpu: true,
+  gpuLayers: 99,
   flashAttn: false,
   modelLoadingStrategy: 'memory',
   showGenerationDetails: false,
@@ -238,7 +238,7 @@ describe('GenerationSettingsModal', () => {
       repeatPenalty: 1.1,
       contextLength: 2048,
       nThreads: 6,
-      nBatch: 256,
+      nBatch: 512,
     });
   });
 

@@ -450,7 +450,7 @@ describe('ModelSettingsScreen', () => {
     it('shows Batch Size slider label and default value', () => {
       const { getByText } = renderWithSections('performance');
       expect(getByText('Batch Size')).toBeTruthy();
-      expect(getByText('256')).toBeTruthy();
+      expect(getByText('512')).toBeTruthy();
     });
 
     it('shows Model Loading Strategy label', () => {
@@ -989,11 +989,11 @@ describe('ModelSettingsScreen', () => {
       expect(s.temperature).toBe(0.7);
       expect(s.maxTokens).toBe(1024);
       expect(s.nThreads).toBe(6);
-      expect(s.nBatch).toBe(256);
+      expect(s.nBatch).toBe(512);
       expect(s.cacheType).toBe('q8_0');
       expect(s.flashAttn).toBe(true);
-      expect(s.enableGpu).toBe(false);
-      expect(s.gpuLayers).toBe(1);
+      expect(s.enableGpu).toBe(true);
+      expect(s.gpuLayers).toBe(99);
     });
   });
 });

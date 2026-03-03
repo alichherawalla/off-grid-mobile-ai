@@ -13,8 +13,8 @@ import { Platform } from 'react-native';
 import logger from '../utils/logger';
 
 const DEFAULT_THREADS = Platform.OS === 'android' ? 6 : 4;
-const DEFAULT_BATCH = 256;
-export const DEFAULT_GPU_LAYERS = Platform.OS === 'ios' ? 99 : 0;
+const DEFAULT_BATCH = 512;
+export const DEFAULT_GPU_LAYERS = 99;
 
 export function getOptimalThreadCount(): number {
   return DEFAULT_THREADS;
@@ -22,6 +22,17 @@ export function getOptimalThreadCount(): number {
 
 export function getOptimalBatchSize(): number {
   return DEFAULT_BATCH;
+}
+
+/**
+ * Detect if a model uses repackable quantization formats (Q4_0, IQ4_NL).
+ * For these formats, disabling mmap allows llama.cpp to repack weights into
+ * a more efficient layout at load time, improving inference speed.
+ */
+export function shouldDisableMmap(modelPath: string): boolean {
+  if (Platform.OS !== 'android') return false;
+  const lower = modelPath.toLowerCase();
+  return lower.includes('q4_0') || lower.includes('iq4_nl');
 }
 
 export function hashString(str: string): string {
@@ -71,10 +82,11 @@ export function buildModelParams(
   const requestedCache = settings.cacheType || (useFlashAttn ? 'q8_0' : 'f16');
   const needsF16 = !useFlashAttn || (Platform.OS === 'android' && nGpuLayers > 0);
   const cacheType = needsF16 && requestedCache !== 'f16' ? 'f16' : requestedCache;
+  const useMmap = !shouldDisableMmap(modelPath);
   return {
     baseParams: {
-      model: modelPath, use_mlock: false, n_batch: nBatch, n_threads: nThreads,
-      use_mmap: true, vocab_only: false, flash_attn: useFlashAttn,
+      model: modelPath, use_mlock: false, n_batch: nBatch, n_ubatch: nBatch, n_threads: nThreads,
+      use_mmap: useMmap, vocab_only: false, flash_attn: useFlashAttn,
       cache_type_k: cacheType, cache_type_v: cacheType,
     },
     nThreads, nBatch, ctxLen, nGpuLayers,

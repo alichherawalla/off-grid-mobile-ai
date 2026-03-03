@@ -40,7 +40,7 @@ describe('LLMService', () => {
       lastTokenCount: 0,
     };
     (llmService as any).currentSettings = {
-      nThreads: 6,
+      nThreads: 4,
       nBatch: 512,
       contextLength: 2048,
     };

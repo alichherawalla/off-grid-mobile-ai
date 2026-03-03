@@ -17,7 +17,7 @@ const DEFAULT_SETTINGS = {
   topP: 0.9,
   repeatPenalty: 1.1,
   contextLength: 2048,
-  nThreads: 6,
+  nThreads: 4,
   nBatch: 512,
 };
 

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DeviceInfo, DownloadedModel, ModelRecommendation, ONNXImageModel, ImageGenerationMode, AutoDetectMethod, ModelLoadingStrategy, CacheType, GeneratedImage, PersistedDownloadInfo } from '../types';
 
@@ -96,7 +97,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   topP: 0.9,
   repeatPenalty: 1.1,
   contextLength: 2048,
-  nThreads: 6,
+  nThreads: 4,
   nBatch: 512,
   imageGenerationMode: 'auto' as ImageGenerationMode,
   autoDetectMethod: 'pattern' as AutoDetectMethod,
@@ -108,7 +109,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   imageHeight: 512,
   enhanceImagePrompts: false,
   modelLoadingStrategy: 'performance' as ModelLoadingStrategy,
-  enableGpu: true,
+  enableGpu: Platform.OS === 'ios',
   gpuLayers: 99,
   flashAttn: true,
   cacheType: 'q8_0' as CacheType,

@@ -81,7 +81,7 @@ const defaultSettings = {
   topP: 0.9,
   repeatPenalty: 1.1,
   contextLength: 2048,
-  nThreads: 6,
+  nThreads: 4,
   nBatch: 512,
   enableGpu: false,
   gpuLayers: 99,
@@ -237,7 +237,7 @@ describe('GenerationSettingsModal', () => {
       topP: 0.9,
       repeatPenalty: 1.1,
       contextLength: 2048,
-      nThreads: 6,
+      nThreads: 4,
       nBatch: 512,
     });
   });

@@ -12,7 +12,9 @@ export const CONTEXT_SAFETY_MARGIN = 0.85;
 import { Platform } from 'react-native';
 import logger from '../utils/logger';
 
-const DEFAULT_THREADS = Platform.OS === 'android' ? 6 : 4;
+// Use 4 threads by default to target only performance cores.
+// Over-threading onto efficiency cores (A520) slows down inference.
+const DEFAULT_THREADS = 4;
 const DEFAULT_BATCH = 512;
 export const DEFAULT_GPU_LAYERS = Platform.OS === 'ios' ? 99 : 0;
 

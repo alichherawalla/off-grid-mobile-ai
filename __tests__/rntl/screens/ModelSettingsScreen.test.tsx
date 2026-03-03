@@ -444,7 +444,7 @@ describe('ModelSettingsScreen', () => {
     it('shows CPU Threads slider label and default value', () => {
       const { getByText } = renderWithSections('performance');
       expect(getByText('CPU Threads')).toBeTruthy();
-      expect(getByText('6')).toBeTruthy();
+      expect(getByText('4')).toBeTruthy();
     });
 
     it('shows Batch Size slider label and default value', () => {
@@ -988,7 +988,7 @@ describe('ModelSettingsScreen', () => {
       const s = useAppStore.getState().settings;
       expect(s.temperature).toBe(0.7);
       expect(s.maxTokens).toBe(1024);
-      expect(s.nThreads).toBe(6);
+      expect(s.nThreads).toBe(4);
       expect(s.nBatch).toBe(512);
       expect(s.cacheType).toBe('q8_0');
       expect(s.flashAttn).toBe(true);

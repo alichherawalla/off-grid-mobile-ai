@@ -172,17 +172,7 @@ export const RECOMMENDED_MODELS = [
     minRam: 8,
     type: 'vision' as const,
     org: 'Qwen',
-  },
-  // --- Code ---
-  {
-    id: 'Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF',
-    name: 'Qwen 3 Coder A3B',
-    params: 3,
-    description: 'MoE coding model, only 3B active params',
-    minRam: 6,
-    type: 'code' as const,
-    org: 'Qwen',
-  },
+  }
 ];
 
 // Model organization filter options

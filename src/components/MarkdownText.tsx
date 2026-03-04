@@ -1,9 +1,45 @@
 import React, { useCallback, useMemo } from 'react';
-import { Linking } from 'react-native';
+import { Linking, Pressable, Text, StyleSheet } from 'react-native';
 import Markdown from '@ronradtke/react-native-markdown-display';
 import { useTheme } from '../theme';
 import type { ThemeColors } from '../theme';
 import { TYPOGRAPHY, SPACING, FONTS } from '../constants';
+
+/**
+ * Escape asterisks used as multiplication operators (digit*digit) so
+ * markdown-it doesn't treat them as emphasis markers.
+ * Applied repeatedly to handle chains like 5*5*5*5.
+ */
+const DIGIT_STAR_DIGIT = /(\d)\*(\d)/g;
+
+export function preprocessMarkdown(text: string): string {
+  let result = text;
+  let prev = '';
+  // Loop until stable — handles overlapping matches in chains of any length.
+  while (result !== prev) {
+    prev = result;
+    result = result.replace(DIGIT_STAR_DIGIT, '$1\\*$2');
+  }
+  return result;
+}
+
+const linkWrapperStyles = StyleSheet.create({
+  pressable: { flexShrink: 1, paddingBottom: 6 },
+});
+
+/** Custom link rule that constrains the Pressable wrapper width */
+function createLinkRule(onPress: (url: string) => void) {
+  return (node: any, renderChildren: any, _parent: any) => (
+    <Pressable
+      key={node.key}
+      accessibilityRole="link"
+      style={linkWrapperStyles.pressable}
+      onPress={() => onPress(node.attributes?.href ?? '')}
+    >
+      <Text>{renderChildren}</Text>
+    </Pressable>
+  );
+}
 
 interface MarkdownTextProps {
   children: string;
@@ -22,8 +58,13 @@ export function MarkdownText({ children, dimmed }: MarkdownTextProps) {
     return false;
   }, []);
 
+  const processed = useMemo(() => preprocessMarkdown(children), [children]);
+  const rules = useMemo(() => ({ link: createLinkRule(handleLinkPress) }), [handleLinkPress]);
+
   return (
-    <Markdown style={markdownStyles} onLinkPress={handleLinkPress}>{children}</Markdown>
+    <Markdown style={markdownStyles} onLinkPress={handleLinkPress} rules={rules}>
+      {processed}
+    </Markdown>
   );
 }
 
@@ -35,6 +76,7 @@ function createMarkdownStyles(colors: ThemeColors, dimmed?: boolean) {
       ...TYPOGRAPHY.body,
       color: textColor,
       lineHeight: 20,
+      flexShrink: 1,
     },
     heading1: {
       ...TYPOGRAPHY.h2,
@@ -119,7 +161,7 @@ function createMarkdownStyles(colors: ThemeColors, dimmed?: boolean) {
       marginVertical: SPACING.xs,
     },
     list_item: {
-      marginVertical: 2,
+      marginVertical: 4,
     },
     // Tables
     table: {

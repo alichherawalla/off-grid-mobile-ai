@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { AttachStep, useSpotlightTour } from 'react-native-spotlight-tour';
-import { ChatInput, CustomAlert, hideAlert, ToolPickerSheet } from '../../components';
+import { ChatInput, CustomAlert, hideAlert, ToolPickerSheet, ThinkingIndicator } from '../../components';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { consumePendingSpotlight } from '../../components/onboarding/spotlightState';
 import { VOICE_HINT_STEP_INDEX, IMAGE_SETTINGS_STEP_INDEX } from '../../components/onboarding/spotlightConfig';
@@ -312,6 +312,11 @@ const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
         <ActivityIndicator size="small" color={colors.primary} />
         <Text style={styles.classifyingText}>Understanding your request...</Text>
       </View>
+    )}
+    {chat.isCompacting && (
+      <Animated.View entering={FadeIn.duration(200)} style={styles.classifyingBar}>
+        <ThinkingIndicator text="Compacting your conversation..." />
+      </Animated.View>
     )}
     {/* Steps 3/15 share the same AttachStep wrapping ChatInput (multi-index).
          Steps 12/16 are handled inside ChatInput via activeSpotlight prop. */}

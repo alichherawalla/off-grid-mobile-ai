@@ -103,6 +103,10 @@ export async function generateWithToolsImpl(
     deps.setPerformanceStats(recordGenerationStats(startTime, firstTokenMs, tokenCount));
     generating = false;
     deps.setIsGenerating(false);
+    if (cr?.context_full) {
+      logger.log('[LLM-Tools] Context full detected — signalling for compaction');
+      throw new Error('Context is full');
+    }
     options.onComplete?.(fullResponse);
     return { fullResponse, toolCalls: collectedToolCalls };
   } catch (error) {

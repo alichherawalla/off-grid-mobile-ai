@@ -87,6 +87,26 @@ describe('ChatMessage — Tool message rendering', () => {
       fireEvent.press(getByText(/Web search result/));
     });
 
+    it('renders calculator multiplication result with literal asterisks when expanded', () => {
+      const { getAllByText, getByTestId } = renderToolResult(
+        'calculator',
+        '5*5*5*5*5*6*7 = 131250',
+      );
+
+      // The collapsed label for calculator is the full content, rendered in plain Text
+      const label = getByTestId('tool-result-label-calculator');
+      expect(label).toBeTruthy();
+
+      // Expand
+      fireEvent.press(label);
+
+      // Both the collapsed label (plain Text) and expanded content (MarkdownText)
+      // should show literal asterisks. preprocessMarkdown escapes digit*digit
+      // so the markdown renderer doesn't consume them as emphasis.
+      const matches = getAllByText(/5\*5\*5\*5\*5\*6\*7/);
+      expect(matches.length).toBeGreaterThanOrEqual(2);
+    });
+
     it('is not expandable when content starts with "No results"', () => {
       const { getByTestId, queryByText } = renderToolResult('web_search', 'No results found for "test query"');
       expect(getByTestId('tool-message')).toBeTruthy();

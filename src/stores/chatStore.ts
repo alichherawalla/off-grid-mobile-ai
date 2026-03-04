@@ -40,6 +40,9 @@ interface ChatState {
   clearStreamingMessage: () => void;
   getStreamingState: () => { conversationId: string | null; content: string; isStreaming: boolean; isThinking: boolean };
 
+  // Compaction
+  updateCompactionState: (conversationId: string, summary?: string, cutoffMessageId?: string) => void;
+
   // Utilities
   clearAllConversations: () => void;
   getConversationMessages: (conversationId: string) => Message[];
@@ -261,6 +264,16 @@ export const useChatStore = create<ChatState>()(
           isStreaming: state.isStreaming,
           isThinking: state.isThinking,
         };
+      },
+
+      updateCompactionState: (conversationId, summary, cutoffMessageId) => {
+        set((state) => ({
+          conversations: state.conversations.map((conv) =>
+            conv.id === conversationId
+              ? { ...conv, compactionSummary: summary, compactionCutoffMessageId: cutoffMessageId, updatedAt: new Date().toISOString() }
+              : conv
+          ),
+        }));
       },
 
       clearAllConversations: () => {

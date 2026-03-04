@@ -7,6 +7,9 @@ const getLocalDreamModule = () => NativeModules.LocalDreamModule;
 import { DeviceInfo as DeviceInfoType, ModelRecommendation, SoCInfo, SoCVendor, ImageModelRecommendation } from '../types';
 import { MODEL_RECOMMENDATIONS, RECOMMENDED_MODELS } from '../constants';
 
+/** Minimum Qualcomm SoC model number for QNN HTP support (Snapdragon 888+) */
+const MIN_QNN_SOC_MODEL_NUM = 8350;
+
 class HardwareService {
   private cachedDeviceInfo: DeviceInfoType | null = null;
   private cachedSoCInfo: SoCInfo | null = null;
@@ -250,10 +253,10 @@ class HardwareService {
     } catch { /* fall through to RAM heuristic */ }
     if (socModel) {
       const base = socModel.split('-')[0].toUpperCase();
-      const smMatch = base.match(/^SM(\d+)$/);
+      const smMatch = base.match(/^SM(\d+)/);
       if (smMatch) {
         const num = parseInt(smMatch[1], 10);
-        if (num < 8350) return undefined; // SM8250 (SD 870) and below — no HTP v68+
+        if (num < MIN_QNN_SOC_MODEL_NUM) return undefined; // SM8250 (SD 870) and below — no HTP v68+
         if (num >= 8550) return '8gen2';
         if (num >= 8450) return '8gen1';
         return 'min';

@@ -551,10 +551,10 @@ describe('ModelsScreen', () => {
       expect(visionModels.length).toBeGreaterThan(0);
     });
 
-    it('filters by code models', () => {
+    it('has no code models after removal', () => {
       const { RECOMMENDED_MODELS } = require('../../../src/constants');
       const codeModels = RECOMMENDED_MODELS.filter((m: any) => m.type === 'code');
-      expect(codeModels.length).toBeGreaterThan(0);
+      expect(codeModels.length).toBe(0);
     });
   });
 

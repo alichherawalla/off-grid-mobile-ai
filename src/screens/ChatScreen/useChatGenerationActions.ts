@@ -1,5 +1,4 @@
 import { Dispatch, MutableRefObject, SetStateAction } from 'react';
-
 let _msgIdSeq = 0;
 const nextMsgId = () => `${Date.now()}-${(++_msgIdSeq).toString(36)}`;
 import {
@@ -17,12 +16,14 @@ import {
   onnxImageGeneratorService,
   ImageGenerationState,
   buildToolSystemPromptHint,
+  contextCompactionService,
 } from '../../services';
 import { useChatStore, useProjectStore } from '../../stores';
 import { Message, MediaAttachment, Project, DownloadedModel, ModelLoadingStrategy, CacheType } from '../../types';
 import logger from '../../utils/logger';
 
 type SetState<T> = Dispatch<SetStateAction<T>>;
+const FALLBACK_RECENT_MESSAGE_COUNT = 2;
 
 type GenerationDeps = {
   activeModelId: string | null;
@@ -62,23 +63,25 @@ type GenerationDeps = {
   setShowSettingsPanel?: SetState<boolean>;
   ensureModelLoaded: () => Promise<void>;
 };
+/** Prepend system prompt + compaction summary (if persisted) to a prefix array. Returns messages after cutoff. */
+function applyCompactionPrefix(conversation: any, systemPrompt: string, messages: Message[]): { prefix: Message[]; filtered: Message[] } {
+  const prefix: Message[] = [{ id: 'system', role: 'system', content: systemPrompt, timestamp: 0 }];
+  let filtered = messages;
+  if (conversation?.compactionSummary && conversation?.compactionCutoffMessageId) {
+    prefix.push({ id: 'compaction-summary', role: 'assistant', content: `[Previous conversation summary]\n${conversation.compactionSummary}`, timestamp: 0 });
+    const cutoffIdx = messages.findIndex(m => m.id === conversation.compactionCutoffMessageId);
+    if (cutoffIdx !== -1) filtered = messages.slice(cutoffIdx + 1);
+  }
+  return { prefix, filtered };
+}
 
-function buildMessagesForContext(
-  conversationId: string,
-  messageText: string,
-  systemPrompt: string,
-): Message[] {
+function buildMessagesForContext(conversationId: string, messageText: string, systemPrompt: string): Message[] {
   const conversation = useChatStore.getState().conversations.find(c => c.id === conversationId);
-  const conversationMessages = (conversation?.messages || []).filter(m => !m.isSystemInfo);
-  const lastUserMsg = conversationMessages.at(-1);
-  const userMessageForContext = (lastUserMsg?.role === 'user'
-    ? { ...lastUserMsg, content: messageText }
-    : lastUserMsg) as Message;
-  return [
-    { id: 'system', role: 'system', content: systemPrompt, timestamp: 0 },
-    ...conversationMessages.slice(0, -1),
-    userMessageForContext,
-  ];
+  const allMessages = (conversation?.messages || []).filter(m => !m.isSystemInfo);
+  const { prefix, filtered } = applyCompactionPrefix(conversation, systemPrompt, allMessages);
+  const lastMsg = filtered.at(-1);
+  const userMessageForContext = (lastMsg?.role === 'user' ? { ...lastMsg, content: messageText } : lastMsg) as Message;
+  return [...prefix, ...filtered.slice(0, -1), userMessageForContext];
 }
 
 export async function shouldRouteToImageGenerationFn(
@@ -168,6 +171,30 @@ async function prepareContext(setDebugInfo: SetState<any>, systemPrompt: string,
   } catch (e) { logger.log('Debug info error:', e); }
 }
 
+/** Run generation; if context is full, compact old messages and retry once. */
+async function generateWithCompactionRetry(
+  opts: { id: string; prompt: string; messages: Message[] },
+  enabledTools: string[],
+): Promise<void> {
+  const gen = (msgs: Message[]) => enabledTools.length > 0
+    ? generationService.generateWithTools(opts.id, msgs, { enabledToolIds: enabledTools })
+    : generationService.generateResponse(opts.id, msgs);
+  try { await gen(opts.messages); } catch (error: any) {
+    if (!contextCompactionService.isContextFullError(error)) throw error;
+    logger.log('[ChatGen] Context full — compacting');
+    await llmService.stopGeneration().catch(() => {});
+    const conversation = useChatStore.getState().conversations.find(c => c.id === opts.id);
+    const previousSummary = conversation?.compactionSummary;
+    const compacted = await contextCompactionService.compact({ conversationId: opts.id, systemPrompt: opts.prompt, allMessages: opts.messages, previousSummary }).catch(async () => {
+      logger.log(`[ChatGen] Compaction failed — falling back to last ${FALLBACK_RECENT_MESSAGE_COUNT} messages`);
+      await llmService.clearKVCache(true).catch(() => {});
+      const recent = opts.messages.filter(m => m.role !== 'system').slice(-FALLBACK_RECENT_MESSAGE_COUNT);
+      return [{ id: 'system', role: 'system', content: opts.prompt, timestamp: 0 } as Message, ...recent];
+    });
+    await gen(compacted);
+  }
+}
+
 export async function startGenerationFn(deps: GenerationDeps, call: StartGenerationCall): Promise<void> {
   const { setDebugInfo, targetConversationId, messageText } = call;
   if (!deps.activeModel) return;
@@ -185,18 +212,11 @@ export async function startGenerationFn(deps: GenerationDeps, call: StartGenerat
   const messagesForContext = buildMessagesForContext(targetConversationId, messageText, systemPrompt);
   await prepareContext(setDebugInfo, systemPrompt, messagesForContext);
   try {
-    if (enabledTools.length > 0) {
-      await generationService.generateWithTools(targetConversationId, messagesForContext, {
-        enabledToolIds: enabledTools,
-        onFirstToken: () => { logger.log('[ChatScreen] First token received'); },
-        onToolCallStart: (name) => { logger.log(`[ChatScreen] Tool call: ${name}`); },
-        onToolCallComplete: (name, result) => { logger.log(`[ChatScreen] Tool result: ${name} ${result.durationMs}ms`); },
-      });
-    } else {
-      await generationService.generateResponse(targetConversationId, messagesForContext);
-    }
+    await generateWithCompactionRetry({ id: targetConversationId, prompt: systemPrompt, messages: messagesForContext }, enabledTools);
   } catch (error: any) {
-    deps.setAlertState(showAlert('Generation Error', error.message || 'Failed to generate response'));
+    const msg = error?.message || error?.toString?.() || 'Failed to generate response';
+    logger.error('[ChatGen] Generation failed:', msg, error);
+    deps.setAlertState(showAlert('Generation Error', msg));
     deps.generatingForConversationRef.current = null;
     return;
   }
@@ -266,19 +286,10 @@ export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promis
 }
 
 export async function handleStopFn(deps: Pick<GenerationDeps, 'isGeneratingImage' | 'generatingForConversationRef'>): Promise<void> {
-  logger.log('[ChatScreen] handleStop called');
   deps.generatingForConversationRef.current = null;
-  try {
-    await Promise.all([
-      generationService.stopGeneration().catch(() => {}),
-      llmService.stopGeneration().catch(() => {}),
-    ]);
-  } catch (error_) {
-    logger.error('Error stopping generation:', error_);
-  }
-  if (deps.isGeneratingImage) {
-    imageGenerationService.cancelGeneration().catch(() => {});
-  }
+  try { await Promise.all([generationService.stopGeneration().catch(() => {}), llmService.stopGeneration().catch(() => {})]); }
+  catch (e) { logger.error('Error stopping generation:', e); }
+  if (deps.isGeneratingImage) imageGenerationService.cancelGeneration().catch(() => {});
 }
 
 export async function executeDeleteConversationFn(
@@ -291,9 +302,8 @@ export async function executeDeleteConversationFn(
     deps.clearStreamingMessage();
   }
   const imageIds = deps.removeImagesByConversationId(deps.activeConversationId);
-  for (const imageId of imageIds) {
-    await onnxImageGeneratorService.deleteGeneratedImage(imageId);
-  }
+  for (const id of imageIds) await onnxImageGeneratorService.deleteGeneratedImage(id);
+  contextCompactionService.clearSummary(deps.activeConversationId);
   deps.deleteConversation(deps.activeConversationId);
   deps.setActiveConversation(null);
   deps.navigation.goBack();
@@ -312,18 +322,14 @@ export async function regenerateResponseFn(deps: GenerationDeps, call: Regenerat
   }
   if (!llmService.isModelLoaded()) return;
   deps.generatingForConversationRef.current = targetConversationId;
-  const messages = deps.activeConversation?.messages || [];
-  const messageIndex = messages.findIndex((m: Message) => m.id === userMessage.id);
-  const messagesUpToUser = messages.slice(0, messageIndex + 1);
-  const systemPrompt = deps.activeProject?.systemPrompt
-    || deps.settings.systemPrompt
-    || APP_CONFIG.defaultSystemPrompt;
-  const messagesForContext: Message[] = [
-    { id: 'system', role: 'system', content: systemPrompt, timestamp: 0 },
-    ...messagesUpToUser,
-  ];
+  const conversation = useChatStore.getState().conversations.find(c => c.id === targetConversationId);
+  const messages = (conversation?.messages || []).filter((m: Message) => !m.isSystemInfo);
+  const messagesUpToUser = messages.slice(0, messages.findIndex((m: Message) => m.id === userMessage.id) + 1);
+  const systemPrompt = deps.activeProject?.systemPrompt || deps.settings.systemPrompt || APP_CONFIG.defaultSystemPrompt;
+  const { prefix, filtered } = applyCompactionPrefix(conversation, systemPrompt, messagesUpToUser);
+  const messagesForContext = [...prefix, ...filtered];
   try {
-    await generationService.generateResponse(targetConversationId, messagesForContext);
+    await generateWithCompactionRetry({ id: targetConversationId, prompt: systemPrompt, messages: messagesForContext }, []);
   } catch (error: any) {
     deps.setAlertState(showAlert('Generation Error', error.message || 'Failed to generate response'));
   }

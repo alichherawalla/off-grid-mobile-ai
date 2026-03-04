@@ -1,6 +1,5 @@
 // Model category types
 export type ModelCategory = 'text-generation' | 'image-generation' | 'vision' | 'code';
-
 // Model source and credibility types
 export type ModelSource = 'lmstudio' | 'official' | 'verified-quantizer' | 'community';
 
@@ -10,7 +9,6 @@ export interface ModelCredibility {
   isVerifiedQuantizer: boolean; // From trusted quantization providers (LM Studio, TheBloke, etc.)
   verifiedBy?: string;        // Who verified this (e.g., "LM Studio", "Original Author")
 }
-
 // Model-related types
 export interface ModelInfo {
   id: string;
@@ -197,6 +195,8 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   projectId?: string;
+  compactionSummary?: string;
+  compactionCutoffMessageId?: string;
 }
 
 // Onboarding-related types

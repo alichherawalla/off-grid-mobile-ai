@@ -8,19 +8,10 @@ import { TYPOGRAPHY, SPACING, FONTS } from '../constants';
 /**
  * Escape asterisks used as multiplication operators (digit*digit) so
  * markdown-it doesn't treat them as emphasis markers.
- * Applied repeatedly to handle chains like 5*5*5*5.
+ * Lookahead handles chains like 5*5*5*5 in a single pass.
  */
-const DIGIT_STAR_DIGIT = /(\d)\*(\d)/g;
-
 export function preprocessMarkdown(text: string): string {
-  let result = text;
-  let prev = '';
-  // Loop until stable — handles overlapping matches in chains of any length.
-  while (result !== prev) {
-    prev = result;
-    result = result.replaceAll(DIGIT_STAR_DIGIT, String.raw`$1\*$2`);
-  }
-  return result;
+  return text.replace(/(\d)\*(?=\d)/g, String.raw`$1\*`);
 }
 
 const linkWrapperStyles = StyleSheet.create({

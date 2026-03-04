@@ -253,7 +253,7 @@ class HardwareService {
     } catch { /* fall through to RAM heuristic */ }
     if (socModel) {
       const base = socModel.split('-')[0].toUpperCase();
-      const smMatch = base.match(/^SM(\d+)$/);
+      const smMatch = base.match(/^SM(\d+)/);
       if (smMatch) {
         const num = parseInt(smMatch[1], 10);
         if (num < MIN_QNN_SOC_MODEL_NUM) return undefined; // SM8250 (SD 870) and below — no HTP v68+

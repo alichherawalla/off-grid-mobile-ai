@@ -10,6 +10,7 @@ import { contextCompactionService } from '../../../src/services/contextCompactio
 import { llmService } from '../../../src/services/llm';
 import { useChatStore } from '../../../src/stores/chatStore';
 import { createMessage } from '../../utils/factories';
+import type { Message } from '../../../src/types';
 
 jest.mock('../../../src/services/llm', () => ({
   llmService: {
@@ -33,6 +34,23 @@ jest.mock('../../../src/stores/chatStore', () => ({
 const mockedLlmService = llmService as jest.Mocked<typeof llmService>;
 const mockedUpdateCompactionState = jest.fn();
 
+/** Mock tokenizer: 10 tokens for 'System', customizable for other text */
+function mockTokenCounts(nonSystemTokens = 500) {
+  mockedLlmService.getTokenCount.mockImplementation((text: string) =>
+    text === 'System' ? Promise.resolve(10) : Promise.resolve(nonSystemTokens),
+  );
+}
+
+/** Shorthand for compact() with default conversationId and systemPrompt */
+function compactWith(messages: Message[], extra?: { previousSummary?: string }) {
+  return contextCompactionService.compact({
+    conversationId: 'conv-1',
+    systemPrompt: 'System',
+    allMessages: messages,
+    ...extra,
+  });
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockedLlmService.getTokenCount.mockImplementation((text: string) =>
@@ -47,22 +65,17 @@ beforeEach(() => {
 });
 
 describe('isContextFullError', () => {
-  it('returns true for "Context is full" error', () => {
-    expect(contextCompactionService.isContextFullError(new Error('Context is full'))).toBe(true);
-  });
-
-  it('returns true for "Not enough context space" error', () => {
-    expect(contextCompactionService.isContextFullError(new Error('Not enough context space'))).toBe(true);
-  });
-
-  it('returns true for case-insensitive match', () => {
-    expect(contextCompactionService.isContextFullError(new Error('CONTEXT IS FULL'))).toBe(true);
-  });
-
-  it('returns true for error embedded in longer message', () => {
-    expect(contextCompactionService.isContextFullError(
-      new Error('Failed: context is full, cannot continue'),
-    )).toBe(true);
+  it.each([
+    ['Context is full', true],
+    ['Not enough context space', true],
+    ['CONTEXT IS FULL', true],
+    ['Failed: context is full, cannot continue', true],
+    ['context window exceeded', true],
+    ['context length exceeded', true],
+    ['context is full', true],
+  ])('"%s" → %s', (msg, expected) => {
+    const input = typeof msg === 'string' ? new Error(msg) : msg;
+    expect(contextCompactionService.isContextFullError(input)).toBe(expected);
   });
 
   it('returns false for unrelated errors', () => {
@@ -71,14 +84,6 @@ describe('isContextFullError', () => {
 
   it('handles string errors', () => {
     expect(contextCompactionService.isContextFullError('context is full')).toBe(true);
-  });
-
-  it('returns true for "context window exceeded"', () => {
-    expect(contextCompactionService.isContextFullError(new Error('context window exceeded'))).toBe(true);
-  });
-
-  it('returns true for "context length exceeded"', () => {
-    expect(contextCompactionService.isContextFullError(new Error('context length exceeded'))).toBe(true);
   });
 });
 
@@ -89,13 +94,11 @@ describe('compact', () => {
       createMessage({ role: 'user', content: 'Hello' }),
     ];
 
-    await contextCompactionService.compact({ conversationId: 'conv-1', systemPrompt: 'System', allMessages: messages });
+    await compactWith(messages);
     expect(mockedLlmService.clearKVCache).toHaveBeenCalledWith(true);
   });
 
   it('keeps recent messages that fit within recent token budget', async () => {
-    // With contextLength=2048, recentBudget=floor(2048*0.40)=819 tokens
-    // Each short msg ≈ 3-5 tokens — all fit
     const messages = [
       createMessage({ role: 'system', content: 'System' }),
       createMessage({ role: 'user', content: 'msg 1' }),
@@ -105,20 +108,15 @@ describe('compact', () => {
       createMessage({ role: 'user', content: 'latest question' }),
     ];
 
-    const result = await contextCompactionService.compact({ conversationId: 'conv-1', systemPrompt: 'System', allMessages: messages });
+    const result = await compactWith(messages);
 
-    // All short messages fit within recent budget, no old messages → no summary
     expect(result[0].role).toBe('system');
     expect(result[0].content).toBe('System');
     expect(result[result.length - 1].content).toBe('latest question');
   });
 
   it('summarizes old messages when they exceed recent budget', async () => {
-    // Make token counts realistic: 500 tokens per message
-    mockedLlmService.getTokenCount.mockImplementation((text: string) => {
-      if (text === 'System') return Promise.resolve(10);
-      return Promise.resolve(500);
-    });
+    mockTokenCounts(500);
 
     const messages = [
       createMessage({ role: 'system', content: 'System' }),
@@ -129,12 +127,9 @@ describe('compact', () => {
       createMessage({ role: 'user', content: 'latest question' }),
     ];
 
-    const result = await contextCompactionService.compact({ conversationId: 'conv-1', systemPrompt: 'System', allMessages: messages });
+    const result = await compactWith(messages);
 
-    // recentBudget=819, each msg=500 → only 1 recent message fits
-    // Old messages get summarized
     expect(mockedLlmService.generateWithMaxTokens).toHaveBeenCalled();
-    // Result should have: system + summary system + recent message(s)
     expect(result[0].role).toBe('system');
     expect(result[0].content).toBe('System');
     const summaryMsg = result.find(m => m.id === 'compaction-summary');
@@ -144,10 +139,7 @@ describe('compact', () => {
   });
 
   it('calls generateWithMaxTokens with bounded summary token budget', async () => {
-    mockedLlmService.getTokenCount.mockImplementation((text: string) => {
-      if (text === 'System') return Promise.resolve(10);
-      return Promise.resolve(500);
-    });
+    mockTokenCounts(500);
 
     const messages = [
       createMessage({ role: 'system', content: 'System' }),
@@ -156,18 +148,14 @@ describe('compact', () => {
       createMessage({ role: 'user', content: 'latest' }),
     ];
 
-    await contextCompactionService.compact({ conversationId: 'conv-1', systemPrompt: 'System', allMessages: messages });
+    await compactWith(messages);
 
-    // summaryTokenBudget = floor(2048 * 0.12) = 245
     const callArgs = mockedLlmService.generateWithMaxTokens.mock.calls[0];
     expect(callArgs[1]).toBe(Math.floor(2048 * 0.12));
   });
 
   it('persists compaction state to chat store', async () => {
-    mockedLlmService.getTokenCount.mockImplementation((text: string) => {
-      if (text === 'System') return Promise.resolve(10);
-      return Promise.resolve(500);
-    });
+    mockTokenCounts(500);
 
     const messages = [
       createMessage({ role: 'system', content: 'System' }),
@@ -176,20 +164,17 @@ describe('compact', () => {
       createMessage({ role: 'user', content: 'latest' }),
     ];
 
-    await contextCompactionService.compact({ conversationId: 'conv-1', systemPrompt: 'System', allMessages: messages });
+    await compactWith(messages);
 
     expect(mockedUpdateCompactionState).toHaveBeenCalledWith(
       'conv-1',
       'Summary of conversation',
-      expect.any(String), // cutoff message ID
+      expect.any(String),
     );
   });
 
   it('includes previous summary in summarization input', async () => {
-    mockedLlmService.getTokenCount.mockImplementation((text: string) => {
-      if (text === 'System') return Promise.resolve(10);
-      return Promise.resolve(500);
-    });
+    mockTokenCounts(500);
 
     const messages = [
       createMessage({ role: 'system', content: 'System' }),
@@ -198,9 +183,8 @@ describe('compact', () => {
       createMessage({ role: 'user', content: 'latest' }),
     ];
 
-    await contextCompactionService.compact({ conversationId: 'conv-1', systemPrompt: 'System', allMessages: messages, previousSummary: 'Previous summary text' });
+    await compactWith(messages, { previousSummary: 'Previous summary text' });
 
-    // The input to generateWithMaxTokens should contain the previous summary
     const summaryMessages = mockedLlmService.generateWithMaxTokens.mock.calls[0][0];
     const userInput = summaryMessages.find((m: any) => m.role === 'user');
     expect(userInput).toBeDefined();
@@ -208,10 +192,7 @@ describe('compact', () => {
   });
 
   it('falls back to trim-only on summarization failure', async () => {
-    mockedLlmService.getTokenCount.mockImplementation((text: string) => {
-      if (text === 'System') return Promise.resolve(10);
-      return Promise.resolve(500);
-    });
+    mockTokenCounts(500);
     mockedLlmService.generateWithMaxTokens.mockRejectedValue(new Error('generation failed'));
 
     const messages = [
@@ -221,23 +202,16 @@ describe('compact', () => {
       createMessage({ role: 'user', content: 'latest' }),
     ];
 
-    const result = await contextCompactionService.compact({ conversationId: 'conv-1', systemPrompt: 'System', allMessages: messages });
+    const result = await compactWith(messages);
 
-    // Should still return a valid result with system + recent messages, no summary
     expect(result[0].role).toBe('system');
     expect(result[0].content).toBe('System');
-    // No summary message
-    const summaryMsg = result.find(m => m.id === 'compaction-summary');
-    expect(summaryMsg).toBeUndefined();
-    // Should not have persisted state
+    expect(result.find(m => m.id === 'compaction-summary')).toBeUndefined();
     expect(mockedUpdateCompactionState).not.toHaveBeenCalled();
   });
 
   it('truncates last user message when it alone exceeds recent budget', async () => {
-    mockedLlmService.getTokenCount.mockImplementation((text: string) => {
-      if (text === 'System') return Promise.resolve(10);
-      return Promise.resolve(2000); // Way over budget
-    });
+    mockTokenCounts(2000);
 
     const longContent = 'x'.repeat(8000);
     const messages = [
@@ -245,9 +219,8 @@ describe('compact', () => {
       createMessage({ role: 'user', content: longContent }),
     ];
 
-    const result = await contextCompactionService.compact({ conversationId: 'conv-1', systemPrompt: 'System', allMessages: messages });
+    const result = await compactWith(messages);
 
-    // Should still have the user message, but truncated
     const userMsg = result.find(m => m.role === 'user');
     expect(userMsg).toBeDefined();
     expect(userMsg!.content.length).toBeLessThan(longContent.length);
@@ -255,10 +228,9 @@ describe('compact', () => {
 
   it('uses actual context length from settings', async () => {
     mockedLlmService.getPerformanceSettings.mockReturnValue({ contextLength: 512 } as any);
-    mockedLlmService.getTokenCount.mockImplementation((text: string) => {
-      if (text.length < 20) return Promise.resolve(5);
-      return Promise.resolve(200);
-    });
+    mockedLlmService.getTokenCount.mockImplementation((text: string) =>
+      text.length < 20 ? Promise.resolve(5) : Promise.resolve(200),
+    );
 
     const messages = [
       createMessage({ role: 'system', content: 'System' }),
@@ -267,10 +239,8 @@ describe('compact', () => {
       createMessage({ role: 'user', content: 'c'.repeat(100) }),
     ];
 
-    const result = await contextCompactionService.compact({ conversationId: 'conv-1', systemPrompt: 'System', allMessages: messages });
+    const result = await compactWith(messages);
 
-    // 512 * 0.40 = 204 recent budget, each msg=200
-    // Can only fit 1 recent message (exclude system + compaction summary)
     const contentMessages = result.filter(m => m.role !== 'system' && m.id !== 'compaction-summary');
     expect(contentMessages.length).toBe(1);
   });
@@ -284,8 +254,7 @@ describe('compact', () => {
       createMessage({ role: 'user', content: 'Hello' }),
     ];
 
-    // Should not throw — falls back to char-based estimate
-    const result = await contextCompactionService.compact({ conversationId: 'conv-1', systemPrompt: 'System', allMessages: messages });
+    const result = await compactWith(messages);
     expect(result.length).toBeGreaterThanOrEqual(2);
   });
 });
@@ -303,8 +272,7 @@ describe('compacting state', () => {
     const states: boolean[] = [];
     const unsub = contextCompactionService.subscribeCompacting(v => states.push(v));
 
-    const messages = [createMessage({ role: 'user', content: 'Hello' })];
-    await contextCompactionService.compact({ conversationId: 'conv-1', systemPrompt: 'System', allMessages: messages });
+    await compactWith([createMessage({ role: 'user', content: 'Hello' })]);
     unsub();
 
     expect(states[0]).toBe(false);
@@ -319,7 +287,7 @@ describe('compacting state', () => {
     const unsub = contextCompactionService.subscribeCompacting(v => states.push(v));
 
     try {
-      await contextCompactionService.compact({ conversationId: 'conv-1', systemPrompt: 'System', allMessages: [] });
+      await compactWith([]);
     } catch {
       // expected
     }

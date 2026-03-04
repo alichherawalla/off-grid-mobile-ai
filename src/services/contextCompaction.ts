@@ -92,7 +92,7 @@ class ContextCompactionService {
       const ctxLength = llmService.getPerformanceSettings().contextLength || 2048;
       const summaryTokenBudget = Math.floor(ctxLength * SUMMARY_BUDGET_RATIO);
       const systemTokens = await this.countTokens(systemPrompt);
-      const recentTokenBudget = Math.floor(ctxLength * PROMPT_BUDGET_RATIO) - summaryTokenBudget - systemTokens;
+      const recentTokenBudget = Math.max(0, Math.floor(ctxLength * PROMPT_BUDGET_RATIO) - summaryTokenBudget - systemTokens);
 
       const nonSystem = allMessages.filter(m => m.role !== 'system');
       logger.log(`[ContextCompaction] ${nonSystem.length} messages, ctx=${ctxLength}, summaryBudget=${summaryTokenBudget}, recentBudget=${recentTokenBudget}`);
@@ -174,7 +174,7 @@ class ContextCompactionService {
     const { oldMessages, previousSummary, summaryTokenBudget } = opts;
     // Format old messages as a transcript
     const transcript = oldMessages
-      .map(m => `${m.role}: ${m.content}`)
+      .map(m => `${m.role}: ${m.content.replace(/^(\w+: )/gm, '>$1')}`)
       .join('\n');
 
     const preamble = previousSummary
@@ -184,7 +184,7 @@ class ContextCompactionService {
     // Cap transcript to fit within context alongside the summarize instruction
     const ctxLength = llmService.getPerformanceSettings().contextLength || 2048;
     const instructionOverhead = SUMMARIZER_INSTRUCTION_OVERHEAD_TOKENS;
-    const inputBudget = Math.floor(ctxLength * PROMPT_BUDGET_RATIO) - instructionOverhead;
+    const inputBudget = ctxLength - summaryTokenBudget - instructionOverhead;
     const inputCharBudget = inputBudget * CHARS_PER_TOKEN_ESTIMATE;
 
     let transcriptInput = preamble + transcript;

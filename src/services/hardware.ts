@@ -7,8 +7,27 @@ const getLocalDreamModule = () => NativeModules.LocalDreamModule;
 import { DeviceInfo as DeviceInfoType, ModelRecommendation, SoCInfo, SoCVendor, ImageModelRecommendation } from '../types';
 import { MODEL_RECOMMENDATIONS, RECOMMENDED_MODELS } from '../constants';
 
-/** Minimum Qualcomm SoC model number for QNN HTP support (Snapdragon 888+) */
-const MIN_QNN_SOC_MODEL_NUM = 8350;
+/**
+ * Explicit mapping of SM model numbers to QNN variant tiers.
+ * Flagship chips get their full tier; everything else with Hexagon V68+ gets 'min'.
+ *
+ * SM numbers are NOT linearly ordered for NPU capability — e.g. SM8250 (SD 870,
+ * Hexagon V66) sits between SM7450 and SM8350 but has NO NPU support.
+ * We therefore use two separate range checks:
+ *   - 7-series: SM7450+ (SD 7 Gen 1, Hexagon V69+)
+ *   - 8-series: SM8350+ (SD 888, Hexagon V69+)
+ *
+ * Source: https://github.com/xororz/local-dream (supported chips)
+ * - 8gen2: SD 8 Gen 2 (SM8550), 8 Gen 3 (SM8650), 8 Elite (SM8750)
+ * - 8gen1: SD 8 Gen 1 (SM8450), 8+ Gen 1 (SM8475)
+ * - min:   SD 888 (SM8350), 8s Gen 3 (SM8635), 7 Gen 1 (SM7450), etc.
+ */
+const FLAGSHIP_8GEN2: number[] = [8550, 8650, 8750];
+const FLAGSHIP_8GEN1: number[] = [8450, 8475];
+/** Minimum SM number for QNN HTP in 7-series (Hexagon V69+) — SD 7 Gen 1 */
+const MIN_QNN_7SERIES = 7450;
+/** Minimum SM number for QNN HTP in 8-series (Hexagon V69+) — SD 888 */
+const MIN_QNN_8SERIES = 8350;
 
 class HardwareService {
   private cachedDeviceInfo: DeviceInfoType | null = null;
@@ -256,12 +275,15 @@ class HardwareService {
       const smMatch = base.match(/^SM(\d+)/);
       if (smMatch) {
         const num = parseInt(smMatch[1], 10);
-        if (num < MIN_QNN_SOC_MODEL_NUM) return undefined; // SM8250 (SD 870) and below — no HTP v68+
-        // Flagship chips: SM8x50 (Gen N) and SM8x75 (+ Gen N)
-        // "s" variants like SM8635 (8s Gen 3) have NPU but need 'min' models
-        if (num >= 8550 && (num % 100 === 50 || num % 100 === 75)) return '8gen2';
-        if (num >= 8450 && (num % 100 === 50 || num % 100 === 75)) return '8gen1';
-        return 'min';
+        // 8-series: SM8350+ (SD 888, Hexagon V69+)
+        if (num >= MIN_QNN_8SERIES) {
+          if (FLAGSHIP_8GEN2.includes(num)) return '8gen2';
+          if (FLAGSHIP_8GEN1.includes(num)) return '8gen1';
+          return 'min';
+        }
+        // 7-series: SM7450–SM7999 (SD 7 Gen 1+, Hexagon V69+)
+        if (num >= MIN_QNN_7SERIES && num < 8000) return 'min';
+        return undefined;
       }
       return undefined; // Non-SM Qualcomm SoC — not supported
     }

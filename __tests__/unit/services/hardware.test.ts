@@ -708,6 +708,10 @@ describe('HardwareService', () => {
         ['SM8635-AB', 'min', 'Snapdragon 8s Gen 3'],
         ['SM8535-AB', 'min', 'Snapdragon 8s Gen 2'],
         ['SM8350-AC', 'min', 'Snapdragon 888'],
+        ['SM7450-AB', 'min', 'Snapdragon 7 Gen 1'],
+        ['SM7475-AB', 'min', 'Snapdragon 7+ Gen 2'],
+        ['SM7550-AB', 'min', 'Snapdragon 7 Gen 3'],
+        ['SM7675-AB', 'min', 'Snapdragon 7+ Gen 3'],
       ] as const)('returns %s variant for %s (%s)', async (socModel, expected, _desc) => {
         await setupQualcommWithSoC(socModel);
         const soc = await hardwareService.getSoCInfo();
@@ -718,7 +722,7 @@ describe('HardwareService', () => {
       it.each([
         ['SM8250-AB', 'Snapdragon 870'],
         ['SM7225-AB', 'Snapdragon 750G'],
-        ['SM7550-AB', 'SM7-series mid-range'],
+        ['SM6375-AB', 'Snapdragon 695'],
       ] as const)('returns undefined variant and hasNPU=false for %s (%s)', async (socModel, _desc) => {
         await setupQualcommWithSoC(socModel);
         const soc = await hardwareService.getSoCInfo();

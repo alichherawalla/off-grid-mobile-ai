@@ -51,6 +51,18 @@ class LocalDreamModuleTest {
     }
 
     @Test
+    fun `isNpuSupportedInternal returns true for SM8635 (SD 8s Gen 3)`() {
+        ReflectionHelpers.setStaticField(Build::class.java, "SOC_MODEL", "SM8635")
+        assertTrue(LocalDreamModule.isNpuSupportedInternal())
+    }
+
+    @Test
+    fun `isNpuSupportedInternal returns true for SM7450 (SD 7 Gen 1)`() {
+        ReflectionHelpers.setStaticField(Build::class.java, "SOC_MODEL", "SM7450")
+        assertTrue(LocalDreamModule.isNpuSupportedInternal())
+    }
+
+    @Test
     fun `isNpuSupportedInternal returns false for SM8250 (SD 870)`() {
         ReflectionHelpers.setStaticField(Build::class.java, "SOC_MODEL", "SM8250")
         assertFalse(LocalDreamModule.isNpuSupportedInternal())

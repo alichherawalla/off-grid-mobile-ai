@@ -22,8 +22,8 @@ import { MODEL_RECOMMENDATIONS, RECOMMENDED_MODELS } from '../constants';
  * - 8gen1: SD 8 Gen 1 (SM8450), 8+ Gen 1 (SM8475)
  * - min:   SD 888 (SM8350), 8s Gen 3 (SM8635), 7 Gen 1 (SM7450), etc.
  */
-const FLAGSHIP_8GEN2: number[] = [8550, 8650, 8750];
-const FLAGSHIP_8GEN1: number[] = [8450, 8475];
+const FLAGSHIP_8GEN2 = new Set([8550, 8650, 8750]);
+const FLAGSHIP_8GEN1 = new Set([8450, 8475]);
 /** Minimum SM number for QNN HTP in 7-series (Hexagon V69+) — SD 7 Gen 1 */
 const MIN_QNN_7SERIES = 7450;
 /** Minimum SM number for QNN HTP in 8-series (Hexagon V69+) — SD 888 */
@@ -265,29 +265,32 @@ class HardwareService {
   }
 
   private async getQnnVariantFromSoC(): Promise<'8gen2' | '8gen1' | 'min' | undefined> {
-    let socModel = '';
+    const socModel = await this.fetchSoCModel();
+    if (!socModel) return undefined;
+    return this.classifySmNumber(socModel);
+  }
+
+  private async fetchSoCModel(): Promise<string> {
     try {
       const localDream = getLocalDreamModule();
-      if (localDream?.getSoCModel) socModel = await localDream.getSoCModel();
-    } catch { /* fall through to RAM heuristic */ }
-    if (socModel) {
-      const base = socModel.split('-')[0].toUpperCase();
-      const smMatch = base.match(/^SM(\d+)/);
-      if (smMatch) {
-        const num = parseInt(smMatch[1], 10);
-        // 8-series: SM8350+ (SD 888, Hexagon V69+)
-        if (num >= MIN_QNN_8SERIES) {
-          if (FLAGSHIP_8GEN2.includes(num)) return '8gen2';
-          if (FLAGSHIP_8GEN1.includes(num)) return '8gen1';
-          return 'min';
-        }
-        // 7-series: SM7450–SM7999 (SD 7 Gen 1+, Hexagon V69+)
-        if (num >= MIN_QNN_7SERIES && num < 8000) return 'min';
-        return undefined;
-      }
-      return undefined; // Non-SM Qualcomm SoC — not supported
+      if (localDream?.getSoCModel) return await localDream.getSoCModel();
+    } catch { /* native module unavailable */ }
+    return '';
+  }
+
+  private classifySmNumber(socModel: string): '8gen2' | '8gen1' | 'min' | undefined {
+    const base = socModel.split('-')[0].toUpperCase();
+    const smMatch = /^SM(\d+)/.exec(base);
+    if (!smMatch) return undefined;
+    const num = parseInt(smMatch[1], 10);
+    // 8-series: SM8350+ (SD 888, Hexagon V69+)
+    if (num >= MIN_QNN_8SERIES) {
+      if (FLAGSHIP_8GEN2.has(num)) return '8gen2';
+      if (FLAGSHIP_8GEN1.has(num)) return '8gen1';
+      return 'min';
     }
-    // Native module unavailable — can't determine SoC, assume no NPU
+    // 7-series: SM7450–SM7999 (SD 7 Gen 1+, Hexagon V69+)
+    if (num >= MIN_QNN_7SERIES && num < 8000) return 'min';
     return undefined;
   }
 

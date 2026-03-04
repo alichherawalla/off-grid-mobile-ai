@@ -23,6 +23,7 @@ import java.io.File
  * Tests for pure helper functions in LocalDreamModule.
  * All methods under test live in the companion object and have no instance state.
  */
+@Suppress("kotlin:S100") // Backtick test names are idiomatic Kotlin
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], application = Application::class)
 class LocalDreamModuleTest {

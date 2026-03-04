@@ -18,7 +18,7 @@ export function preprocessMarkdown(text: string): string {
   // Loop until stable — handles overlapping matches in chains of any length.
   while (result !== prev) {
     prev = result;
-    result = result.replace(DIGIT_STAR_DIGIT, '$1\\*$2');
+    result = result.replaceAll(DIGIT_STAR_DIGIT, String.raw`$1\*$2`);
   }
   return result;
 }

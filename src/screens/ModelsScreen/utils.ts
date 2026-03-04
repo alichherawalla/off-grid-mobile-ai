@@ -107,7 +107,9 @@ export function getImageModelCompatibility(
       incompatibleReason = 'Requires Snapdragon 888+';
     }
   } else if (!variantCompatible) {
-    const variantName = model.variant === '8gen2' ? 'Snapdragon 8 Gen 2+' : model.variant === 'min' ? 'non-flagship Snapdragon' : model.variant;
+    let variantName = model.variant;
+    if (model.variant === '8gen2') variantName = 'Snapdragon 8 Gen 2+';
+    else if (model.variant === 'min') variantName = 'non-flagship Snapdragon';
     incompatibleReason = `Requires ${variantName}`;
   }
 

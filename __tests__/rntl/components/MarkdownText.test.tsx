@@ -116,11 +116,11 @@ describe('MarkdownText', () => {
 
 describe('preprocessMarkdown', () => {
   it('escapes digit*digit patterns', () => {
-    expect(preprocessMarkdown('5*5')).toBe('5\\*5');
+    expect(preprocessMarkdown('5*5')).toBe(String.raw`5\*5`);
   });
 
   it('escapes chained multiplication', () => {
-    expect(preprocessMarkdown('5*5*5*5*6*7')).toBe('5\\*5\\*5\\*5\\*6\\*7');
+    expect(preprocessMarkdown('5*5*5*5*6*7')).toBe(String.raw`5\*5\*5\*5\*6\*7`);
   });
 
   it('does not escape word emphasis', () => {
@@ -133,7 +133,7 @@ describe('preprocessMarkdown', () => {
 
   it('handles mixed content', () => {
     expect(preprocessMarkdown('The result of 3*4 is *twelve*')).toBe(
-      'The result of 3\\*4 is *twelve*'
+      String.raw`The result of 3\*4 is *twelve*`
     );
   });
 });

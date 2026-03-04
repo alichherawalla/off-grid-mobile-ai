@@ -42,7 +42,7 @@ const SUMMARIZER_SYSTEM_PROMPT =
 
 class ContextCompactionService {
   private _isCompacting = false;
-  private compactingListeners = new Set<(v: boolean) => void>();
+  private readonly compactingListeners = new Set<(v: boolean) => void>();
 
   get isCompacting(): boolean { return this._isCompacting; }
 
@@ -58,7 +58,7 @@ class ContextCompactionService {
   }
 
   isContextFullError(error: unknown): boolean {
-    const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+    const msg = (error instanceof Error ? error.message : `${error as string}`).toLowerCase();
     return CONTEXT_FULL_PATTERNS.some(p => msg.includes(p));
   }
 
@@ -174,7 +174,7 @@ class ContextCompactionService {
     const { oldMessages, previousSummary, summaryTokenBudget } = opts;
     // Format old messages as a transcript
     const transcript = oldMessages
-      .map(m => `${m.role}: ${m.content.replace(/^(\w+: )/gm, '>$1')}`)
+      .map(m => `${m.role}: ${m.content.replaceAll(/^(\w+: )/gm, '>$1')}`)
       .join('\n');
 
     const preamble = previousSummary

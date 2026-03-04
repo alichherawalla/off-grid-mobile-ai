@@ -264,16 +264,16 @@ export async function handleDownloadImageModel(
       }
     }
     if (warningMessage) {
-      if (!socInfo.hasNPU) {
-        // Device has no NPU — block download entirely, no escape hatch
-        deps.setAlertState(showAlert('Incompatible Model', warningMessage, [
-          { text: 'OK', style: 'cancel' },
-        ]));
-      } else {
+      if (socInfo.hasNPU) {
         // Variant mismatch — allow "Download Anyway" since it might still work
         deps.setAlertState(showAlert('Incompatible Model', warningMessage, [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Download Anyway', style: 'destructive', onPress: () => { deps.setAlertState(hideAlert()); proceedWithDownload(modelInfo, deps); } },
+        ]));
+      } else {
+        // Device has no NPU — block download entirely, no escape hatch
+        deps.setAlertState(showAlert('Incompatible Model', warningMessage, [
+          { text: 'OK', style: 'cancel' },
         ]));
       }
       return;

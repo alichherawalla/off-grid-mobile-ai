@@ -711,26 +711,18 @@ describe('HardwareService', () => {
         ['SM8635-AB', 'min', 'Snapdragon 8s Gen 3'],
         ['SM8535-AB', 'min', 'Snapdragon 8s Gen 2'],
         ['SM8350-AC', 'min', 'Snapdragon 888'],
+        ['SM8250-AB', 'min', 'Snapdragon 870'],
         ['SM7450-AB', 'min', 'Snapdragon 7 Gen 1'],
         ['SM7475-AB', 'min', 'Snapdragon 7+ Gen 2'],
         ['SM7550-AB', 'min', 'Snapdragon 7 Gen 3'],
         ['SM7675-AB', 'min', 'Snapdragon 7+ Gen 3'],
+        ['SM7225-AB', 'min', 'Snapdragon 750G'],
+        ['SM6375-AB', 'min', 'Snapdragon 695'],
       ] as const)('returns %s variant for %s (%s)', async (socModel, expected, _desc) => {
         await setupQualcommWithSoC(socModel);
         const soc = await hardwareService.getSoCInfo();
         expect(soc.qnnVariant).toBe(expected);
         expect(soc.hasNPU).toBe(true);
-      });
-
-      it.each([
-        ['SM8250-AB', 'Snapdragon 870'],
-        ['SM7225-AB', 'Snapdragon 750G'],
-        ['SM6375-AB', 'Snapdragon 695'],
-      ] as const)('returns undefined variant and hasNPU=false for %s (%s)', async (socModel, _desc) => {
-        await setupQualcommWithSoC(socModel);
-        const soc = await hardwareService.getSoCInfo();
-        expect(soc.qnnVariant).toBeUndefined();
-        expect(soc.hasNPU).toBe(false);
       });
     });
 
@@ -846,10 +838,10 @@ describe('HardwareService', () => {
       });
     });
 
-    describe('Android old Qualcomm recommendations', () => {
-      it('recommends MNN with old-Qualcomm banner for Qualcomm without NPU', async () => {
+    describe('Android Qualcomm without SM prefix', () => {
+      it('recommends MNN for Qualcomm with non-SM SoC (e.g. native module unavailable)', async () => {
         Platform.OS = 'android' as typeof Platform.OS;
-        NativeModules.LocalDreamModule = { getSoCModel: jest.fn().mockResolvedValue('SM8250-AB') };
+        NativeModules.LocalDreamModule = { getSoCModel: jest.fn().mockResolvedValue('') };
         mockedDeviceInfo.getTotalMemory.mockResolvedValue(8 * 1024 * 1024 * 1024);
         mockedDeviceInfo.getUsedMemory.mockResolvedValue(2 * 1024 * 1024 * 1024);
         mockedDeviceInfo.getModel.mockReturnValue('POCO F3');
@@ -862,7 +854,6 @@ describe('HardwareService', () => {
         const rec = await hardwareService.getImageModelRecommendation();
         expect(rec.recommendedBackend).toBe('mnn');
         expect(rec.bannerText).toContain('CPU');
-        expect(rec.bannerText).toContain('Snapdragon');
         expect(rec.compatibleBackends).toEqual(['mnn']);
       });
     });

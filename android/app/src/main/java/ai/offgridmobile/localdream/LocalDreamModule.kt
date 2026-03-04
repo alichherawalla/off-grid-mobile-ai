@@ -41,24 +41,15 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
 
         private const val EVENT_PROGRESS = "LocalDreamProgress"
         private const val EVENT_ERROR = "LocalDreamError"
-        private val SM_REGEX = Regex("^SM(\\d+)")
-        // SM numbers are NOT linearly ordered for NPU — SM8250 (SD 870, V66) sits
-        // between SM7450 and SM8350 but has no NPU support. Use two separate ranges.
-        private const val MIN_QNN_7SERIES = 7450 // SD 7 Gen 1+ (Hexagon V69+)
-        private const val MIN_QNN_8SERIES = 8350 // SD 888+ (Hexagon V69+)
 
+        // Mirrors local-dream's getChipsetSuffix: any SM-prefixed chip → supported
         internal fun isNpuSupportedInternal(): Boolean {
             val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 Build.SOC_MODEL
             } else {
                 return false
             }
-            val smMatch = SM_REGEX.find(soc) ?: return false
-            val num = smMatch.groupValues[1].toIntOrNull() ?: return false
-            // 8-series: SM8350+ (SD 888, Hexagon V69+)
-            if (num >= MIN_QNN_8SERIES) return true
-            // 7-series: SM7450–SM7999 (SD 7 Gen 1+, Hexagon V69+)
-            return num in MIN_QNN_7SERIES until 8000
+            return soc.startsWith("SM")
         }
 
         internal fun resolveModelDir(dir: File, isCpu: Boolean): File? {

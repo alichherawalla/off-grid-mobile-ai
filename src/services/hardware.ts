@@ -8,26 +8,15 @@ import { DeviceInfo as DeviceInfoType, ModelRecommendation, SoCInfo, SoCVendor, 
 import { MODEL_RECOMMENDATIONS, RECOMMENDED_MODELS } from '../constants';
 
 /**
- * Explicit mapping of SM model numbers to QNN variant tiers.
- * Flagship chips get their full tier; everything else with Hexagon V68+ gets 'min'.
+ * QNN variant tiers — mirrors local-dream's chipsetModelSuffixes map exactly.
+ * Source: https://github.com/xororz/local-dream — Model.kt getChipsetSuffix()
  *
- * SM numbers are NOT linearly ordered for NPU capability — e.g. SM8250 (SD 870,
- * Hexagon V66) sits between SM7450 and SM8350 but has NO NPU support.
- * We therefore use two separate range checks:
- *   - 7-series: SM7450+ (SD 7 Gen 1, Hexagon V69+)
- *   - 8-series: SM8350+ (SD 888, Hexagon V69+)
- *
- * Source: https://github.com/xororz/local-dream — chipsetModelSuffixes map
- * - 8gen2: SM8550, SM8650, SM8735, SM8750, SM8845, SM8850 (+ P/QCS/QCM variants)
+ * - 8gen2: SM8550, SM8650, SM8735, SM8750, SM8845, SM8850
  * - 8gen1: SM8450, SM8475
- * - min:   any other SM-prefixed chip (SD 888, 8s Gen 3, 7 Gen 1, etc.)
+ * - min:   any other SM-prefixed chip (fallback, same as local-dream)
  */
 const FLAGSHIP_8GEN2 = new Set([8550, 8650, 8735, 8750, 8845, 8850]);
 const FLAGSHIP_8GEN1 = new Set([8450, 8475]);
-/** Minimum SM number for QNN HTP in 7-series (Hexagon V69+) — SD 7 Gen 1 */
-const MIN_QNN_7SERIES = 7450;
-/** Minimum SM number for QNN HTP in 8-series (Hexagon V69+) — SD 888 */
-const MIN_QNN_8SERIES = 8350;
 
 class HardwareService {
   private cachedDeviceInfo: DeviceInfoType | null = null;
@@ -280,18 +269,14 @@ class HardwareService {
 
   private classifySmNumber(socModel: string): '8gen2' | '8gen1' | 'min' | undefined {
     const base = socModel.split('-')[0].toUpperCase();
+    // Must start with SM — matches local-dream's getChipsetSuffix fallback
+    if (!base.startsWith('SM')) return undefined;
     const smMatch = /^SM(\d+)/.exec(base);
     if (!smMatch) return undefined;
     const num = parseInt(smMatch[1], 10);
-    // 8-series: SM8350+ (SD 888, Hexagon V69+)
-    if (num >= MIN_QNN_8SERIES) {
-      if (FLAGSHIP_8GEN2.has(num)) return '8gen2';
-      if (FLAGSHIP_8GEN1.has(num)) return '8gen1';
-      return 'min';
-    }
-    // 7-series: SM7450–SM7999 (SD 7 Gen 1+, Hexagon V69+)
-    if (num >= MIN_QNN_7SERIES && num < 8000) return 'min';
-    return undefined;
+    if (FLAGSHIP_8GEN2.has(num)) return '8gen2';
+    if (FLAGSHIP_8GEN1.has(num)) return '8gen1';
+    return 'min';
   }
 
   private getIosImageRec(chip: SoCInfo['appleChip'], ramGB: number): ImageModelRecommendation {

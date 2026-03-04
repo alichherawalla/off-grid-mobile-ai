@@ -257,8 +257,10 @@ class HardwareService {
       if (smMatch) {
         const num = parseInt(smMatch[1], 10);
         if (num < MIN_QNN_SOC_MODEL_NUM) return undefined; // SM8250 (SD 870) and below — no HTP v68+
-        if (num >= 8550) return '8gen2';
-        if (num >= 8450) return '8gen1';
+        // Flagship chips: SM8x50 (Gen N) and SM8x75 (+ Gen N)
+        // "s" variants like SM8635 (8s Gen 3) have NPU but need 'min' models
+        if (num >= 8550 && (num % 100 === 50 || num % 100 === 75)) return '8gen2';
+        if (num >= 8450 && (num % 100 === 50 || num % 100 === 75)) return '8gen1';
         return 'min';
       }
       return undefined; // Non-SM Qualcomm SoC — not supported

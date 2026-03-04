@@ -702,7 +702,10 @@ describe('HardwareService', () => {
       it.each([
         ['SM8550-AB', '8gen2', 'Snapdragon 8 Gen 2'],
         ['SM8650-AC', '8gen2', 'Snapdragon 8 Gen 3'],
+        ['SM8735-AB', '8gen2', 'SM8735 flagship variant'],
         ['SM8750-AB', '8gen2', 'Snapdragon 8 Elite'],
+        ['SM8845-AB', '8gen2', 'SM8845 flagship variant'],
+        ['SM8850-AB', '8gen2', 'Snapdragon 8 Elite Gen 5'],
         ['SM8450-AB', '8gen1', 'Snapdragon 8 Gen 1'],
         ['SM8475-AB', '8gen1', 'Snapdragon 8+ Gen 1'],
         ['SM8635-AB', 'min', 'Snapdragon 8s Gen 3'],

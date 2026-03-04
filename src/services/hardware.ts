@@ -17,12 +17,12 @@ import { MODEL_RECOMMENDATIONS, RECOMMENDED_MODELS } from '../constants';
  *   - 7-series: SM7450+ (SD 7 Gen 1, Hexagon V69+)
  *   - 8-series: SM8350+ (SD 888, Hexagon V69+)
  *
- * Source: https://github.com/xororz/local-dream (supported chips)
- * - 8gen2: SD 8 Gen 2 (SM8550), 8 Gen 3 (SM8650), 8 Elite (SM8750)
- * - 8gen1: SD 8 Gen 1 (SM8450), 8+ Gen 1 (SM8475)
- * - min:   SD 888 (SM8350), 8s Gen 3 (SM8635), 7 Gen 1 (SM7450), etc.
+ * Source: https://github.com/xororz/local-dream — chipsetModelSuffixes map
+ * - 8gen2: SM8550, SM8650, SM8735, SM8750, SM8845, SM8850 (+ P/QCS/QCM variants)
+ * - 8gen1: SM8450, SM8475
+ * - min:   any other SM-prefixed chip (SD 888, 8s Gen 3, 7 Gen 1, etc.)
  */
-const FLAGSHIP_8GEN2 = new Set([8550, 8650, 8750]);
+const FLAGSHIP_8GEN2 = new Set([8550, 8650, 8735, 8750, 8845, 8850]);
 const FLAGSHIP_8GEN1 = new Set([8450, 8475]);
 /** Minimum SM number for QNN HTP in 7-series (Hexagon V69+) — SD 7 Gen 1 */
 const MIN_QNN_7SERIES = 7450;

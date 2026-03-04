@@ -1,5 +1,4 @@
 import { Dispatch, MutableRefObject, SetStateAction } from 'react';
-
 let _msgIdSeq = 0;
 const nextMsgId = () => `${Date.now()}-${(++_msgIdSeq).toString(36)}`;
 import {
@@ -24,6 +23,7 @@ import { Message, MediaAttachment, Project, DownloadedModel, ModelLoadingStrateg
 import logger from '../../utils/logger';
 
 type SetState<T> = Dispatch<SetStateAction<T>>;
+const FALLBACK_RECENT_MESSAGE_COUNT = 2;
 
 type GenerationDeps = {
   activeModelId: string | null;
@@ -186,9 +186,9 @@ async function generateWithCompactionRetry(
     const conversation = useChatStore.getState().conversations.find(c => c.id === opts.id);
     const previousSummary = conversation?.compactionSummary;
     const compacted = await contextCompactionService.compact({ conversationId: opts.id, systemPrompt: opts.prompt, allMessages: opts.messages, previousSummary }).catch(async () => {
-      logger.log('[ChatGen] Compaction failed — falling back to last 2 messages');
+      logger.log(`[ChatGen] Compaction failed — falling back to last ${FALLBACK_RECENT_MESSAGE_COUNT} messages`);
       await llmService.clearKVCache(true).catch(() => {});
-      const recent = opts.messages.filter(m => m.role !== 'system').slice(-2);
+      const recent = opts.messages.filter(m => m.role !== 'system').slice(-FALLBACK_RECENT_MESSAGE_COUNT);
       return [{ id: 'system', role: 'system', content: opts.prompt, timestamp: 0 } as Message, ...recent];
     });
     await gen(compacted);

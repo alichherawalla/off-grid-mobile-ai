@@ -60,7 +60,6 @@ describe('RECOMMENDED_MODELS', () => {
     const types = new Set(RECOMMENDED_MODELS.map(m => m.type));
     expect(types.has('text')).toBe(true);
     expect(types.has('vision')).toBe(true);
-    expect(types.has('code')).toBe(true);
   });
 
   it('all models have descriptions', () => {

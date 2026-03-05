@@ -22,8 +22,8 @@ const ClearGPUCacheButton: React.FC = () => {
     try {
       const cleared = await localDreamGeneratorService.clearOpenCLCache(activeModel.modelPath);
       Alert.alert('Cache Cleared', `Removed ${cleared} GPU cache file(s). Next generation will retune GPU kernels (first run may be slower).`);
-    } catch {
-      Alert.alert('Error', 'Failed to clear GPU cache.');
+    } catch (e: any) {
+      Alert.alert('Error', `Failed to clear GPU cache: ${e?.message || 'Unknown error'}`);
     } finally {
       setClearing(false);
     }

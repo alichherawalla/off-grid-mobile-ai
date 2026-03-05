@@ -657,7 +657,7 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
                     put("show_diffusion_stride", if (params.hasKey("previewInterval")) params.getInt("previewInterval") else 2)
                     // OpenCL GPU acceleration — controlled by user toggle
                     val useOpenCL = if (params.hasKey("useOpenCL")) params.getBoolean("useOpenCL") else false
-                    if (useOpenCL && (currentBackend == "cpu" || currentBackend == "mnn")) {
+                    if (useOpenCL && currentBackend == "mnn") {
                         put("use_opencl", true)
                         Log.i(TAG, "OpenCL GPU acceleration ENABLED for this generation (backend=$currentBackend)")
                     } else {

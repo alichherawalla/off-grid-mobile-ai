@@ -89,12 +89,13 @@ function cleanEnhancedPrompt(raw: string): string {
 
 function buildImageGenMeta(
   model: ActiveImageModel,
-  opts: { steps: number; guidanceScale: number; result: GeneratedImage },
+  opts: { steps: number; guidanceScale: number; result: GeneratedImage; useOpenCL: boolean },
 ): GenerationMeta {
   const backend = model.backend ?? 'mnn';
-  const gpuBackend = Platform.OS === 'ios' ? 'Core ML (ANE)' : backend === 'qnn' ? 'QNN (NPU)' : 'MNN (GPU)';
+  const isGpu = Platform.OS === 'ios' || backend === 'qnn' || (backend === 'mnn' && opts.useOpenCL);
+  const gpuBackend = Platform.OS === 'ios' ? 'Core ML (ANE)' : backend === 'qnn' ? 'QNN (NPU)' : isGpu ? 'MNN (GPU)' : 'MNN (CPU)';
   return {
-    gpu: true,
+    gpu: isGpu,
     gpuBackend,
     modelName: model.name,
     steps: opts.steps,
@@ -274,7 +275,7 @@ class ImageGenerationService {
           content: `Generated image for: "${params.prompt}"`,
           attachments: [{ id: result.id, type: 'image', uri: `file://${result.imagePath}`, width: result.width, height: result.height }],
           generationTimeMs: genTime,
-          generationMeta: buildImageGenMeta(activeImageModel, { steps, guidanceScale, result }),
+          generationMeta: buildImageGenMeta(activeImageModel, { steps, guidanceScale, result, useOpenCL }),
         });
       }
       this.updateState({ isGenerating: false, progress: null, status: null, previewPath: null, result, error: null });

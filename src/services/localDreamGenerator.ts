@@ -195,11 +195,7 @@ class LocalDreamGeneratorService {
 
   async clearOpenCLCache(modelPath: string): Promise<number> {
     if (!this.isAvailable()) return 0;
-    try {
-      return await DiffusionModule.clearOpenCLCache(modelPath);
-    } catch {
-      return 0;
-    }
+    return await DiffusionModule.clearOpenCLCache(modelPath);
   }
 
   getConstants() {

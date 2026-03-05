@@ -974,7 +974,7 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
             }
 
             var cleared = 0
-            cpuModelDir.listFiles()?.filter { it.name.endsWith(".mnnc") || it.name.contains(".mnnc.") }?.forEach { file ->
+            cpuModelDir.listFiles()?.filter { it.name.endsWith(".mnnc") || it.name.matches(Regex(".*\\.mnnc\\..+")) }?.forEach { file ->
                 Log.i(TAG, "Deleting OpenCL cache: ${file.name}")
                 if (file.delete()) cleared++
             }

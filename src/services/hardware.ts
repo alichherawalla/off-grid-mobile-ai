@@ -305,9 +305,9 @@ class HardwareService {
     } else if (socInfo.vendor === 'qualcomm' && socInfo.hasNPU) {
       rec = this.getQualcommImageRec(socInfo);
     } else if (socInfo.vendor === 'qualcomm') {
-      rec = { recommendedBackend: 'mnn', bannerText: 'CPU models recommended \u2014 your Snapdragon doesn\u2019t support NPU acceleration', compatibleBackends: ['mnn'] };
+      rec = { recommendedBackend: 'mnn', bannerText: 'GPU models recommended \u2014 your Snapdragon doesn\u2019t support NPU acceleration', compatibleBackends: ['mnn'] };
     } else {
-      rec = { recommendedBackend: 'mnn', bannerText: 'CPU models recommended \u2014 NPU requires Snapdragon 888+', compatibleBackends: ['mnn'] };
+      rec = { recommendedBackend: 'mnn', bannerText: 'GPU models recommended \u2014 NPU requires Snapdragon 888+', compatibleBackends: ['mnn'] };
     }
     if (ramGB < 4) { rec.warning = 'Low RAM \u2014 expect slower performance'; }
     this.cachedImageRecommendation = rec;

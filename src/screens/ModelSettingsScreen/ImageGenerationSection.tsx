@@ -47,7 +47,7 @@ export const ImageGenerationSection: React.FC = () => {
       <View style={styles.sliderSection}>
         <View style={styles.sliderHeader}>
           <Text style={styles.sliderLabel}>Image Steps</Text>
-          <Text style={styles.sliderValue}>{settings?.imageSteps || 30}</Text>
+          <Text style={styles.sliderValue}>{settings?.imageSteps || 8}</Text>
         </View>
         <Text style={styles.sliderDesc}>More steps = better quality but slower (LCM: 4-8, Standard: 20-50)</Text>
         <Slider
@@ -55,7 +55,7 @@ export const ImageGenerationSection: React.FC = () => {
           minimumValue={4}
           maximumValue={50}
           step={1}
-          value={settings?.imageSteps || 30}
+          value={settings?.imageSteps || 8}
           onSlidingComplete={(value) => updateSettings({ imageSteps: value })}
           minimumTrackTintColor={colors.primary}
           maximumTrackTintColor={colors.surface}

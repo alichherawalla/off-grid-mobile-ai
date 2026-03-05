@@ -126,7 +126,7 @@ export function hfModelToDescriptor(
     name: hfModel.displayName,
     description: hfModel._coreml
       ? `Core ML model from ${hfModel.repo}`
-      : `${hfModel.backend === 'qnn' ? 'NPU' : 'CPU'} model from ${hfModel.repo}`,
+      : `${hfModel.backend === 'qnn' ? 'NPU' : 'GPU'} model from ${hfModel.repo}`,
     downloadUrl: hfModel.downloadUrl,
     size: hfModel.size,
     style: guessStyle(hfModel.name),

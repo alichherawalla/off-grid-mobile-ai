@@ -91,9 +91,9 @@ function buildImageGenMeta(
   opts: { steps: number; guidanceScale: number; result: GeneratedImage },
 ): GenerationMeta {
   const backend = model.backend ?? 'mnn';
-  const gpuBackend = Platform.OS === 'ios' ? 'Core ML (ANE)' : backend === 'qnn' ? 'QNN (NPU)' : 'MNN (CPU)';
+  const gpuBackend = Platform.OS === 'ios' ? 'Core ML (ANE)' : backend === 'qnn' ? 'QNN (NPU)' : 'MNN (GPU)';
   return {
-    gpu: Platform.OS === 'ios' ? true : backend === 'qnn',
+    gpu: true,
     gpuBackend,
     modelName: model.name,
     steps: opts.steps,

@@ -59,11 +59,11 @@ function parseFileName(fileName: string, backend: 'mnn' | 'qnn'): Omit<HFImageMo
     };
   }
 
-  // CPU: e.g. "AnythingV5.zip"
+  // GPU: e.g. "AnythingV5.zip"
   return {
     id: `${baseName.toLowerCase()}_cpu`,
     name: baseName,
-    displayName: `${insertSpaces(baseName)} (CPU)`,
+    displayName: `${insertSpaces(baseName)} (GPU)`,
     backend: 'mnn',
     fileName,
   };
@@ -114,7 +114,7 @@ export async function fetchAvailableModels(forceRefresh = false, opts?: { skipQn
     });
   }
 
-  // Sort: CPU first, then NPU; alphabetically within each group
+  // Sort: GPU first, then NPU; alphabetically within each group
   models.sort((a, b) => {
     if (a.backend !== b.backend) return a.backend === 'mnn' ? -1 : 1;
     return a.name.localeCompare(b.name);

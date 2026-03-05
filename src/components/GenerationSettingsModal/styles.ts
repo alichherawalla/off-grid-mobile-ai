@@ -123,6 +123,12 @@ const createSliderStyles = (colors: ThemeColors) => ({
     ...TYPOGRAPHY.label,
     color: colors.textMuted,
   },
+  clearCacheButton: {
+    marginTop: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
 });
 
 const createActionStyles = (colors: ThemeColors) => ({

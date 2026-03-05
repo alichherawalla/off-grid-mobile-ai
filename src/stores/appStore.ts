@@ -18,7 +18,7 @@ type AppSettings = {
   imageGenerationMode: ImageGenerationMode; autoDetectMethod: AutoDetectMethod;
   classifierModelId: string | null; imageSteps: number; imageGuidanceScale: number;
   imageThreads: number; imageWidth: number; imageHeight: number;
-  enhanceImagePrompts: boolean; modelLoadingStrategy: ModelLoadingStrategy;
+  imageUseOpenCL: boolean; enhanceImagePrompts: boolean; modelLoadingStrategy: ModelLoadingStrategy;
   enableGpu: boolean; gpuLayers: number; flashAttn: boolean;
   cacheType: CacheType; showGenerationDetails: boolean; enabledTools: string[];
 };
@@ -110,11 +110,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   imageGenerationMode: 'auto' as ImageGenerationMode,
   autoDetectMethod: 'pattern' as AutoDetectMethod,
   classifierModelId: null,
-  imageSteps: 20,
+  imageSteps: 8,
   imageGuidanceScale: 7.5,
   imageThreads: 4,
   imageWidth: 512,
   imageHeight: 512,
+  imageUseOpenCL: true,
   enhanceImagePrompts: false,
   modelLoadingStrategy: 'performance' as ModelLoadingStrategy,
   enableGpu: Platform.OS === 'ios',

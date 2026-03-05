@@ -1,9 +1,46 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, Switch, Platform, TouchableOpacity, Alert } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useTheme, useThemedStyles } from '../../theme';
 import { useAppStore } from '../../stores';
+import { localDreamGeneratorService } from '../../services/localDreamGenerator';
 import { createStyles } from './styles';
+
+const ClearGPUCacheButton: React.FC = () => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { downloadedImageModels, activeImageModelId } = useAppStore();
+  const [clearing, setClearing] = useState(false);
+
+  const handleClear = async () => {
+    const activeModel = downloadedImageModels.find(m => m.id === activeImageModelId);
+    if (!activeModel?.modelPath) {
+      Alert.alert('No Model', 'Load an image model first.');
+      return;
+    }
+    setClearing(true);
+    try {
+      const cleared = await localDreamGeneratorService.clearOpenCLCache(activeModel.modelPath);
+      Alert.alert('Cache Cleared', `Removed ${cleared} GPU cache file(s). Next generation will retune GPU kernels (first run may be slower).`);
+    } catch {
+      Alert.alert('Error', 'Failed to clear GPU cache.');
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  return (
+    <TouchableOpacity
+      style={[styles.settingHeader, styles.clearCacheButton, { backgroundColor: colors.surfaceLight }]}
+      onPress={handleClear}
+      disabled={clearing}
+    >
+      <Text style={[styles.settingDescription, { color: colors.primary }]}>
+        {clearing ? 'Clearing...' : 'Clear GPU Cache'}
+      </Text>
+    </TouchableOpacity>
+  );
+};
 
 export const ImageQualitySliders: React.FC = () => {
   const { colors } = useTheme();
@@ -15,7 +52,7 @@ export const ImageQualitySliders: React.FC = () => {
       <View style={styles.settingGroup}>
         <View style={styles.settingHeader}>
           <Text style={styles.settingLabel}>Image Steps</Text>
-          <Text style={styles.settingValue}>{settings.imageSteps || 20}</Text>
+          <Text style={styles.settingValue}>{settings.imageSteps || 8}</Text>
         </View>
         <Text style={styles.settingDescription}>
           LCM models: 4-8 steps, Standard SD: 20-50 steps
@@ -25,7 +62,7 @@ export const ImageQualitySliders: React.FC = () => {
           minimumValue={4}
           maximumValue={50}
           step={1}
-          value={settings.imageSteps || 20}
+          value={settings.imageSteps || 8}
           onSlidingComplete={(value) => updateSettings({ imageSteps: value })}
           minimumTrackTintColor={colors.primary}
           maximumTrackTintColor={colors.surfaceLight}
@@ -113,6 +150,24 @@ export const ImageQualitySliders: React.FC = () => {
           <Text style={styles.sliderMinMax}>512</Text>
         </View>
       </View>
+
+      {Platform.OS === 'android' && (
+        <View style={styles.settingGroup}>
+          <View style={styles.settingHeader}>
+            <Text style={styles.settingLabel}>GPU Acceleration</Text>
+            <Switch
+              value={settings.imageUseOpenCL ?? true}
+              onValueChange={(value) => updateSettings({ imageUseOpenCL: value })}
+              trackColor={{ false: colors.surfaceLight, true: colors.primary }}
+              thumbColor={colors.surface}
+            />
+          </View>
+          <Text style={styles.settingDescription}>
+            Use GPU for faster image generation. First run may be slower while optimizing for your device. For best performance, use NPU models on supported Snapdragon devices.
+          </Text>
+          {(settings.imageUseOpenCL ?? true) && <ClearGPUCacheButton />}
+        </View>
+      )}
     </>
   );
 };

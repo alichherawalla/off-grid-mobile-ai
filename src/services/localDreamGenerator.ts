@@ -5,6 +5,7 @@ import {
   GeneratedImage,
 } from '../types';
 import { generateRandomSeed } from '../utils/generateId';
+import { useAppStore } from '../stores';
 
 const { LocalDreamModule, CoreMLDiffusionModule } = NativeModules;
 
@@ -126,15 +127,17 @@ class LocalDreamGeneratorService {
 
     try {
       // Call native generateImage — handles HTTP POST, SSE parsing, and PNG saving
+      const { settings } = useAppStore.getState();
       const result = await DiffusionModule.generateImage({
         prompt: params.prompt,
         negativePrompt: params.negativePrompt || '',
-        steps: params.steps || 20,
+        steps: params.steps || 8,
         guidanceScale: params.guidanceScale || 7.5,
         seed: params.seed ?? generateRandomSeed(),
         width: params.width || 512,
         height: params.height || 512,
         previewInterval: params.previewInterval ?? 2,
+        useOpenCL: settings.imageUseOpenCL ?? true,
       });
 
       return {
@@ -144,7 +147,7 @@ class LocalDreamGeneratorService {
         imagePath: result.imagePath,
         width: result.width,
         height: result.height,
-        steps: params.steps || 20,
+        steps: params.steps || 8,
         seed: result.seed,
         modelId: '',
         createdAt: Date.now().toString(),
@@ -188,6 +191,15 @@ class LocalDreamGeneratorService {
   async deleteGeneratedImage(imageId: string): Promise<boolean> {
     if (!this.isAvailable()) return false;
     return await DiffusionModule.deleteGeneratedImage(imageId);
+  }
+
+  async clearOpenCLCache(modelPath: string): Promise<number> {
+    if (!this.isAvailable()) return 0;
+    try {
+      return await DiffusionModule.clearOpenCLCache(modelPath);
+    } catch {
+      return 0;
+    }
   }
 
   getConstants() {

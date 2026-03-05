@@ -88,7 +88,9 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
             Log.d(TAG, "Detected text_embedding_size: $embeddingSize")
 
             return if (isCpu) {
-                // MNN CPU backend
+                // MNN backend — --cpu tells the binary to use MNN instead of QNN.
+                // OpenCL GPU acceleration is requested per-request via "use_opencl": true in the
+                // JSON body. Do NOT remove --cpu — without it the binary crashes on some devices.
                 // IMPORTANT: Always pass "clip.mnn" even if only clip_v2.mnn exists.
                 // The binary auto-detects clip_v2.mnn in the same directory when the
                 // --clip path ends with "clip.mnn", and loads pos_emb.bin + token_emb.bin.
@@ -192,6 +194,9 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
             env["LD_LIBRARY_PATH"] = systemLibPaths.joinToString(":")
             env["DSP_LIBRARY_PATH"] = runtimeDir.absolutePath
             env["ADSP_LIBRARY_PATH"] = runtimeDir.absolutePath
+
+            // MNN OpenCL tuning: request wider kernel search for better Adreno perf
+            env["MNN_OPENCL_TUNING"] = "WIDE"
 
             return env
         }
@@ -650,9 +655,17 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
                     put("scheduler", "dpm")
                     put("show_diffusion_process", true)
                     put("show_diffusion_stride", if (params.hasKey("previewInterval")) params.getInt("previewInterval") else 2)
+                    // OpenCL GPU acceleration — controlled by user toggle
+                    val useOpenCL = if (params.hasKey("useOpenCL")) params.getBoolean("useOpenCL") else false
+                    if (useOpenCL && (currentBackend == "cpu" || currentBackend == "mnn")) {
+                        put("use_opencl", true)
+                        Log.i(TAG, "OpenCL GPU acceleration ENABLED for this generation (backend=$currentBackend)")
+                    } else {
+                        Log.i(TAG, "OpenCL GPU acceleration DISABLED (useOpenCL=$useOpenCL, backend=$currentBackend)")
+                    }
                 }
 
-                Log.d(TAG, "Starting generation: ${body.toString().take(200)}...")
+                Log.i(TAG, "Starting generation: ${body.toString().take(300)}...")
 
                 val url = URL("http://127.0.0.1:$SERVER_PORT/generate")
                 connection = (url.openConnection() as HttpURLConnection).apply {
@@ -943,6 +956,34 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
             ""
         }
         promise.resolve(soc)
+    }
+
+    /**
+     * Clear OpenCL kernel cache files (.mnnc) from a model directory.
+     * Forces MNN to retune OpenCL kernels on the next generation,
+     * which may find better kernels for the current GPU.
+     */
+    @ReactMethod
+    fun clearOpenCLCache(modelPath: String, promise: Promise) {
+        try {
+            val modelDir = File(modelPath)
+            val cpuModelDir = resolveModelDir(modelDir, true)
+            if (cpuModelDir == null) {
+                promise.resolve(0)
+                return
+            }
+
+            var cleared = 0
+            cpuModelDir.listFiles()?.filter { it.name.endsWith(".mnnc") || it.name.contains(".mnnc.") }?.forEach { file ->
+                Log.i(TAG, "Deleting OpenCL cache: ${file.name}")
+                if (file.delete()) cleared++
+            }
+            Log.i(TAG, "Cleared $cleared OpenCL cache file(s) from ${cpuModelDir.absolutePath}")
+            promise.resolve(cleared)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to clear OpenCL cache", e)
+            promise.reject("CACHE_ERROR", "Failed to clear OpenCL cache: ${e.message}", e)
+        }
     }
 
     @ReactMethod

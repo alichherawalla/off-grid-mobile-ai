@@ -324,7 +324,7 @@ describe('ModelSettingsScreen', () => {
       const { getByText } = renderWithSections('image');
       expect(getByText('Image Steps')).toBeTruthy();
       // Default value
-      expect(getByText('20')).toBeTruthy();
+      expect(getByText('8')).toBeTruthy();
     });
 
     it('shows Guidance Scale slider label and value', () => {
@@ -513,7 +513,7 @@ describe('ModelSettingsScreen', () => {
       const allViews = UNSAFE_getAllByType(View);
       const sliders = allViews.filter((v: any) => v.props.onSlidingComplete && v.props.testID?.startsWith('slider-'));
 
-      const stepsSlider = sliders.find((s: any) => s.props.value === 20 && s.props.maximumValue === 50);
+      const stepsSlider = sliders.find((s: any) => s.props.value === 8 && s.props.maximumValue === 50);
       if (stepsSlider) {
         fireEvent(stepsSlider, 'slidingComplete', 30);
         expect(useAppStore.getState().settings.imageSteps).toBe(30);
@@ -825,6 +825,7 @@ describe('ModelSettingsScreen', () => {
           imageThreads: undefined as any,
           imageWidth: undefined as any,
           imageHeight: undefined as any,
+          imageUseOpenCL: undefined as any,
           modelLoadingStrategy: undefined as any,
           enableGpu: undefined as any,
           gpuLayers: undefined as any,
@@ -842,7 +843,7 @@ describe('ModelSettingsScreen', () => {
       expect(getByText('0.90')).toBeTruthy(); // topP || 0.9
       expect(getByText('1.10')).toBeTruthy(); // repeatPenalty || 1.1
       expect(getByText('6')).toBeTruthy(); // nThreads || 6
-      expect(getByText('30')).toBeTruthy(); // imageSteps || 30
+      expect(getByText('8')).toBeTruthy(); // imageSteps || 8
       expect(getByText('7.5')).toBeTruthy(); // imageGuidanceScale || 7.5
     });
 

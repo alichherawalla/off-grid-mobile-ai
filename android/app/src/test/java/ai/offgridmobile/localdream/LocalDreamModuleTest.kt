@@ -432,4 +432,5 @@ class LocalDreamModuleTest {
         val alpha = (pixel ushr 24) and 0xFF
         assertEquals(0xFF, alpha)
     }
+
 }

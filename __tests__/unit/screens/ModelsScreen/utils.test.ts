@@ -406,7 +406,7 @@ describe('ModelsScreen/utils', () => {
       const desc = hfModelToDescriptor(hf as any);
       expect(desc.id).toBe('test-model');
       expect(desc.name).toBe('Test Model');
-      expect(desc.description).toContain('CPU');
+      expect(desc.description).toContain('GPU');
       expect(desc.backend).toBe('mnn');
       expect(desc.size).toBe(500000);
     });

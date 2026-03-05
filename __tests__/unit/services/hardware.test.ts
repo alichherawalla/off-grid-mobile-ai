@@ -826,7 +826,7 @@ describe('HardwareService', () => {
         await setupDevice({ totalGB: 8, platform: 'android', hardware: 'mt6789', model: 'Test' });
         const rec = await hardwareService.getImageModelRecommendation();
         expect(rec.recommendedBackend).toBe('mnn');
-        expect(rec.bannerText).toContain('CPU');
+        expect(rec.bannerText).toContain('GPU');
         expect(rec.bannerText).toContain('888');
         expect(rec.compatibleBackends).toEqual(['mnn']);
       });
@@ -853,7 +853,7 @@ describe('HardwareService', () => {
 
         const rec = await hardwareService.getImageModelRecommendation();
         expect(rec.recommendedBackend).toBe('mnn');
-        expect(rec.bannerText).toContain('CPU');
+        expect(rec.bannerText).toContain('GPU');
         expect(rec.compatibleBackends).toEqual(['mnn']);
       });
     });

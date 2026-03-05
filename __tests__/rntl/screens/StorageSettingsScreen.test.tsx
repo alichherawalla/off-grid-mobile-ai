@@ -276,14 +276,14 @@ describe('StorageSettingsScreen', () => {
     expect(getByText(/Core ML/)).toBeTruthy();
   });
 
-  it('renders image model with MNN backend as CPU', () => {
+  it('renders image model with MNN backend as GPU', () => {
     mockDownloadedImageModels = [
       { id: 'i1', name: 'MNN Model', description: '', modelPath: '/p', downloadedAt: '', size: 1024, style: '', backend: 'mnn' },
     ];
 
     const { getByText } = render(<StorageSettingsScreen />);
     expect(getByText('MNN Model')).toBeTruthy();
-    expect(getByText('CPU')).toBeTruthy();
+    expect(getByText('GPU')).toBeTruthy();
   });
 
   it('renders image model with QNN backend as Qualcomm NPU', () => {
@@ -645,7 +645,7 @@ describe('StorageSettingsScreen', () => {
 
     const { getByText } = render(<StorageSettingsScreen />);
     expect(getByText('No Style')).toBeTruthy();
-    expect(getByText('CPU')).toBeTruthy();
+    expect(getByText('GPU')).toBeTruthy();
   });
 
   it('shows scanning text while scanning', async () => {

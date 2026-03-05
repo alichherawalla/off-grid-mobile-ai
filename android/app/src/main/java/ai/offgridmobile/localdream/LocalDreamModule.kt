@@ -39,6 +39,7 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
         private const val RUNTIME_DIR = "runtime_libs"
         private const val SERVER_PORT = 18081
 
+        private const val MNN_OPENCL_TUNING_MODE = "WIDE"
         private const val EVENT_PROGRESS = "LocalDreamProgress"
         private const val EVENT_ERROR = "LocalDreamError"
 
@@ -196,7 +197,7 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
             env["ADSP_LIBRARY_PATH"] = runtimeDir.absolutePath
 
             // MNN OpenCL tuning: request wider kernel search for better Adreno perf
-            env["MNN_OPENCL_TUNING"] = "WIDE"
+            env["MNN_OPENCL_TUNING"] = MNN_OPENCL_TUNING_MODE
 
             return env
         }

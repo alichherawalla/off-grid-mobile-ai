@@ -221,7 +221,7 @@ describe('isRecommendedModel', () => {
   describe('Android MNN — non-Qualcomm', () => {
     const rec: ImageModelRecommendation = {
       recommendedBackend: 'mnn',
-      bannerText: 'CPU models recommended',
+      bannerText: 'GPU models recommended',
       compatibleBackends: ['mnn'],
     };
 

@@ -208,7 +208,7 @@ describe('huggingFaceModelBrowser', () => {
       expect(models[1].backend).toBe('qnn');
     });
 
-    it('sorts CPU (mnn) before NPU (qnn)', async () => {
+    it('sorts GPU (mnn) before NPU (qnn)', async () => {
       mockFetchResponses(
         { ok: true, body: [treeEntry('Zebra.zip', 10, 'file', 1000)] },
         {

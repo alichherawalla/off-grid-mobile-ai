@@ -473,7 +473,7 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
                 StartResult(false,
                     "Server process exited with code $exitCode. " +
                     "Your device ($socModel) may not support this model's backend. " +
-                    "Try a CPU model instead.")
+                    "Try a GPU model instead.")
             } else {
                 StartResult(false,
                     "Server failed to start within ${timeoutMs/1000}s. " +

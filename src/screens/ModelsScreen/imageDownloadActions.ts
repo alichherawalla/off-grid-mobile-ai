@@ -250,7 +250,7 @@ export async function handleDownloadImageModel(
     if (!socInfo.hasNPU) {
       warningMessage = 'NPU models require a Qualcomm Snapdragon processor. ' +
         'Your device does not have a compatible NPU and this model will not work. ' +
-        'Consider downloading a CPU model instead.';
+        'Consider downloading a GPU model instead.';
     } else if (modelInfo.variant && socInfo.qnnVariant) {
       const deviceVariant = socInfo.qnnVariant;
       const modelVariant = modelInfo.variant;

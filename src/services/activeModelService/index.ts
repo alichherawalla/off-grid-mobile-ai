@@ -133,7 +133,7 @@ class ActiveModelService {
       if (!socInfo.hasNPU) {
         throw new Error(
           'NPU models require a Qualcomm Snapdragon processor. ' +
-          'Your device does not have a compatible NPU. Please use a CPU model instead.',
+          'Your device does not have a compatible NPU. Please use a GPU model instead.',
         );
       }
     }

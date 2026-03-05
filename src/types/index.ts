@@ -304,8 +304,8 @@ export interface ImageGenerationParams {
   steps?: number;
   guidanceScale?: number;
   seed?: number;
+  useOpenCL?: boolean;
 }
-
 export interface ImageGenerationProgress {
   step: number;
   totalSteps: number;

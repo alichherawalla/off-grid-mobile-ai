@@ -5,7 +5,6 @@ import {
   GeneratedImage,
 } from '../types';
 import { generateRandomSeed } from '../utils/generateId';
-import { useAppStore } from '../stores';
 
 const { LocalDreamModule, CoreMLDiffusionModule } = NativeModules;
 
@@ -127,7 +126,6 @@ class LocalDreamGeneratorService {
 
     try {
       // Call native generateImage — handles HTTP POST, SSE parsing, and PNG saving
-      const { settings } = useAppStore.getState();
       const result = await DiffusionModule.generateImage({
         prompt: params.prompt,
         negativePrompt: params.negativePrompt || '',
@@ -137,7 +135,7 @@ class LocalDreamGeneratorService {
         width: params.width || 512,
         height: params.height || 512,
         previewInterval: params.previewInterval ?? 2,
-        useOpenCL: settings.imageUseOpenCL ?? true,
+        useOpenCL: params.useOpenCL ?? true,
       });
 
       return {

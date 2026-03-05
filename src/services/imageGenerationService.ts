@@ -48,6 +48,7 @@ interface RunGenerationOptions {
   guidanceScale: number;
   imageWidth: number;
   imageHeight: number;
+  useOpenCL: boolean;
 }
 
 interface UpdateEnhancementOptions {
@@ -242,12 +243,12 @@ class ImageGenerationService {
   }
 
   private async _runGenerationAndSave(opts: RunGenerationOptions): Promise<GeneratedImage | null> {
-    const { params, enhancedPrompt, activeImageModel, steps, guidanceScale, imageWidth, imageHeight } = opts;
+    const { params, enhancedPrompt, activeImageModel, steps, guidanceScale, imageWidth, imageHeight, useOpenCL } = opts;
     this.updateState({ status: 'Starting image generation...' });
     const startTime = Date.now();
     try {
       const result = await onnxImageGeneratorService.generateImage(
-        { prompt: enhancedPrompt, negativePrompt: params.negativePrompt || '', steps, guidanceScale, seed: params.seed, width: imageWidth, height: imageHeight, previewInterval: params.previewInterval ?? 2 },
+        { prompt: enhancedPrompt, negativePrompt: params.negativePrompt || '', steps, guidanceScale, seed: params.seed, width: imageWidth, height: imageHeight, previewInterval: params.previewInterval ?? 2, useOpenCL },
         (progress) => {
           if (this.cancelRequested) return;
           const displayStep = Math.min(progress.step, steps);
@@ -325,7 +326,7 @@ class ImageGenerationService {
     if (!loaded) return null;
     if (this.cancelRequested) { this.resetState(); return null; }
 
-    return this._runGenerationAndSave({ params, enhancedPrompt, activeImageModel, steps, guidanceScale, imageWidth, imageHeight });
+    return this._runGenerationAndSave({ params, enhancedPrompt, activeImageModel, steps, guidanceScale, imageWidth, imageHeight, useOpenCL: settings.imageUseOpenCL ?? true });
   }
 
   async cancelGeneration(): Promise<void> {

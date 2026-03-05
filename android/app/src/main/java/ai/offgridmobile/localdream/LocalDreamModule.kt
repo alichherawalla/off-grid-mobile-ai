@@ -666,7 +666,7 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
                     }
                 }
 
-                Log.i(TAG, "Starting generation: ${body.toString().take(300)}...")
+                Log.d(TAG, "Starting generation: ${body.toString().take(300)}...")
 
                 val url = URL("http://127.0.0.1:$SERVER_PORT/generate")
                 connection = (url.openConnection() as HttpURLConnection).apply {
@@ -966,24 +966,33 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun clearOpenCLCache(modelPath: String, promise: Promise) {
-        try {
-            val modelDir = File(modelPath)
-            val cpuModelDir = resolveModelDir(modelDir, true)
-            if (cpuModelDir == null) {
-                promise.resolve(0)
-                return
-            }
+        val appFilesDir = reactApplicationContext.filesDir.canonicalPath
+        val canonical = File(modelPath).canonicalPath
+        if (!canonical.startsWith(appFilesDir)) {
+            promise.reject("CACHE_ERROR", "Model path is outside the app directory")
+            return
+        }
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val modelDir = File(modelPath)
+                val cpuModelDir = resolveModelDir(modelDir, true)
+                if (cpuModelDir == null) {
+                    promise.resolve(0)
+                    return@launch
+                }
 
-            var cleared = 0
-            cpuModelDir.listFiles()?.filter { it.name.endsWith(".mnnc") || it.name.matches(Regex(".*\\.mnnc\\..+")) }?.forEach { file ->
-                Log.i(TAG, "Deleting OpenCL cache: ${file.name}")
-                if (file.delete()) cleared++
+                var cleared = 0
+                val cachePattern = Regex(".*\\.mnnc(\\..+)?$")
+                cpuModelDir.listFiles()?.filter { it.name.matches(cachePattern) }?.forEach { file ->
+                    Log.d(TAG, "Deleting OpenCL cache: ${file.name}")
+                    if (file.delete()) cleared++
+                }
+                Log.i(TAG, "Cleared $cleared OpenCL cache file(s) from ${cpuModelDir.absolutePath}")
+                promise.resolve(cleared)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to clear OpenCL cache", e)
+                promise.reject("CACHE_ERROR", "Failed to clear OpenCL cache: ${e.message}", e)
             }
-            Log.i(TAG, "Cleared $cleared OpenCL cache file(s) from ${cpuModelDir.absolutePath}")
-            promise.resolve(cleared)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to clear OpenCL cache", e)
-            promise.reject("CACHE_ERROR", "Failed to clear OpenCL cache: ${e.message}", e)
         }
     }
 

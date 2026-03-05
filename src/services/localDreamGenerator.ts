@@ -194,7 +194,7 @@ class LocalDreamGeneratorService {
   }
 
   async clearOpenCLCache(modelPath: string): Promise<number> {
-    if (!this.isAvailable()) return 0;
+    if (Platform.OS !== 'android' || !this.isAvailable()) return 0;
     return await DiffusionModule.clearOpenCLCache(modelPath);
   }
 

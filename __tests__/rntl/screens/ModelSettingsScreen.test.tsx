@@ -769,9 +769,9 @@ describe('ModelSettingsScreen', () => {
   // ============================================================================
   describe('max tokens display formatting', () => {
     it('shows raw number when maxTokens < 1024', () => {
-      useAppStore.getState().updateSettings({ maxTokens: 512 });
+      useAppStore.getState().updateSettings({ maxTokens: 512, nBatch: 256 });
       const { getAllByText } = renderWithSections('text');
-      expect(getAllByText('512').length).toBeGreaterThanOrEqual(1);
+      expect(getAllByText('512').length).toBe(1);
     });
 
     it('shows K format when maxTokens >= 1024', () => {
@@ -787,9 +787,9 @@ describe('ModelSettingsScreen', () => {
   // ============================================================================
   describe('context length display formatting', () => {
     it('shows raw number when contextLength < 1024', () => {
-      useAppStore.getState().updateSettings({ contextLength: 512 });
+      useAppStore.getState().updateSettings({ contextLength: 512, nBatch: 256 });
       const { getAllByText } = renderWithSections('text');
-      expect(getAllByText('512').length).toBeGreaterThanOrEqual(1);
+      expect(getAllByText('512').length).toBe(1);
     });
   });
 

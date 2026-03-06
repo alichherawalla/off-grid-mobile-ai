@@ -5,19 +5,18 @@ import { Button } from '../../components/Button';
 import { useTheme, useThemedStyles } from '../../theme';
 import { useAppStore } from '../../stores';
 import { CacheType } from '../../types';
+import {
+  useTextGenerationAdvanced,
+  CACHE_TYPE_DESCRIPTIONS,
+  GPU_LAYERS_MAX,
+  CACHE_TYPE_OPTIONS,
+} from '../../hooks/useTextGenerationAdvanced';
 import { createStyles } from './styles';
-
-const CACHE_DESC: Record<CacheType, string> = {
-  f16: 'Full precision — best quality, highest memory usage',
-  q8_0: '8-bit quantized — good balance of quality and memory',
-  q4_0: '4-bit quantized — lowest memory, may reduce quality',
-};
 
 // ─── GPU Section ──────────────────────────────────────────────────────────────
 
 interface GpuSectionProps {
   isGpuEnabled: boolean;
-  gpuLayersMax: number;
   gpuLayersEffective: number;
   trackColor: { false: string; true: string };
   onGpuChange: (value: boolean) => void;
@@ -25,7 +24,6 @@ interface GpuSectionProps {
 
 const GpuSection: React.FC<GpuSectionProps> = ({
   isGpuEnabled,
-  gpuLayersMax,
   gpuLayersEffective,
   trackColor,
   onGpuChange,
@@ -65,7 +63,7 @@ const GpuSection: React.FC<GpuSectionProps> = ({
             testID="gpu-layers-slider"
             style={styles.slider}
             minimumValue={1}
-            maximumValue={gpuLayersMax}
+            maximumValue={GPU_LAYERS_MAX}
             step={1}
             value={gpuLayersEffective}
             onSlidingComplete={(value) => updateSettings({ gpuLayers: value })}
@@ -84,17 +82,7 @@ const GpuSection: React.FC<GpuSectionProps> = ({
 const FlashAttentionSection: React.FC<{ trackColor: { false: string; true: string } }> = ({ trackColor }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const { settings, updateSettings } = useAppStore();
-  const isFlashAttnOn = settings?.flashAttn ?? true;
-  const isQuantizedCache = (settings?.cacheType ?? 'q8_0') !== 'f16';
-
-  const handleFlashAttnChange = (value: boolean) => {
-    if (!value && isQuantizedCache) {
-      updateSettings({ flashAttn: false, cacheType: 'f16' });
-    } else {
-      updateSettings({ flashAttn: value });
-    }
-  };
+  const { isFlashAttnOn, handleFlashAttnToggle } = useTextGenerationAdvanced();
 
   return (
     <View style={styles.toggleRow}>
@@ -107,7 +95,7 @@ const FlashAttentionSection: React.FC<{ trackColor: { false: string; true: strin
       <Switch
         testID="flash-attn-switch"
         value={isFlashAttnOn}
-        onValueChange={handleFlashAttnChange}
+        onValueChange={handleFlashAttnToggle}
         trackColor={trackColor}
         thumbColor={isFlashAttnOn ? colors.primary : colors.textMuted}
       />
@@ -119,17 +107,7 @@ const FlashAttentionSection: React.FC<{ trackColor: { false: string; true: strin
 
 const KvCacheSection: React.FC<{ cacheDisabled: boolean }> = ({ cacheDisabled }) => {
   const styles = useThemedStyles(createStyles);
-  const { settings, updateSettings } = useAppStore();
-  const currentCache: CacheType = settings?.cacheType ?? 'q8_0';
-  const isFlashAttnOn = settings?.flashAttn ?? true;
-
-  const handleCacheTypeChange = (ct: CacheType) => {
-    const updates: Partial<typeof settings> = { cacheType: ct };
-    if (ct !== 'f16' && !isFlashAttnOn) {
-      updates.flashAttn = true;
-    }
-    updateSettings(updates);
-  };
+  const { displayCacheType, isFlashAttnOn, handleCacheTypeChange } = useTextGenerationAdvanced();
 
   return (
     <>
@@ -137,18 +115,18 @@ const KvCacheSection: React.FC<{ cacheDisabled: boolean }> = ({ cacheDisabled })
         <View style={styles.toggleInfo}>
           <Text style={styles.toggleLabel}>KV Cache Type</Text>
           <Text style={styles.toggleDesc}>
-            {CACHE_DESC[currentCache]}
+            {CACHE_TYPE_DESCRIPTIONS[displayCacheType]}
           </Text>
         </View>
       </View>
       <View style={styles.strategyButtons}>
-        {(['f16', 'q8_0', 'q4_0'] as CacheType[]).map((ct) => (
+        {CACHE_TYPE_OPTIONS.map((ct: CacheType) => (
           <Button
             key={ct}
             title={ct}
             variant="secondary"
             size="small"
-            active={(cacheDisabled ? 'f16' : currentCache) === ct}
+            active={displayCacheType === ct}
             disabled={cacheDisabled && ct !== 'f16'}
             onPress={() => handleCacheTypeChange(ct)}
             style={styles.flex1}
@@ -217,23 +195,14 @@ export const TextGenerationAdvanced: React.FC = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { settings, updateSettings } = useAppStore();
+  const {
+    gpuLayersEffective,
+    isGpuEnabled,
+    cacheDisabled,
+    handleGpuToggle,
+  } = useTextGenerationAdvanced();
 
   const trackColor = { false: colors.surfaceLight, true: `${colors.primary}80` };
-  const isQuantizedCache = (settings?.cacheType ?? 'q8_0') !== 'f16';
-  const gpuLayersMax = 99;
-  const gpuLayersEffective = Math.min(settings?.gpuLayers ?? 1, gpuLayersMax);
-  const isGpuEnabled = settings?.enableGpu !== false;
-  const isAndroid = Platform.OS === 'android';
-  const gpuForcesF16 = isAndroid && isGpuEnabled;
-  const cacheDisabled = gpuForcesF16;
-
-  const handleGpuChange = (value: boolean) => {
-    if (value && isAndroid && isQuantizedCache) {
-      updateSettings({ enableGpu: true, cacheType: 'f16' });
-    } else {
-      updateSettings({ enableGpu: value });
-    }
-  };
 
   return (
     <>
@@ -316,10 +285,9 @@ export const TextGenerationAdvanced: React.FC = () => {
       {Platform.OS !== 'ios' && (
         <GpuSection
           isGpuEnabled={isGpuEnabled}
-          gpuLayersMax={gpuLayersMax}
           gpuLayersEffective={gpuLayersEffective}
           trackColor={trackColor}
-          onGpuChange={handleGpuChange}
+          onGpuChange={handleGpuToggle}
         />
       )}
 

@@ -1,38 +1,20 @@
-import React, { useState } from 'react';
-import { View, Text, Switch, Platform, TouchableOpacity, Alert } from 'react-native';
+import React from 'react';
+import { View, Text, Switch, Platform, TouchableOpacity } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useTheme, useThemedStyles } from '../../theme';
 import { useAppStore } from '../../stores';
-import { localDreamGeneratorService } from '../../services/localDreamGenerator';
+import { useClearGpuCache } from '../../hooks/useImageGenerationSettings';
 import { createStyles } from './styles';
 
 const ClearGPUCacheButton: React.FC = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const { downloadedImageModels, activeImageModelId } = useAppStore();
-  const [clearing, setClearing] = useState(false);
-
-  const handleClear = async () => {
-    const activeModel = downloadedImageModels.find(m => m.id === activeImageModelId);
-    if (!activeModel?.modelPath) {
-      Alert.alert('No Model', 'Load an image model first.');
-      return;
-    }
-    setClearing(true);
-    try {
-      const cleared = await localDreamGeneratorService.clearOpenCLCache(activeModel.modelPath);
-      Alert.alert('Cache Cleared', `Removed ${cleared} GPU cache file(s). Next generation will retune GPU kernels (first run may be slower).`);
-    } catch (e: any) {
-      Alert.alert('Error', `Failed to clear GPU cache: ${e?.message || 'Unknown error'}`);
-    } finally {
-      setClearing(false);
-    }
-  };
+  const { clearing, handleClearCache } = useClearGpuCache();
 
   return (
     <TouchableOpacity
       style={[styles.settingHeader, styles.clearCacheButton, { backgroundColor: colors.surfaceLight }]}
-      onPress={handleClear}
+      onPress={handleClearCache}
       disabled={clearing}
     >
       <Text style={[styles.settingDescription, { color: colors.primary }]}>

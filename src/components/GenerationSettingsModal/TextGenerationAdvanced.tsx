@@ -1,9 +1,15 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useTheme, useThemedStyles } from '../../theme';
 import { useAppStore } from '../../stores';
 import { CacheType } from '../../types';
+import {
+  useTextGenerationAdvanced,
+  CACHE_TYPE_DESCRIPTIONS,
+  GPU_LAYERS_MAX,
+  CACHE_TYPE_OPTIONS,
+} from '../../hooks/useTextGenerationAdvanced';
 import { createStyles } from './styles';
 
 // ─── GPU Acceleration ─────────────────────────────────────────────────────────
@@ -12,17 +18,7 @@ export const GpuAccelerationToggle: React.FC = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { settings, updateSettings } = useAppStore();
-  const gpuLayersMax = 99;
-  const gpuLayersEffective = Math.min(settings.gpuLayers ?? 1, gpuLayersMax);
-  const isQuantizedCache = (settings.cacheType ?? 'q8_0') !== 'f16';
-
-  const handleGpuOn = () => {
-    if (Platform.OS === 'android' && isQuantizedCache) {
-      updateSettings({ enableGpu: true, cacheType: 'f16' });
-    } else {
-      updateSettings({ enableGpu: true });
-    }
-  };
+  const { gpuLayersEffective, handleGpuToggle } = useTextGenerationAdvanced();
 
   return (
     <View style={styles.modeToggleContainer}>
@@ -36,7 +32,7 @@ export const GpuAccelerationToggle: React.FC = () => {
         <TouchableOpacity
           testID="gpu-off-button"
           style={[styles.modeButton, !settings.enableGpu && styles.modeButtonActive]}
-          onPress={() => updateSettings({ enableGpu: false })}
+          onPress={() => handleGpuToggle(false)}
         >
           <Text style={[styles.modeButtonText, !settings.enableGpu && styles.modeButtonTextActive]}>
             Off
@@ -45,7 +41,7 @@ export const GpuAccelerationToggle: React.FC = () => {
         <TouchableOpacity
           testID="gpu-on-button"
           style={[styles.modeButton, settings.enableGpu && styles.modeButtonActive]}
-          onPress={handleGpuOn}
+          onPress={() => handleGpuToggle(true)}
         >
           <Text style={[styles.modeButtonText, settings.enableGpu && styles.modeButtonTextActive]}>
             On
@@ -66,7 +62,7 @@ export const GpuAccelerationToggle: React.FC = () => {
             testID="gpu-layers-slider"
             style={styles.slider}
             minimumValue={1}
-            maximumValue={gpuLayersMax}
+            maximumValue={GPU_LAYERS_MAX}
             step={1}
             value={gpuLayersEffective}
             onSlidingComplete={(value: number) => updateSettings({ gpuLayers: value })}
@@ -84,17 +80,8 @@ export const GpuAccelerationToggle: React.FC = () => {
 
 export const FlashAttentionToggle: React.FC = () => {
   const styles = useThemedStyles(createStyles);
-  const { settings, updateSettings } = useAppStore();
-  const isFlashAttnOn = settings.flashAttn ?? true;
-  const isQuantizedCache = (settings.cacheType ?? 'q8_0') !== 'f16';
-
-  const handleFlashAttnOff = () => {
-    if (isQuantizedCache) {
-      updateSettings({ flashAttn: false, cacheType: 'f16' });
-    } else {
-      updateSettings({ flashAttn: false });
-    }
-  };
+  const { updateSettings } = useAppStore();
+  const { isFlashAttnOn, handleFlashAttnToggle } = useTextGenerationAdvanced();
 
   return (
     <View style={styles.modeToggleContainer}>
@@ -108,7 +95,7 @@ export const FlashAttentionToggle: React.FC = () => {
         <TouchableOpacity
           testID="flash-attn-off-button"
           style={[styles.modeButton, !isFlashAttnOn && styles.modeButtonActive]}
-          onPress={handleFlashAttnOff}
+          onPress={() => handleFlashAttnToggle(false)}
         >
           <Text style={[styles.modeButtonText, !isFlashAttnOn && styles.modeButtonTextActive]}>
             Off
@@ -130,45 +117,26 @@ export const FlashAttentionToggle: React.FC = () => {
 
 // ─── KV Cache Type ───────────────────────────────────────────────────────────
 
-const CACHE_TYPE_DESC: Record<CacheType, string> = {
-  f16: 'Full precision — best quality, highest memory usage',
-  q8_0: '8-bit quantized — good balance of quality and memory',
-  q4_0: '4-bit quantized — lowest memory, may reduce quality',
-};
-
 export const KvCacheTypeToggle: React.FC = () => {
   const styles = useThemedStyles(createStyles);
-  const { settings, updateSettings } = useAppStore();
-  const current: CacheType = settings.cacheType ?? 'q8_0';
-  const isFlashAttnOn = settings.flashAttn ?? true;
-  const gpuForcesF16 = Platform.OS === 'android' && settings.enableGpu;
-  const cacheDisabled = gpuForcesF16;
-
-  const handleCacheTypeChange = (ct: CacheType) => {
-    if (cacheDisabled) return;
-    const updates: Partial<typeof settings> = { cacheType: ct };
-    if (ct !== 'f16' && !isFlashAttnOn) {
-      updates.flashAttn = true;
-    }
-    updateSettings(updates);
-  };
+  const { isFlashAttnOn, cacheDisabled, displayCacheType, handleCacheTypeChange } = useTextGenerationAdvanced();
 
   return (
     <View style={styles.modeToggleContainer}>
       <View style={styles.modeToggleInfo}>
         <Text style={styles.modeToggleLabel}>KV Cache Type</Text>
-        <Text style={styles.modeToggleDesc}>{CACHE_TYPE_DESC[cacheDisabled ? 'f16' : current]}</Text>
+        <Text style={styles.modeToggleDesc}>{CACHE_TYPE_DESCRIPTIONS[displayCacheType]}</Text>
       </View>
       <View style={styles.modeToggleButtons}>
-        {(['f16', 'q8_0', 'q4_0'] as CacheType[]).map((ct) => (
+        {CACHE_TYPE_OPTIONS.map((ct: CacheType) => (
           <TouchableOpacity
             key={ct}
             testID={`cache-type-${ct}-button`}
-            style={[styles.modeButton, (cacheDisabled ? 'f16' : current) === ct && styles.modeButtonActive]}
+            style={[styles.modeButton, displayCacheType === ct && styles.modeButtonActive]}
             onPress={() => handleCacheTypeChange(ct)}
             disabled={cacheDisabled && ct !== 'f16'}
           >
-            <Text style={[styles.modeButtonText, (cacheDisabled ? 'f16' : current) === ct && styles.modeButtonTextActive]}>
+            <Text style={[styles.modeButtonText, displayCacheType === ct && styles.modeButtonTextActive]}>
               {ct}
             </Text>
           </TouchableOpacity>

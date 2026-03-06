@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, Switch, Platform, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, Switch, Platform, TouchableOpacity } from 'react-native';
 import Slider from '@react-native-community/slider';
 import Icon from 'react-native-vector-icons/Feather';
 import { Card } from '../../components';
 import { Button } from '../../components/Button';
 import { useTheme, useThemedStyles } from '../../theme';
 import { useAppStore } from '../../stores';
-import { localDreamGeneratorService } from '../../services/localDreamGenerator';
+import { useClearGpuCache } from '../../hooks/useImageGenerationSettings';
 import { createStyles } from './styles';
 
 // ─── Advanced Sub-Components ─────────────────────────────────────────────────
@@ -40,27 +40,10 @@ const EnhanceImageToggle: React.FC = () => {
 const ImageGpuSection: React.FC = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const { settings, updateSettings, downloadedImageModels, activeImageModelId } = useAppStore();
-  const [clearing, setClearing] = useState(false);
+  const { settings, updateSettings } = useAppStore();
+  const { clearing, handleClearCache } = useClearGpuCache();
   const trackColor = { false: colors.surfaceLight, true: `${colors.primary}80` };
   const isOpenCL = settings?.imageUseOpenCL ?? true;
-
-  const handleClearCache = async () => {
-    const activeModel = downloadedImageModels.find(m => m.id === activeImageModelId);
-    if (!activeModel?.modelPath) {
-      Alert.alert('No Model', 'Load an image model first.');
-      return;
-    }
-    setClearing(true);
-    try {
-      const cleared = await localDreamGeneratorService.clearOpenCLCache(activeModel.modelPath);
-      Alert.alert('Cache Cleared', `Removed ${cleared} GPU cache file(s). Next generation will retune GPU kernels (first run may be slower).`);
-    } catch (e: any) {
-      Alert.alert('Error', `Failed to clear GPU cache: ${e?.message || 'Unknown error'}`);
-    } finally {
-      setClearing(false);
-    }
-  };
 
   return (
     <>

@@ -11,7 +11,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { AppNavigator } from './src/navigation';
 import { useTheme } from './src/theme';
-import { hardwareService, modelManager, authService } from './src/services';
+import { hardwareService, modelManager, authService, ragService } from './src/services';
 import logger from './src/utils/logger';
 import { useAppStore, useAuthStore } from './src/stores';
 import { LockScreen } from './src/screens';
@@ -176,6 +176,9 @@ function App() {
       if (hasPassphrase && authEnabled) {
         setLocked(true);
       }
+
+      // Initialize RAG database tables
+      ragService.ensureReady().catch(() => {});
 
       // Show the UI immediately
       setIsInitializing(false);

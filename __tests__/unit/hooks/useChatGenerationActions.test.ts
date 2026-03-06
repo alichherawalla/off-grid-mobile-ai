@@ -67,6 +67,10 @@ jest.mock('../../../src/services/localDreamGenerator', () => ({
     deleteGeneratedImage: jest.fn(),
   },
 }));
+jest.mock('../../../src/services/rag', () => ({
+  ragService: { searchProject: jest.fn(() => Promise.resolve({ chunks: [], truncated: false })) },
+  retrievalService: { formatForPrompt: jest.fn(() => '<knowledge_base>mock RAG context</knowledge_base>') },
+}));
 
 // Get mock references after hoisting
 const { intentClassifier } = require('../../../src/services/intentClassifier');
@@ -90,6 +94,11 @@ const mockGetContextDebugInfo = llmService.getContextDebugInfo as jest.Mock;
 const mockClearKVCache = llmService.clearKVCache as jest.Mock;
 const mockDeleteGeneratedImage = localDreamGeneratorService.deleteGeneratedImage as jest.Mock;
 
+const { ragService } = require('../../../src/services/rag');
+const { retrievalService } = require('../../../src/services/rag');
+const mockSearchProject = ragService.searchProject as jest.Mock;
+const mockFormatForPrompt = retrievalService.formatForPrompt as jest.Mock;
+
 const mockSetHasSeenCacheTypeNudge = jest.fn();
 
 jest.mock('../../../src/stores/appStore', () => ({
@@ -101,16 +110,14 @@ jest.mock('../../../src/stores/appStore', () => ({
   },
 }));
 
+const mockChatStoreGetState = jest.fn(() => ({ conversations: [] as any[], updateCompactionState: jest.fn() }));
 jest.mock('../../../src/stores/chatStore', () => ({
-  useChatStore: {
-    getState: () => ({ conversations: [], updateCompactionState: jest.fn() }),
-  },
+  useChatStore: { getState: () => mockChatStoreGetState() },
 }));
 
+const mockProjectStoreGetProject = jest.fn((_id: string) => null as any);
 jest.mock('../../../src/stores/projectStore', () => ({
-  useProjectStore: {
-    getState: () => ({ getProject: jest.fn(() => null) }),
-  },
+  useProjectStore: { getState: () => ({ getProject: mockProjectStoreGetProject }) },
 }));
 
 jest.mock('../../../src/components', () => ({
@@ -140,6 +147,10 @@ beforeEach(() => {
   mockDeleteGeneratedImage.mockResolvedValue(undefined);
   mockGetGenerationState.mockReturnValue({ isGenerating: false });
   mockEnqueueMessage.mockReturnValue(undefined);
+  mockSearchProject.mockResolvedValue({ chunks: [], truncated: false });
+  mockFormatForPrompt.mockReturnValue('<knowledge_base>mock RAG context</knowledge_base>');
+  mockChatStoreGetState.mockReturnValue({ conversations: [], updateCompactionState: jest.fn() });
+  mockProjectStoreGetProject.mockReturnValue(null);
 });
 
 // ─────────────────────────────────────────────
@@ -574,5 +585,88 @@ describe('cache type nudge after generation', () => {
     const alertCall = (mockShowAlert as jest.Mock).mock.calls.find((args: any[]) => args[0] === 'Improve Output Quality');
     const gotIt = alertCall![2].find((b: any) => b.text === 'Got it');
     expect(gotIt.style).toBe('cancel');
+  });
+});
+
+// ─────────────────────────────────────────────
+// RAG context injection
+// ─────────────────────────────────────────────
+
+describe('RAG context injection in startGenerationFn', () => {
+  it('injects RAG context when conversation has a projectId and search returns chunks', async () => {
+    const conv = { id: 'conv-1', projectId: 'proj-1', messages: [{ id: 'm1', role: 'user', content: 'hello', timestamp: 0 }] };
+    mockChatStoreGetState.mockReturnValue({ conversations: [conv], updateCompactionState: jest.fn() });
+    mockProjectStoreGetProject.mockReturnValue({ id: 'proj-1', systemPrompt: 'Be helpful', name: 'Test' });
+    mockSearchProject.mockResolvedValue({
+      chunks: [{ doc_id: 1, name: 'doc.txt', content: 'relevant info', position: 0, rank: -1.5 }],
+      truncated: false,
+    });
+    const deps = makeGenerationDeps();
+    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'hello' });
+
+    expect(mockSearchProject).toHaveBeenCalledWith('proj-1', 'hello');
+    expect(mockFormatForPrompt).toHaveBeenCalled();
+    expect(mockGenerateResponse).toHaveBeenCalled();
+  });
+
+  it('does not inject RAG context when conversation has no projectId', async () => {
+    const conv = { id: 'conv-1', messages: [{ id: 'm1', role: 'user', content: 'hello', timestamp: 0 }] };
+    mockChatStoreGetState.mockReturnValue({ conversations: [conv], updateCompactionState: jest.fn() });
+    const deps = makeGenerationDeps();
+    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'hello' });
+
+    expect(mockSearchProject).not.toHaveBeenCalled();
+    expect(mockGenerateResponse).toHaveBeenCalled();
+  });
+
+  it('does not inject RAG context when search returns no chunks', async () => {
+    const conv = { id: 'conv-1', projectId: 'proj-1', messages: [] };
+    mockChatStoreGetState.mockReturnValue({ conversations: [conv], updateCompactionState: jest.fn() });
+    mockProjectStoreGetProject.mockReturnValue({ id: 'proj-1', systemPrompt: 'Be helpful', name: 'Test' });
+    mockSearchProject.mockResolvedValue({ chunks: [], truncated: false });
+    const deps = makeGenerationDeps();
+    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'hello' });
+
+    expect(mockSearchProject).toHaveBeenCalled();
+    expect(mockFormatForPrompt).not.toHaveBeenCalled();
+  });
+
+  it('continues generation even if RAG search throws', async () => {
+    const conv = { id: 'conv-1', projectId: 'proj-1', messages: [] };
+    mockChatStoreGetState.mockReturnValue({ conversations: [conv], updateCompactionState: jest.fn() });
+    mockProjectStoreGetProject.mockReturnValue({ id: 'proj-1', systemPrompt: 'Be helpful', name: 'Test' });
+    mockSearchProject.mockRejectedValue(new Error('DB error'));
+    const deps = makeGenerationDeps();
+    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'hello' });
+
+    // Generation should still proceed despite RAG error
+    expect(mockGenerateResponse).toHaveBeenCalled();
+  });
+});
+
+describe('RAG context injection in regenerateResponseFn', () => {
+  it('injects RAG context for project conversations', async () => {
+    const userMsg = { id: 'm1', role: 'user' as const, content: 'explain docs', timestamp: 0 };
+    const conv = { id: 'conv-1', projectId: 'proj-1', messages: [userMsg] };
+    mockChatStoreGetState.mockReturnValue({ conversations: [conv], updateCompactionState: jest.fn() });
+    mockSearchProject.mockResolvedValue({
+      chunks: [{ doc_id: 1, name: 'doc.txt', content: 'relevant info', position: 0, rank: -1.5 }],
+      truncated: false,
+    });
+    const deps = makeGenerationDeps({ activeProject: { id: 'proj-1', systemPrompt: 'Be helpful' } });
+    await regenerateResponseFn(deps, { setDebugInfo: jest.fn(), userMessage: userMsg });
+
+    expect(mockSearchProject).toHaveBeenCalledWith('proj-1', 'explain docs');
+    expect(mockFormatForPrompt).toHaveBeenCalled();
+  });
+
+  it('skips RAG for non-project conversations', async () => {
+    const userMsg = { id: 'm1', role: 'user' as const, content: 'hello', timestamp: 0 };
+    const conv = { id: 'conv-1', messages: [userMsg] };
+    mockChatStoreGetState.mockReturnValue({ conversations: [conv], updateCompactionState: jest.fn() });
+    const deps = makeGenerationDeps();
+    await regenerateResponseFn(deps, { setDebugInfo: jest.fn(), userMessage: userMsg });
+
+    expect(mockSearchProject).not.toHaveBeenCalled();
   });
 });

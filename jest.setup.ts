@@ -354,6 +354,20 @@ jest.mock('moti', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
 }), { virtual: true });
 
+// @op-engineering/op-sqlite mock
+jest.mock('@op-engineering/op-sqlite', () => {
+  const mockResults = { rows: [], insertId: 0, rowsAffected: 0 };
+  const mockDb = {
+    executeSync: jest.fn(() => mockResults),
+    execute: jest.fn(() => Promise.resolve(mockResults)),
+    close: jest.fn(),
+    delete: jest.fn(),
+  };
+  return {
+    open: jest.fn(() => mockDb),
+  };
+});
+
 // react-native-zip-archive mock
 jest.mock('react-native-zip-archive', () => ({
   unzip: jest.fn(() => Promise.resolve('/mock/unzipped/path')),

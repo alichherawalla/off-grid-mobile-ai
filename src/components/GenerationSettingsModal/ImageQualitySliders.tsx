@@ -183,11 +183,3 @@ export const ImageQualityAdvancedSliders: React.FC = () => {
     </>
   );
 };
-
-/** Combined export for backward compatibility */
-export const ImageQualitySliders: React.FC = () => (
-  <>
-    <ImageQualityBasicSliders />
-    <ImageQualityAdvancedSliders />
-  </>
-);

@@ -206,8 +206,9 @@ class ImageGenerationService {
       try {
         const hasCache = await onnxImageGeneratorService.hasKernelCache(activeImageModel.modelPath);
         isFirstGpuRun = !hasCache;
-      } catch {
+      } catch (e) {
         // If check fails, assume cache exists to avoid false positives
+        logger.warn('[ImageGen] Failed to check for OpenCL kernel cache:', e);
       }
     }
 

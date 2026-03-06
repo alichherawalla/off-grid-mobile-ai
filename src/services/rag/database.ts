@@ -117,10 +117,7 @@ class RagDatabase {
 
   deleteDocumentsByProject(projectId: string): void {
     const db = this.getDb();
-    const docs = this.getDocumentsByProject(projectId);
-    for (const doc of docs) {
-      db.executeSync('DELETE FROM rag_chunks WHERE doc_id = ?', [doc.id]);
-    }
+    db.executeSync('DELETE FROM rag_chunks WHERE doc_id IN (SELECT id FROM rag_documents WHERE project_id = ?)', [projectId]);
     db.executeSync('DELETE FROM rag_documents WHERE project_id = ?', [projectId]);
   }
 }

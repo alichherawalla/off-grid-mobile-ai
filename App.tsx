@@ -178,7 +178,7 @@ function App() {
       }
 
       // Initialize RAG database tables
-      ragService.ensureReady().catch(() => {});
+      ragService.ensureReady().catch((err) => logger.error('Failed to initialize RAG service on startup', err));
 
       // Show the UI immediately
       setIsInitializing(false);

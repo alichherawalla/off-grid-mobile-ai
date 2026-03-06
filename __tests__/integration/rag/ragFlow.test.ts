@@ -233,21 +233,15 @@ describe('RAG Flow Integration', () => {
     });
 
     it('deleteProjectDocuments cleans up all docs for a project', async () => {
-      const mockDocs = [
-        { id: 1, project_id: 'proj-1', name: 'a.txt', path: '/a', size: 100, created_at: '2024-01-01', enabled: 1 },
-        { id: 2, project_id: 'proj-1', name: 'b.txt', path: '/b', size: 200, created_at: '2024-01-01', enabled: 1 },
-      ];
-      mockExecuteSync
-        .mockReturnValueOnce({ rows: mockDocs }) // getDocumentsByProject SELECT
-        .mockReturnValue({ rows: [], rowsAffected: 1 }); // DELETEs
-
       await ragService.deleteProjectDocuments('proj-1');
 
       const deleteCalls = mockExecuteSync.mock.calls.filter(
         (c: any[]) => typeof c[0] === 'string' && c[0].includes('DELETE')
       );
-      // 2 chunk deletes (one per doc) + 1 project-level doc delete
-      expect(deleteCalls.length).toBe(3);
+      // 1 bulk chunk delete (via subselect) + 1 project-level doc delete
+      expect(deleteCalls.length).toBe(2);
+      expect(deleteCalls[0][0]).toContain('rag_chunks');
+      expect(deleteCalls[1][0]).toContain('rag_documents');
     });
   });
 

@@ -15,7 +15,10 @@ class RetrievalService {
     if (result.chunks.length === 0) return '';
 
     const sections = result.chunks.map((chunk) => {
-      return `[Source: ${chunk.name} (part ${chunk.position + 1})]\n${chunk.content}`;
+      // Sanitize content to prevent prompt injection from user-uploaded documents
+      const safeName = chunk.name.replace(/[<>]/g, '');
+      const safeContent = chunk.content.replace(/<\/?knowledge_base>/gi, '');
+      return `[Source: ${safeName} (part ${chunk.position + 1})]\n${safeContent}`;
     });
 
     return `<knowledge_base>\nThe following excerpts are from the user's project knowledge base. Use them to inform your response when relevant.\n\n${sections.join('\n\n---\n\n')}\n</knowledge_base>`;

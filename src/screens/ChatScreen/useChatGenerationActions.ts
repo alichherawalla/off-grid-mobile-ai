@@ -155,7 +155,6 @@ async function ensureModelReady(deps: GenerationDeps): Promise<boolean> {
   await deps.ensureModelLoaded();
   return llmService.isModelLoaded() && llmService.getLoadedModelPath() === deps.activeModel!.filePath;
 }
-
 async function prepareContext(setDebugInfo: SetState<any>, systemPrompt: string, messages: Message[]): Promise<void> {
   try {
     const contextDebug = await llmService.getContextDebugInfo(messages);
@@ -191,10 +190,14 @@ async function generateWithCompactionRetry(
 }
 async function injectRagContext(projectId: string | undefined, query: string, prompt: string): Promise<string> {
   if (!projectId) return prompt;
-  try { const r = await ragService.searchProject(projectId, query); if (r.chunks.length > 0) return `${prompt}\n\n${retrievalService.formatForPrompt(r)}`; } catch { /* best-effort */ }
+  try {
+    const r = await ragService.searchProject(projectId, query);
+    if (r.chunks.length > 0) return `${prompt}\n\n${retrievalService.formatForPrompt(r)}`;
+  } catch (err) {
+    logger.error('[RAG] Context injection failed', err);
+  }
   return prompt;
 }
-
 export async function startGenerationFn(deps: GenerationDeps, call: StartGenerationCall): Promise<void> {
   const { setDebugInfo, targetConversationId, messageText } = call;
   if (!deps.activeModel) return;
@@ -307,9 +310,7 @@ export async function executeDeleteConversationFn(
   deps.setActiveConversation(null);
   deps.navigation.goBack();
 }
-
 export type RegenerateCall = { setDebugInfo: SetState<any>; userMessage: Message };
-
 export async function regenerateResponseFn(deps: GenerationDeps, call: RegenerateCall): Promise<void> {
   const { userMessage } = call;
   if (!deps.activeConversationId || !deps.activeModel) return;
@@ -341,7 +342,6 @@ export type SelectProjectDeps = {
   setConversationProject: (convId: string, projectId: string | null) => void;
   setShowProjectSelector: SetState<boolean>;
 };
-
 export function handleSelectProjectFn(deps: SelectProjectDeps, project: Project | null): void {
   if (deps.activeConversationId) {
     deps.setConversationProject(deps.activeConversationId, project?.id || null);

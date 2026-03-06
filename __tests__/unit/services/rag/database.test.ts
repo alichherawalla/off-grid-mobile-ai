@@ -151,23 +151,19 @@ describe('RagDatabase', () => {
   });
 
   describe('deleteDocumentsByProject', () => {
-    it('deletes all documents and chunks for a project', async () => {
+    it('deletes all chunks and documents for a project in two queries', async () => {
       await ragDatabase.ensureReady();
-      const mockDocs = [
-        { id: 1, project_id: 'proj1', name: 'a.txt', path: '/a', size: 100, created_at: '2024-01-01', enabled: 1 },
-        { id: 2, project_id: 'proj1', name: 'b.txt', path: '/b', size: 200, created_at: '2024-01-01', enabled: 1 },
-      ];
-      mockExecuteSync
-        .mockReturnValueOnce({ rows: mockDocs }) // SELECT
-        .mockReturnValue({ rows: [], rowsAffected: 1 }); // DELETEs
 
       ragDatabase.deleteDocumentsByProject('proj1');
 
       const deleteCalls = mockExecuteSync.mock.calls.filter(
         (c: any[]) => typeof c[0] === 'string' && c[0].includes('DELETE')
       );
-      // 2 chunk deletes (one per doc) + 1 project-level delete
-      expect(deleteCalls).toHaveLength(3);
+      // 1 bulk chunk delete (via subselect) + 1 project-level doc delete
+      expect(deleteCalls).toHaveLength(2);
+      expect(deleteCalls[0][0]).toContain('rag_chunks');
+      expect(deleteCalls[0][0]).toContain('IN (SELECT id FROM rag_documents');
+      expect(deleteCalls[1][0]).toContain('rag_documents');
     });
   });
 

@@ -56,8 +56,13 @@ const KnowledgeBaseSection: React.FC<KBSectionProps> = ({ projectId, colors, sty
       setIndexingFile(fileName);
       await ragService.indexDocument({ projectId, filePath: file.uri, fileName, fileSize: file.size || 0 });
       await loadKbDocs();
-    } catch { /* cancelled or error */ }
-    setIndexingFile(null);
+    } catch (err: any) {
+      if (err && !err.message?.includes('cancel')) {
+        setAlertState(showAlert('Error', err.message || 'Failed to index document'));
+      }
+    } finally {
+      setIndexingFile(null);
+    }
   };
 
   const handleToggleDocument = async (docId: number, enabled: boolean) => {
@@ -149,11 +154,9 @@ export const ProjectDetailScreen: React.FC = () => {
       navigation.navigate('Chat', { conversationId: newConversationId, projectId });
     }
   };
-
   const handleEditProject = () => {
     navigation.navigate('ProjectEdit', { projectId });
   };
-
   const handleDeleteProject = () => {
     setAlertState(showAlert(
       'Delete Project',
@@ -171,7 +174,6 @@ export const ProjectDetailScreen: React.FC = () => {
       ]
     ));
   };
-
   const handleDeleteChat = (conversation: Conversation) => {
     setAlertState(showAlert(
       'Delete Chat',
@@ -186,7 +188,6 @@ export const ProjectDetailScreen: React.FC = () => {
       ]
     ));
   };
-
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -211,7 +212,6 @@ export const ProjectDetailScreen: React.FC = () => {
       <Icon name="trash-2" size={16} color={colors.error} />
     </TouchableOpacity>
   );
-
   const renderChat = ({ item }: { item: Conversation }) => {
     const lastMessage = item.messages[item.messages.length - 1];
 

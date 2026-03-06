@@ -1,25 +1,116 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
+  Switch,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import Icon from 'react-native-vector-icons/Feather';
+import { pick } from '@react-native-documents/picker';
 import { Button } from '../components/Button';
 import { CustomAlert, showAlert, hideAlert, AlertState, initialAlertState } from '../components/CustomAlert';
 import { useTheme, useThemedStyles } from '../theme';
 import { createStyles } from './ProjectDetailScreen.styles';
 import { useChatStore, useProjectStore, useAppStore } from '../stores';
+import { ragService } from '../services/rag';
+import type { RagDocument } from '../services/rag';
 import { Conversation } from '../types';
 import { RootStackParamList } from '../navigation/types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type RouteProps = RouteProp<RootStackParamList, 'ProjectDetail'>;
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`;
+  return bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+interface KBSectionProps {
+  projectId: string;
+  colors: any;
+  styles: any;
+  setAlertState: (state: AlertState) => void;
+}
+
+const KnowledgeBaseSection: React.FC<KBSectionProps> = ({ projectId, colors, styles, setAlertState }) => {
+  const [kbDocs, setKbDocs] = useState<RagDocument[]>([]);
+  const [indexingFile, setIndexingFile] = useState<string | null>(null);
+
+  const loadKbDocs = useCallback(async () => {
+    try { setKbDocs(await ragService.getDocumentsByProject(projectId)); } catch { /* ignore */ }
+  }, [projectId]);
+
+  useEffect(() => { loadKbDocs(); }, [loadKbDocs]);
+
+  const handleAddDocument = async () => {
+    try {
+      const [file] = await pick({ mode: 'open' });
+      if (!file) return;
+      const fileName = file.name || 'document';
+      setIndexingFile(fileName);
+      await ragService.indexDocument({ projectId, filePath: file.uri, fileName, fileSize: file.size || 0 });
+      await loadKbDocs();
+    } catch { /* cancelled or error */ }
+    setIndexingFile(null);
+  };
+
+  const handleToggleDocument = async (docId: number, enabled: boolean) => {
+    await ragService.toggleDocument(docId, enabled);
+    await loadKbDocs();
+  };
+
+  const handleDeleteDocument = (doc: RagDocument) => {
+    setAlertState(showAlert('Remove Document', `Remove "${doc.name}" from the knowledge base?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: async () => {
+        await ragService.deleteDocument(doc.id);
+        await loadKbDocs();
+      }},
+    ]));
+  };
+
+  return (
+    <>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Knowledge Base</Text>
+        <Button title="Add" variant="primary" size="small" onPress={handleAddDocument} disabled={!!indexingFile}
+          icon={<Icon name="plus" size={16} color={indexingFile ? colors.textDisabled : colors.primary} />} />
+      </View>
+      {indexingFile && (
+        <View style={styles.kbIndexing}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={styles.kbIndexingText} numberOfLines={1}>Indexing {indexingFile}...</Text>
+        </View>
+      )}
+      {kbDocs.length === 0 && !indexingFile ? (
+        <View style={styles.kbEmpty}>
+          <Icon name="file-text" size={20} color={colors.textMuted} />
+          <Text style={styles.kbEmptyText}>No documents added</Text>
+        </View>
+      ) : (
+        kbDocs.map((doc) => (
+          <View key={doc.id} style={styles.kbDocRow}>
+            <View style={styles.kbDocInfo}>
+              <Text style={styles.kbDocName} numberOfLines={1}>{doc.name}</Text>
+              <Text style={styles.kbDocSize}>{formatFileSize(doc.size)}</Text>
+            </View>
+            <Switch value={doc.enabled === 1} onValueChange={(val) => handleToggleDocument(doc.id, val)}
+              trackColor={{ false: colors.border, true: colors.primary }} />
+            <TouchableOpacity style={styles.kbDocDelete} onPress={() => handleDeleteDocument(doc)}>
+              <Icon name="trash-2" size={14} color={colors.error} />
+            </TouchableOpacity>
+          </View>
+        ))
+      )}
+    </>
+  );
+};
 
 export const ProjectDetailScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -201,6 +292,9 @@ export const ProjectDetailScreen: React.FC = () => {
           </View>
         </View>
       </View>
+
+      {/* Knowledge Base Section */}
+      <KnowledgeBaseSection projectId={projectId} colors={colors} styles={styles} setAlertState={setAlertState} />
 
       {/* Chats Section */}
       <View style={styles.sectionHeader}>

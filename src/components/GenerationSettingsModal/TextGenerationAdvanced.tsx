@@ -8,7 +8,7 @@ import { createStyles } from './styles';
 
 // ─── GPU Acceleration ─────────────────────────────────────────────────────────
 
-const GpuAccelerationToggle: React.FC = () => {
+export const GpuAccelerationToggle: React.FC = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { settings, updateSettings } = useAppStore();
@@ -82,7 +82,7 @@ const GpuAccelerationToggle: React.FC = () => {
 
 // ─── Flash Attention ──────────────────────────────────────────────────────────
 
-const FlashAttentionToggle: React.FC = () => {
+export const FlashAttentionToggle: React.FC = () => {
   const styles = useThemedStyles(createStyles);
   const { settings, updateSettings } = useAppStore();
   const isFlashAttnOn = settings.flashAttn ?? true;
@@ -90,7 +90,6 @@ const FlashAttentionToggle: React.FC = () => {
 
   const handleFlashAttnOff = () => {
     if (isQuantizedCache) {
-      // Turning flash attention off with quantized cache → auto-switch to f16
       updateSettings({ flashAttn: false, cacheType: 'f16' });
     } else {
       updateSettings({ flashAttn: false });
@@ -137,7 +136,7 @@ const CACHE_TYPE_DESC: Record<CacheType, string> = {
   q4_0: '4-bit quantized — lowest memory, may reduce quality',
 };
 
-const KvCacheTypeToggle: React.FC = () => {
+export const KvCacheTypeToggle: React.FC = () => {
   const styles = useThemedStyles(createStyles);
   const { settings, updateSettings } = useAppStore();
   const current: CacheType = settings.cacheType ?? 'q8_0';
@@ -191,7 +190,7 @@ const KvCacheTypeToggle: React.FC = () => {
 
 // ─── Model Loading Strategy ───────────────────────────────────────────────────
 
-const ModelLoadingStrategyToggle: React.FC = () => {
+export const ModelLoadingStrategyToggle: React.FC = () => {
   const styles = useThemedStyles(createStyles);
   const { settings, updateSettings } = useAppStore();
   const isPerformance = settings.modelLoadingStrategy === 'performance';
@@ -229,42 +228,9 @@ const ModelLoadingStrategyToggle: React.FC = () => {
   );
 };
 
-// ─── Show Generation Details ──────────────────────────────────────────────────
-
-const ShowGenerationDetailsToggle: React.FC = () => {
-  const styles = useThemedStyles(createStyles);
-  const { settings, updateSettings } = useAppStore();
-  const isOn = settings.showGenerationDetails;
-
-  return (
-    <View style={styles.modeToggleContainer}>
-      <View style={styles.modeToggleInfo}>
-        <Text style={styles.modeToggleLabel}>Show Generation Details</Text>
-        <Text style={styles.modeToggleDesc}>
-          Display GPU, model, tok/s, and image settings below each message
-        </Text>
-      </View>
-      <View style={styles.modeToggleButtons}>
-        <TouchableOpacity
-          style={[styles.modeButton, !isOn && styles.modeButtonActive]}
-          onPress={() => updateSettings({ showGenerationDetails: false })}
-        >
-          <Text style={[styles.modeButtonText, !isOn && styles.modeButtonTextActive]}>Off</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.modeButton, isOn && styles.modeButtonActive]}
-          onPress={() => updateSettings({ showGenerationDetails: true })}
-        >
-          <Text style={[styles.modeButtonText, isOn && styles.modeButtonTextActive]}>On</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-};
-
 // ─── CPU Threads & Batch Size ────────────────────────────────────────────────
 
-const CpuThreadsSlider: React.FC = () => {
+export const CpuThreadsSlider: React.FC = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { settings, updateSettings } = useAppStore();
@@ -292,7 +258,7 @@ const CpuThreadsSlider: React.FC = () => {
   );
 };
 
-const BatchSizeSlider: React.FC = () => {
+export const BatchSizeSlider: React.FC = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { settings, updateSettings } = useAppStore();
@@ -316,24 +282,6 @@ const BatchSizeSlider: React.FC = () => {
         maximumTrackTintColor={colors.surfaceLight}
         thumbTintColor={colors.primary}
       />
-    </View>
-  );
-};
-
-// ─── Main Section ─────────────────────────────────────────────────────────────
-
-export const PerformanceSection: React.FC = () => {
-  const styles = useThemedStyles(createStyles);
-
-  return (
-    <View style={styles.sectionCard}>
-      <CpuThreadsSlider />
-      <BatchSizeSlider />
-      {Platform.OS !== 'ios' && <GpuAccelerationToggle />}
-      <FlashAttentionToggle />
-      <KvCacheTypeToggle />
-      <ModelLoadingStrategyToggle />
-      <ShowGenerationDetailsToggle />
     </View>
   );
 };

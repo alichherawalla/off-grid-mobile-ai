@@ -110,7 +110,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   imageGenerationMode: 'auto' as ImageGenerationMode,
   autoDetectMethod: 'pattern' as AutoDetectMethod,
   classifierModelId: null,
-  imageSteps: 8,
+  imageSteps: Platform.OS === 'ios' ? 20 : 8,
   imageGuidanceScale: 7.5,
   imageThreads: 4,
   imageWidth: 512,

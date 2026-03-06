@@ -9,7 +9,6 @@ import { createStyles } from './styles';
 import { ConversationActionsSection } from './ConversationActionsSection';
 import { ImageGenerationSection } from './ImageGenerationSection';
 import { TextGenerationSection } from './TextGenerationSection';
-import { PerformanceSection } from './PerformanceSection';
 
 const DEFAULT_SETTINGS = {
   temperature: 0.7,
@@ -47,7 +46,6 @@ export const GenerationSettingsModal: React.FC<GenerationSettingsModalProps> = (
   const [performanceStats, setPerformanceStats] = useState(llmService.getPerformanceStats());
   const [imageSettingsOpen, setImageSettingsOpen] = useState(false);
   const [textSettingsOpen, setTextSettingsOpen] = useState(false);
-  const [performanceSettingsOpen, setPerformanceSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -131,21 +129,6 @@ export const GenerationSettingsModal: React.FC<GenerationSettingsModalProps> = (
           />
         </TouchableOpacity>
         {textSettingsOpen && <TextGenerationSection />}
-
-        {/* PERFORMANCE SETTINGS */}
-        <TouchableOpacity
-          style={styles.accordionHeader}
-          onPress={() => setPerformanceSettingsOpen(!performanceSettingsOpen)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.accordionTitle}>PERFORMANCE</Text>
-          <Icon
-            name={performanceSettingsOpen ? 'chevron-up' : 'chevron-down'}
-            size={16}
-            color={colors.textMuted}
-          />
-        </TouchableOpacity>
-        {performanceSettingsOpen && <PerformanceSection />}
 
         <TouchableOpacity style={styles.resetButton} onPress={handleResetDefaults}>
           <Text style={styles.resetButtonText}>Reset to Defaults</Text>

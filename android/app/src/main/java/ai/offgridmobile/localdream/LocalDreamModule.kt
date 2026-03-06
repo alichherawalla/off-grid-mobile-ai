@@ -996,6 +996,37 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
         }
     }
 
+    /**
+     * Check if OpenCL kernel cache (.mnnc files) exists for the given model.
+     * Returns false on first run, indicating GPU kernel compilation will be needed.
+     */
+    @ReactMethod
+    fun hasOpenCLCache(modelPath: String, promise: Promise) {
+        val appFilesDir = reactApplicationContext.filesDir.canonicalPath
+        val canonical = File(modelPath).canonicalPath
+        if (!canonical.startsWith(appFilesDir)) {
+            promise.reject("CACHE_ERROR", "Model path is outside the app directory")
+            return
+        }
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val modelDir = File(modelPath)
+                val cpuModelDir = resolveModelDir(modelDir, true)
+                if (cpuModelDir == null) {
+                    promise.resolve(false)
+                    return@launch
+                }
+
+                val cachePattern = Regex(".*\\.mnnc(\\..+)?$")
+                val hasCache = cpuModelDir.listFiles()?.any { it.name.matches(cachePattern) } == true
+                promise.resolve(hasCache)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to check OpenCL cache", e)
+                promise.reject("CACHE_ERROR", "Failed to check OpenCL cache: ${e.message}", e)
+            }
+        }
+    }
+
     @ReactMethod
     fun addListener(eventName: String) {
         // Required for RN event emitter

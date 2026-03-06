@@ -42,7 +42,8 @@ const ClearGPUCacheButton: React.FC = () => {
   );
 };
 
-export const ImageQualitySliders: React.FC = () => {
+/** Basic sliders: Image Steps + Image Size */
+export const ImageQualityBasicSliders: React.FC = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { settings, updateSettings } = useAppStore();
@@ -55,7 +56,7 @@ export const ImageQualitySliders: React.FC = () => {
           <Text style={styles.settingValue}>{settings.imageSteps || 8}</Text>
         </View>
         <Text style={styles.settingDescription}>
-          LCM models: 4-8 steps, Standard SD: 20-50 steps
+          4-8 steps for speed, 20-50 for quality
         </Text>
         <Slider
           style={styles.slider}
@@ -74,6 +75,44 @@ export const ImageQualitySliders: React.FC = () => {
         </View>
       </View>
 
+      <View style={styles.settingGroup}>
+        <View style={styles.settingHeader}>
+          <Text style={styles.settingLabel}>Image Size</Text>
+          <Text style={styles.settingValue}>
+            {settings.imageWidth ?? 256}x{settings.imageHeight ?? 256}
+          </Text>
+        </View>
+        <Text style={styles.settingDescription}>
+          Output resolution (smaller = faster, larger = more detail)
+        </Text>
+        <Slider
+          style={styles.slider}
+          minimumValue={128}
+          maximumValue={512}
+          step={64}
+          value={settings.imageWidth ?? 256}
+          onSlidingComplete={(value) => updateSettings({ imageWidth: value, imageHeight: value })}
+          minimumTrackTintColor={colors.primary}
+          maximumTrackTintColor={colors.surfaceLight}
+          thumbTintColor={colors.primary}
+        />
+        <View style={styles.sliderLabels}>
+          <Text style={styles.sliderMinMax}>128</Text>
+          <Text style={styles.sliderMinMax}>512</Text>
+        </View>
+      </View>
+    </>
+  );
+};
+
+/** Advanced sliders: Guidance Scale, Image Threads, GPU Acceleration */
+export const ImageQualityAdvancedSliders: React.FC = () => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { settings, updateSettings } = useAppStore();
+
+  return (
+    <>
       <View style={styles.settingGroup}>
         <View style={styles.settingHeader}>
           <Text style={styles.settingLabel}>Guidance Scale</Text>
@@ -124,33 +163,6 @@ export const ImageQualitySliders: React.FC = () => {
         </View>
       </View>
 
-      <View style={styles.settingGroup}>
-        <View style={styles.settingHeader}>
-          <Text style={styles.settingLabel}>Image Size</Text>
-          <Text style={styles.settingValue}>
-            {settings.imageWidth ?? 256}x{settings.imageHeight ?? 256}
-          </Text>
-        </View>
-        <Text style={styles.settingDescription}>
-          Output resolution (smaller = faster, larger = more detail)
-        </Text>
-        <Slider
-          style={styles.slider}
-          minimumValue={128}
-          maximumValue={512}
-          step={64}
-          value={settings.imageWidth ?? 256}
-          onSlidingComplete={(value) => updateSettings({ imageWidth: value, imageHeight: value })}
-          minimumTrackTintColor={colors.primary}
-          maximumTrackTintColor={colors.surfaceLight}
-          thumbTintColor={colors.primary}
-        />
-        <View style={styles.sliderLabels}>
-          <Text style={styles.sliderMinMax}>128</Text>
-          <Text style={styles.sliderMinMax}>512</Text>
-        </View>
-      </View>
-
       {Platform.OS === 'android' && (
         <View style={styles.settingGroup}>
           <View style={styles.settingHeader}>
@@ -171,3 +183,11 @@ export const ImageQualitySliders: React.FC = () => {
     </>
   );
 };
+
+/** Combined export for backward compatibility */
+export const ImageQualitySliders: React.FC = () => (
+  <>
+    <ImageQualityBasicSliders />
+    <ImageQualityAdvancedSliders />
+  </>
+);

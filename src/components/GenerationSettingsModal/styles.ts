@@ -280,6 +280,22 @@ const createToggleStyles = (colors: ThemeColors) => ({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
+  advancedToggle: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: SPACING.xs,
+  },
+  advancedToggleText: {
+    ...TYPOGRAPHY.bodySmall,
+    color: colors.textMuted,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+  },
 });
 
 export const createStyles = (colors: ThemeColors, _shadows: ThemeShadows) => ({

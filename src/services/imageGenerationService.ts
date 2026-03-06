@@ -1,12 +1,12 @@
 /** ImageGenerationService - Handles image generation independently of UI lifecycle */
-import { Platform } from 'react-native';
 import { localDreamGeneratorService as onnxImageGeneratorService } from './localDreamGenerator';
 import { activeModelService } from './activeModelService';
 import { llmService } from './llm';
 import { useAppStore, useChatStore } from '../stores';
-import { GeneratedImage, GenerationMeta, Message } from '../types';
+import { GeneratedImage } from '../types';
 import logger from '../utils/logger';
 import { shouldShowSharePrompt, emitSharePrompt } from '../utils/sharePrompt';
+import { buildEnhancementMessages, getConversationContext, cleanEnhancedPrompt, buildImageGenMeta } from './imageGenerationHelpers';
 
 const SHARE_PROMPT_DELAY_MS = 2000;
 
@@ -56,52 +56,6 @@ interface UpdateEnhancementOptions {
   tempMessageId: string | null;
   enhancedPrompt: string;
   originalPrompt: string;
-}
-
-// ---------------------------------------------------------------------------
-// Module-level helpers
-// ---------------------------------------------------------------------------
-
-function buildEnhancementMessages(prompt: string, contextMessages: Message[]): Message[] {
-  const hasContext = contextMessages.length > 0;
-  const systemContent = hasContext
-    ? `You are an expert at creating detailed image generation prompts. The user is in a conversation and wants to generate an image. Use the conversation history to understand context and references (e.g. "make it darker", "same but at night"). Enhance the user's latest request into a detailed, descriptive prompt for an image generation model. Include artistic style, lighting, composition, and quality modifiers. Keep it under 75 words. Only respond with the enhanced prompt, no explanation.`
-    : `You are an expert at creating detailed image generation prompts. Take the user's request and enhance it into a detailed, descriptive prompt that will produce better results from an image generation model. Include artistic style, lighting, composition, and quality modifiers. Keep it under 75 words. Only respond with the enhanced prompt, no explanation.`;
-  return [
-    { id: 'system-enhance', role: 'system', content: systemContent, timestamp: Date.now() },
-    ...contextMessages,
-    { id: 'user-enhance', role: 'user', content: prompt, timestamp: Date.now() },
-  ];
-}
-
-function getConversationContext(conversationId: string): Message[] {
-  const conversation = useChatStore.getState().conversations.find(c => c.id === conversationId);
-  if (!conversation?.messages) return [];
-  return conversation.messages
-    .slice(-10)
-    .filter(msg => msg.role === 'user' || msg.role === 'assistant')
-    .map(msg => ({ id: `ctx-${msg.id}`, role: msg.role, content: msg.content.slice(0, 500), timestamp: msg.timestamp }));
-}
-
-function cleanEnhancedPrompt(raw: string): string {
-  return raw.trim().replace(/(^["'])|(["']$)/g, '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-}
-
-function buildImageGenMeta(
-  model: ActiveImageModel,
-  opts: { steps: number; guidanceScale: number; result: GeneratedImage; useOpenCL: boolean },
-): GenerationMeta {
-  const backend = model.backend ?? 'mnn';
-  const isGpu = Platform.OS === 'ios' || backend === 'qnn' || (backend === 'mnn' && opts.useOpenCL);
-  const gpuBackend = Platform.OS === 'ios' ? 'Core ML (ANE)' : backend === 'qnn' ? 'QNN (NPU)' : isGpu ? 'MNN (GPU)' : 'MNN (CPU)';
-  return {
-    gpu: isGpu,
-    gpuBackend,
-    modelName: model.name,
-    steps: opts.steps,
-    guidanceScale: opts.guidanceScale,
-    resolution: `${opts.result.width}x${opts.result.height}`,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -202,7 +156,7 @@ class ImageGenerationService {
     }
     try {
       logger.log('[ImageGen] 📤 Calling llmService.generateResponse for enhancement...');
-      let raw = await llmService.generateResponse(buildEnhancementMessages(params.prompt, contextMessages), (_token) => {});
+      let raw = await llmService.generateResponse(buildEnhancementMessages(params.prompt, contextMessages), (_token) => { });
       logger.log('[ImageGen] 📥 llmService.generateResponse returned');
       logger.log('[ImageGen] LLM state after enhancement - generating:', llmService.isCurrentlyGenerating());
       raw = cleanEnhancedPrompt(raw);
@@ -245,7 +199,23 @@ class ImageGenerationService {
 
   private async _runGenerationAndSave(opts: RunGenerationOptions): Promise<GeneratedImage | null> {
     const { params, enhancedPrompt, activeImageModel, steps, guidanceScale, imageWidth, imageHeight, useOpenCL } = opts;
-    this.updateState({ status: 'Starting image generation...' });
+
+    // Check if this is the first GPU run (no OpenCL kernel cache yet)
+    let isFirstGpuRun = false;
+    if (useOpenCL) {
+      try {
+        const hasCache = await onnxImageGeneratorService.hasKernelCache(activeImageModel.modelPath);
+        isFirstGpuRun = !hasCache;
+      } catch {
+        // If check fails, assume cache exists to avoid false positives
+      }
+    }
+
+    this.updateState({
+      status: isFirstGpuRun
+        ? 'Optimizing GPU for your device (~120s, one-time)...'
+        : 'Starting image generation...',
+    });
     const startTime = Date.now();
     try {
       const result = await onnxImageGeneratorService.generateImage(
@@ -253,7 +223,16 @@ class ImageGenerationService {
         (progress) => {
           if (this.cancelRequested) return;
           const displayStep = Math.min(progress.step, steps);
-          this.updateState({ progress: { step: displayStep, totalSteps: steps }, status: `Generating image (${displayStep}/${steps})...` });
+          if (isFirstGpuRun) {
+            this.updateState({
+              progress: { step: displayStep, totalSteps: steps },
+              status: displayStep <= 1
+                ? 'Optimizing GPU for your device (~120s, one-time)...'
+                : `GPU optimization in progress... (${displayStep}/${steps})`,
+            });
+          } else {
+            this.updateState({ progress: { step: displayStep, totalSteps: steps }, status: `Generating image (${displayStep}/${steps})...` });
+          }
         },
         (preview) => {
           if (this.cancelRequested) return;

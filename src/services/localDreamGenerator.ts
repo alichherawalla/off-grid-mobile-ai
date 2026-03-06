@@ -196,6 +196,11 @@ class LocalDreamGeneratorService {
     return await DiffusionModule.clearOpenCLCache(modelPath);
   }
 
+  async hasKernelCache(modelPath: string): Promise<boolean> {
+    if (Platform.OS !== 'android' || !this.isAvailable()) return true;
+    return await DiffusionModule.hasOpenCLCache(modelPath);
+  }
+
   getConstants() {
     if (!this.isAvailable()) {
       return {

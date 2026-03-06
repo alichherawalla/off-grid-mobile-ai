@@ -3607,7 +3607,7 @@ SPEC CHECKSUMS:
   llama-rn: d4f799c2f201f382a8e0aa7e9198663e61ae02c2
   lottie-ios: a881093fab623c467d3bce374367755c272bdd59
   lottie-react-native: 691b8363e8c591fb78a78254ff2517258891456b
-  op-sqlite: bafff369cecaee4fe65c89eec47deaba26f2db95
+  op-sqlite: ab292d8057b994f220b8c61f2683f5ff9286958e
   RCT-Folly: 846fda9475e61ec7bcbf8a3fe81edfcaeb090669
   RCTDeprecation: a41bbdd9af30bf2e5715796b313e44ec43eefff1
   RCTRequired: 7be34aabb0b77c3cefe644528df0fa0afad4e4d0

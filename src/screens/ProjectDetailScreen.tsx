@@ -73,9 +73,8 @@ const KnowledgeBaseSection: React.FC<KBSectionProps> = ({ projectId, colors, sty
   const handleDeleteDocument = (doc: RagDocument) => {
     setAlertState(showAlert('Remove Document', `Remove "${doc.name}" from the knowledge base?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: async () => {
-        await ragService.deleteDocument(doc.id);
-        await loadKbDocs();
+      { text: 'Remove', style: 'destructive', onPress: () => {
+        ragService.deleteDocument(doc.id).then(() => loadKbDocs());
       }},
     ]));
   };

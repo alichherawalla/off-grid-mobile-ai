@@ -22,3 +22,5 @@ export { documentService } from './documentService';
 export { AVAILABLE_TOOLS, getToolsAsOpenAISchema, buildToolSystemPromptHint, executeToolCall } from './tools';
 export type { ToolDefinition, ToolCall, ToolResult } from './tools';
 export { contextCompactionService } from './contextCompaction';
+export { ragService, retrievalService } from './rag';
+export type { RagDocument, RagSearchResult, SearchResult, IndexProgress } from './rag';

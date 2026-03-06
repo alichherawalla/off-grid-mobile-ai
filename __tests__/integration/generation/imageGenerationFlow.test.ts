@@ -574,7 +574,7 @@ describe('Image Generation Flow Integration', () => {
       expect(enhancementMessages[2].content).toBe('Here is a cat image');
       expect(enhancementMessages[3].content).toBe('Make it darker');
       expect(enhancementMessages[4].role).toBe('user');
-      expect(enhancementMessages[4].content).toBe('Make it darker');
+      expect(enhancementMessages[4].content).toBe('User Request: Make it darker');
     });
 
     it('should not include conversation context when no conversationId', async () => {
@@ -593,7 +593,7 @@ describe('Image Generation Flow Integration', () => {
       expect(enhancementMessages[0].role).toBe('system');
       expect(enhancementMessages[0].content).not.toContain('conversation history');
       expect(enhancementMessages[1].role).toBe('user');
-      expect(enhancementMessages[1].content).toBe('A sunset');
+      expect(enhancementMessages[1].content).toBe('User Request: A sunset');
     });
 
     it('should truncate long messages in conversation context', async () => {

@@ -666,7 +666,7 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
                     }
                 }
 
-                Log.d(TAG, "Starting generation: ${body.toString().take(300)}...")
+                Log.d(TAG, "Starting generation (prompt length: ${params.getString("prompt")?.length ?: 0})...")
 
                 val url = URL("http://127.0.0.1:$SERVER_PORT/generate")
                 connection = (url.openConnection() as HttpURLConnection).apply {

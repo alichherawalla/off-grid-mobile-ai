@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import Slider from '@react-native-community/slider';
-import Icon from 'react-native-vector-icons/Feather';
+import { AdvancedToggle } from '../AdvancedToggle';
 import { useTheme, useThemedStyles } from '../../theme';
 import { useAppStore } from '../../stores';
 import { createStyles } from './styles';
@@ -172,7 +172,6 @@ const ShowGenerationDetailsToggle: React.FC = () => {
 // ─── Main Section ─────────────────────────────────────────────────────────────
 
 export const TextGenerationSection: React.FC = () => {
-  const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const modelMaxContext = useAppStore((s) => s.modelMaxContext);
   const settingsConfig = buildSettingsConfig(modelMaxContext);
@@ -188,19 +187,7 @@ export const TextGenerationSection: React.FC = () => {
       ))}
       <ShowGenerationDetailsToggle />
 
-      <TouchableOpacity
-        style={styles.advancedToggle}
-        onPress={() => setShowAdvanced(!showAdvanced)}
-        activeOpacity={0.7}
-        testID="modal-text-advanced-toggle"
-      >
-        <Text style={styles.advancedToggleText}>Advanced</Text>
-        <Icon
-          name={showAdvanced ? 'chevron-up' : 'chevron-down'}
-          size={14}
-          color={colors.textMuted}
-        />
-      </TouchableOpacity>
+      <AdvancedToggle isExpanded={showAdvanced} onPress={() => setShowAdvanced(!showAdvanced)} testID="modal-text-advanced-toggle" />
 
       {showAdvanced && (
         <>

@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, Switch, Platform, TouchableOpacity } from 'react-native';
 import Slider from '@react-native-community/slider';
-import Icon from 'react-native-vector-icons/Feather';
-import { Card } from '../../components';
+import { AdvancedToggle, Card } from '../../components';
 import { Button } from '../../components/Button';
 import { useTheme, useThemedStyles } from '../../theme';
 import { useAppStore } from '../../stores';
@@ -250,20 +249,7 @@ export const ImageGenerationSection: React.FC = () => {
         />
       </View>
 
-      {/* ── Advanced Toggle ── */}
-      <TouchableOpacity
-        style={styles.advancedToggle}
-        onPress={() => setShowAdvanced(!showAdvanced)}
-        activeOpacity={0.7}
-        testID="image-advanced-toggle"
-      >
-        <Text style={styles.advancedToggleText}>Advanced</Text>
-        <Icon
-          name={showAdvanced ? 'chevron-up' : 'chevron-down'}
-          size={14}
-          color={colors.textMuted}
-        />
-      </TouchableOpacity>
+      <AdvancedToggle isExpanded={showAdvanced} onPress={() => setShowAdvanced(!showAdvanced)} testID="image-advanced-toggle" />
 
       {showAdvanced && <ImageAdvancedSection />}
     </Card>

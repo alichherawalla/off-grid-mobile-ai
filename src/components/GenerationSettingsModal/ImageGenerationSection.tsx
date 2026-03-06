@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { AdvancedToggle } from '../AdvancedToggle';
 import { useTheme, useThemedStyles } from '../../theme';
 import { useAppStore } from '../../stores';
 import { hardwareService } from '../../services';
@@ -275,7 +276,6 @@ const ImageAdvancedSection: React.FC = () => {
 // ─── Main Section ─────────────────────────────────────────────────────────────
 
 export const ImageGenerationSection: React.FC = () => {
-  const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { settings, updateSettings } = useAppStore();
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -319,20 +319,7 @@ export const ImageGenerationSection: React.FC = () => {
 
       <ImageQualityBasicSliders />
 
-      {/* ── Advanced Toggle ── */}
-      <TouchableOpacity
-        style={styles.advancedToggle}
-        onPress={() => setShowAdvanced(!showAdvanced)}
-        activeOpacity={0.7}
-        testID="modal-image-advanced-toggle"
-      >
-        <Text style={styles.advancedToggleText}>Advanced</Text>
-        <Icon
-          name={showAdvanced ? 'chevron-up' : 'chevron-down'}
-          size={14}
-          color={colors.textMuted}
-        />
-      </TouchableOpacity>
+      <AdvancedToggle isExpanded={showAdvanced} onPress={() => setShowAdvanced(!showAdvanced)} testID="modal-image-advanced-toggle" />
 
       {showAdvanced && <ImageAdvancedSection />}
     </View>

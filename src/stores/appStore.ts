@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DeviceInfo, DownloadedModel, ModelRecommendation, ONNXImageModel, ImageGenerationMode, AutoDetectMethod, ModelLoadingStrategy, CacheType, GeneratedImage, PersistedDownloadInfo } from '../types';
 
-type DownloadProgressInfo = { progress: number; bytesDownloaded: number; totalBytes: number };
+type DownloadProgressInfo = { progress: number; bytesDownloaded: number; totalBytes: number; reason?: string };
 
 type OnboardingChecklist = {
   downloadedModel: boolean; loadedModel: boolean; sentMessage: boolean;

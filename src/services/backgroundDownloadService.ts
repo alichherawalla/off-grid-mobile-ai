@@ -27,6 +27,7 @@ interface DownloadProgressEvent {
   bytesDownloaded: number;
   totalBytes: number;
   status: BackgroundDownloadStatus;
+  reason?: string;
 }
 
 interface DownloadCompleteEvent {

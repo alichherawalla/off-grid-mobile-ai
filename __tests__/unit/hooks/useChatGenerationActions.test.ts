@@ -435,7 +435,7 @@ describe('handleStopFn', () => {
   it('stops generation and cancels image generation when isGeneratingImage=true', async () => {
     const deps = makeGenerationDeps({ isGeneratingImage: true });
     await handleStopFn(deps);
-    expect(mockStopLlmGeneration).toHaveBeenCalled();
+    expect(mockStopGenerationService).toHaveBeenCalled();
     expect(mockCancelGeneration).toHaveBeenCalled();
     expect(deps.generatingForConversationRef.current).toBeNull();
   });
@@ -443,7 +443,7 @@ describe('handleStopFn', () => {
   it('stops generation without cancelling image when not generating image', async () => {
     const deps = makeGenerationDeps({ isGeneratingImage: false });
     await handleStopFn(deps);
-    expect(mockStopLlmGeneration).toHaveBeenCalled();
+    expect(mockStopGenerationService).toHaveBeenCalled();
     expect(mockCancelGeneration).not.toHaveBeenCalled();
   });
 });

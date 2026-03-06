@@ -69,12 +69,12 @@ export function useDownloadManager(): UseDownloadManagerResult {
       if (!metadata) return;
       const key = `${metadata.modelId}/${metadata.fileName}`;
       if (cancelledKeysRef.current.has(key)) return;
-      const existing = useAppStore.getState().downloadProgress[key];
-      if (existing && existing.bytesDownloaded >= event.bytesDownloaded) return;
+      if ((useAppStore.getState().downloadProgress[key]?.bytesDownloaded ?? -1) >= event.bytesDownloaded) return;
       setDownloadProgress(key, {
         progress: event.totalBytes > 0 ? event.bytesDownloaded / event.totalBytes : 0,
         bytesDownloaded: event.bytesDownloaded,
         totalBytes: event.totalBytes,
+        reason: event.reason || undefined,
       });
     });
 

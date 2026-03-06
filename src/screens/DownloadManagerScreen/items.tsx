@@ -25,10 +25,11 @@ export type DownloadItem = {
   filePath?: string;
   isVisionModel?: boolean;
   mmProjPath?: string;
+  reason?: string;
 };
 
 export interface DownloadItemsData {
-  downloadProgress: Record<string, { progress: number; bytesDownloaded: number; totalBytes: number }>;
+  downloadProgress: Record<string, { progress: number; bytesDownloaded: number; totalBytes: number; reason?: string }>;
   activeDownloads: BackgroundDownloadInfo[];
   activeBackgroundDownloads: Record<number, { modelId: string; fileName: string; author: string; quantization: string; totalBytes: number } | null>;
   downloadedModels: DownloadedModel[];
@@ -87,6 +88,7 @@ export function buildDownloadItems(data: DownloadItemsData): DownloadItem[] {
       bytesDownloaded: progress.bytesDownloaded,
       progress: progress.progress,
       status: 'downloading',
+      reason: progress.reason,
     });
   });
 
@@ -191,7 +193,9 @@ export const ActiveDownloadCard: React.FC<ActiveDownloadCardProps> = ({ item, on
         <View style={styles.quantBadge}>
           <Text style={styles.quantText}>{item.quantization}</Text>
         </View>
-        <Text style={styles.statusText}>{getStatusText(item.status)}</Text>
+        <Text style={styles.statusText}>
+          {getStatusText(item.status)}{item.reason ? ` · ${item.reason}` : ''}
+        </Text>
       </View>
     </Card>
   );

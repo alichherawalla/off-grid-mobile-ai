@@ -10,7 +10,7 @@ class AuthService {
     // We use a deterministic hash since we're comparing hashes
     let hash = 0;
     for (let i = 0; i < passphrase.length; i++) {
-      const char = passphrase.charCodeAt(i);
+      const char = passphrase.codePointAt(i) ?? 0;
       hash = ((hash << 5) - hash) + char; // eslint-disable-line no-bitwise
       hash = hash & hash; // eslint-disable-line no-bitwise
     }
@@ -20,7 +20,7 @@ class AuthService {
     for (let i = 0; i < 1000; i++) {
       let tempHash = 0;
       for (let j = 0; j < extendedHash.length; j++) {
-        const char = extendedHash.charCodeAt(j);
+        const char = extendedHash.codePointAt(j) ?? 0;
         tempHash = ((tempHash << 5) - tempHash) + char; // eslint-disable-line no-bitwise
         tempHash = tempHash & tempHash; // eslint-disable-line no-bitwise
       }

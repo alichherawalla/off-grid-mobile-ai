@@ -993,9 +993,9 @@ describe('DownloadManagerScreen', () => {
     const state = createDefaultState({
       downloadProgress: {
         'undefined/undefined': {
-          progress: NaN,
-          bytesDownloaded: NaN,
-          totalBytes: NaN,
+          progress: Number.NaN,
+          bytesDownloaded: Number.NaN,
+          totalBytes: Number.NaN,
         },
         'valid/model/valid-file.gguf': {
           progress: 0.5,
@@ -1143,7 +1143,7 @@ describe('DownloadManagerScreen', () => {
           fileName: 'undefined',
           author: '',
           quantization: '',
-          totalBytes: NaN,
+          totalBytes: Number.NaN,
         },
         202: {
           modelId: 'valid/model',
@@ -1163,7 +1163,7 @@ describe('DownloadManagerScreen', () => {
       {
         downloadId: 201,
         status: 'running',
-        bytesDownloaded: NaN,
+        bytesDownloaded: Number.NaN,
         title: 'undefined',
       },
       {

@@ -35,7 +35,7 @@ jest.mock('../../../src/services/documentService', () => ({
 const deterministicEmbed = (text: string): number[] => {
   const vec = new Array(8).fill(0);
   for (let i = 0; i < text.length; i++) {
-    vec[i % 8] += text.charCodeAt(i) / 1000;
+    vec[i % 8] += (text.codePointAt(i) ?? 0) / 1000;
   }
   // Normalize
   const norm = Math.sqrt(vec.reduce((s, v) => s + v * v, 0));

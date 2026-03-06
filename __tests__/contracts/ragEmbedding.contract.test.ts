@@ -97,7 +97,7 @@ describe('RAG Embedding Contract', () => {
     });
 
     it('can round-trip embeddings through Float32Array', () => {
-      const original = [0.1, -0.5, 0.9, 0.0, -1.0];
+      const original = [0.1, -0.5, 0.9, 0, -1];
       const blob = new Float32Array(original).buffer;
       const restored = Array.from(new Float32Array(blob));
 
@@ -138,7 +138,7 @@ describe('RAG Embedding Contract', () => {
       // Identical vectors → 1.0
       // Orthogonal vectors → 0.0
       // Opposite vectors → -1.0
-      const scores = [1.0, 0.85, 0.5, 0.0, -0.3, -1.0];
+      const scores = [1, 0.85, 0.5, 0, -0.3, -1];
       scores.forEach(score => {
         expect(score).toBeGreaterThanOrEqual(-1);
         expect(score).toBeLessThanOrEqual(1);

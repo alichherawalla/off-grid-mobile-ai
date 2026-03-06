@@ -256,7 +256,7 @@ class ModelManager {
   async saveModelWithMmproj(modelId: string, mmProjPath: string): Promise<void> {
     const mmProjFileName = mmProjPath.split('/').pop() || mmProjPath;
     const stat = await RNFS.stat(mmProjPath);
-    const mmProjFileSize = typeof stat.size === 'string' ? parseInt(stat.size, 10) : stat.size;
+    const mmProjFileSize = typeof stat.size === 'string' ? Number.parseInt(stat.size, 10) : stat.size;
 
     const models = await this.getDownloadedModels();
     const updated = models.map(m =>

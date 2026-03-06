@@ -29,7 +29,7 @@ export async function getOrphanedTextFiles(
       orphaned.push({
         name: file.name,
         path: file.path,
-        size: typeof file.size === 'string' ? parseInt(file.size, 10) : file.size,
+        size: typeof file.size === 'string' ? Number.parseInt(file.size, 10) : file.size,
       });
     }
   }
@@ -61,14 +61,14 @@ export async function getOrphanedImageDirs(
         const dirFiles = await RNFS.readDir(item.path);
         for (const f of dirFiles) {
           if (f.isFile()) {
-            totalSize += typeof f.size === 'string' ? parseInt(f.size, 10) : f.size;
+            totalSize += typeof f.size === 'string' ? Number.parseInt(f.size, 10) : f.size;
           }
         }
       } catch {
         // Can't read directory, use 0
       }
     } else {
-      totalSize = typeof item.size === 'string' ? parseInt(item.size, 10) : item.size;
+      totalSize = typeof item.size === 'string' ? Number.parseInt(item.size, 10) : item.size;
     }
 
     orphaned.push({ name: item.name, path: item.path, size: totalSize });

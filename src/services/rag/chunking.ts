@@ -30,6 +30,17 @@ function slidingWindowChunks(
   return pos;
 }
 
+function flushChunk(
+  opts: { chunk: string; minLength: number },
+  chunks: Chunk[], position: number,
+): number {
+  if (opts.chunk.trim().length >= opts.minLength) {
+    chunks.push({ content: opts.chunk.trim(), position });
+    return position + 1;
+  }
+  return position;
+}
+
 export function chunkDocument(text: string, options?: ChunkOptions): Chunk[] {
   const chunkSize = options?.chunkSize ?? DEFAULT_CHUNK_SIZE;
   const overlap = options?.overlap ?? DEFAULT_OVERLAP;
@@ -47,26 +58,21 @@ export function chunkDocument(text: string, options?: ChunkOptions): Chunk[] {
     if (!trimmed) continue;
 
     if (trimmed.length > chunkSize) {
-      if (currentChunk.trim().length >= minLength) {
-        chunks.push({ content: currentChunk.trim(), position: position++ });
-        currentChunk = '';
-      }
+      position = flushChunk({ chunk: currentChunk, minLength }, chunks, position);
+      currentChunk = '';
       position = slidingWindowChunks({ text: trimmed, chunkSize, overlap, minLength }, chunks, position);
       continue;
     }
 
     const candidate = currentChunk ? `${currentChunk}\n\n${trimmed}` : trimmed;
-    if (candidate.length > chunkSize && currentChunk.trim().length >= minLength) {
-      chunks.push({ content: currentChunk.trim(), position: position++ });
+    if (candidate.length > chunkSize) {
+      position = flushChunk({ chunk: currentChunk, minLength }, chunks, position);
       currentChunk = trimmed;
     } else {
       currentChunk = candidate;
     }
   }
 
-  if (currentChunk.trim().length >= minLength) {
-    chunks.push({ content: currentChunk.trim(), position: position++ });
-  }
-
+  flushChunk({ chunk: currentChunk, minLength }, chunks, position);
   return chunks;
 }

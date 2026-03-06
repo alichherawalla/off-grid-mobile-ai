@@ -174,7 +174,7 @@ class DocumentService {
       return attachment.fileName || 'Document';
     }
 
-    const preview = attachment.textContent.substring(0, maxLength).replace(/\n/g, ' ');
+    const preview = attachment.textContent.substring(0, maxLength).replaceAll('\n', ' ');
     return preview.length < attachment.textContent.length ? `${preview  }...` : preview;
   }
 

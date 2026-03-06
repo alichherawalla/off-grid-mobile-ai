@@ -100,7 +100,7 @@ export async function downloadHuggingFaceModel(
       if (!(await RNFS.exists(fileDir))) await RNFS.mkdir(fileDir);
 
       // Use a flattened temp filename to avoid path issues in the Downloads dir.
-      const tempFileName = `${modelInfo.id}_${file.path.replace(/\//g, '_')}`;
+      const tempFileName = `${modelInfo.id}_${file.path.replaceAll('/', '_')}`;
       const capturedDownloadedSize = downloadedSize;
       const { promise } = backgroundDownloadService.downloadFileTo({
         params: {

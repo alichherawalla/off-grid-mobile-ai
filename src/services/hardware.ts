@@ -223,7 +223,7 @@ class HardwareService {
   private detectAppleChip(deviceId: string): SoCInfo['appleChip'] {
     const match = deviceId.match(/iPhone(\d+)/);
     if (!match) return undefined;
-    const major = parseInt(match[1], 10);
+    const major = Number.parseInt(match[1], 10);
     if (major >= 17) return 'A18';
     if (major >= 16) return 'A17Pro';
     if (major >= 15) return 'A16';
@@ -273,7 +273,7 @@ class HardwareService {
     if (!base.startsWith('SM')) return undefined;
     const smMatch = /^SM(\d+)/.exec(base);
     if (!smMatch) return undefined;
-    const num = parseInt(smMatch[1], 10);
+    const num = Number.parseInt(smMatch[1], 10);
     if (FLAGSHIP_8GEN2.has(num)) return '8gen2';
     if (FLAGSHIP_8GEN1.has(num)) return '8gen1';
     return 'min';

@@ -36,6 +36,12 @@ interface ImageState {
   markSpotlightShown: jest.Mock;
 }
 
+const DEFAULT_IMAGE_STATE: ImageState = {
+  activeImageModelId: null,
+  downloadedImageModelsCount: 0,
+  markSpotlightShown: jest.fn(),
+};
+
 /**
  * Reimplements handleStepPress logic from HomeScreen/index.tsx
  * so we can test it without rendering the component.
@@ -56,7 +62,7 @@ const PENDING_MAP: Record<string, number> = {
 function simulateHandleStepPress(
   stepId: string,
   callbacks: { closeSheet: jest.Mock; navigate: jest.Mock; goTo: jest.Mock },
-  imageState: ImageState = { activeImageModelId: null, downloadedImageModelsCount: 0, markSpotlightShown: jest.fn() },
+  imageState: ImageState = DEFAULT_IMAGE_STATE,
 ) {
   const { closeSheet, navigate, goTo } = callbacks;
   closeSheet();

@@ -146,8 +146,8 @@ function decodeHTMLEntities(text: string): string {
     .replaceAll('&#x2F;', '/')
     .replaceAll('&nbsp;', ' ')
     .replaceAll('&apos;', "'")
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)));
+    .replaceAll(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replaceAll(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)));
 }
 
 /**
@@ -157,7 +157,7 @@ function decodeHTMLEntities(text: string): string {
  */
 function evaluateExpression(expr: string): number {
   let pos = 0;
-  const str = expr.replace(/\s/g, '');
+  const str = expr.replaceAll(/\s/g, '');
 
   function parseExpr(): number {
     let left = parseTerm();
@@ -217,7 +217,7 @@ function evaluateExpression(expr: string): number {
 }
 
 function handleCalculator(expression: string): string {
-  const sanitized = expression.replace(/\s/g, '');
+  const sanitized = expression.replaceAll(/\s/g, '');
   if (!/^[0-9+\-*/().,%^]+$/.test(sanitized)) {
     throw new Error('Invalid expression: only numbers and basic operators (+, -, *, /, ^, %, parentheses) are allowed');
   }
@@ -322,7 +322,7 @@ async function handleReadUrl(rawUrl: string): Promise<string> {
     });
     logger.log(`[Tools] read_url response: status=${response.status}, ok=${response.ok}`);
     if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    const text = stripHtmlTags(await response.text()).replace(/\s+/g, ' ').trim();
+    const text = stripHtmlTags(await response.text()).replaceAll(/\s+/g, ' ').trim();
     if (!text) return `The page at ${url} returned no readable content.`;
     return text.length > 4000 ? `${text.slice(0, 4000)}\n\n[Content truncated]` : text;
   } catch (e: any) {

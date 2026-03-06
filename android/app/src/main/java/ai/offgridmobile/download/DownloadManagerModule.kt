@@ -351,7 +351,9 @@ class DownloadManagerModule(reactContext: ReactApplicationContext) :
             } else {
                 // If rename fails (different filesystem), copy then delete
                 sourceFile.copyTo(targetFile, overwrite = true)
-                sourceFile.delete()
+                if (!sourceFile.delete()) {
+                    android.util.Log.w("DownloadManager", "Failed to delete source file: ${sourceFile.absolutePath}")
+                }
                 markMoveCompleted(id)
                 promise.resolve(targetFile.absolutePath)
             }

@@ -42,7 +42,7 @@ export function shouldDisableMmap(modelPath: string): boolean {
 export function hashString(str: string): string {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
+    const char = str.codePointAt(i) ?? 0;
     // eslint-disable-next-line no-bitwise
     hash = ((hash << 5) - hash) + char;
     // eslint-disable-next-line no-bitwise
@@ -161,8 +161,8 @@ export function getModelMaxContext(context: LlamaContext): number | null {
     if (!metadata) return null;
     const trainCtx = metadata['llama.context_length'] || metadata['general.context_length'] || metadata.context_length;
     if (!trainCtx) return null;
-    const maxModelCtx = parseInt(trainCtx, 10);
-    return isNaN(maxModelCtx) || maxModelCtx <= 0 ? null : maxModelCtx;
+    const maxModelCtx = Number.parseInt(trainCtx, 10);
+    return Number.isNaN(maxModelCtx) || maxModelCtx <= 0 ? null : maxModelCtx;
   } catch {
     return null;
   }

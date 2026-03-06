@@ -96,7 +96,7 @@ async function fetchModelFromRepo(
 ): Promise<CoreMLImageModel | null> {
   const { repo, name } = repoInfo;
   const topLevel = await fetchRepoTree(repo);
-  const id = `coreml_${repo.replace(/\//g, '_')}`;
+  const id = `coreml_${repo.replaceAll('/', '_')}`;
 
   // Strategy 1: Look for a zip archive (palettized + SDXL iOS repos)
   const zipEntry = findCompiledZip(topLevel);

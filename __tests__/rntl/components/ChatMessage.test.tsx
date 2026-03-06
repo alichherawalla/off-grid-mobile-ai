@@ -401,7 +401,7 @@ describe('ChatMessage', () => {
       expect(getByTestId('document-badge-0')).toBeTruthy();
       expect(getByText('readme.md')).toBeTruthy();
       // No size should be displayed
-      expect(queryByText(/KB|MB|B$/)).toBeNull();
+      expect(queryByText(/(?:KB|MB|B)$/)).toBeNull();
     });
 
     it('renders document with missing fileName (shows "Document")', () => {

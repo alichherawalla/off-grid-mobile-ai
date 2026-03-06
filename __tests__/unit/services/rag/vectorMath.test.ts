@@ -32,15 +32,15 @@ describe('vectorMath', () => {
   describe('cosineSimilarity', () => {
     it('returns 1 for identical vectors', () => {
       const v = [1, 2, 3];
-      expect(cosineSimilarity(v, v)).toBeCloseTo(1.0);
+      expect(cosineSimilarity(v, v)).toBeCloseTo(1);
     });
 
     it('returns -1 for opposite vectors', () => {
-      expect(cosineSimilarity([1, 0], [-1, 0])).toBeCloseTo(-1.0);
+      expect(cosineSimilarity([1, 0], [-1, 0])).toBeCloseTo(-1);
     });
 
     it('returns 0 for orthogonal vectors', () => {
-      expect(cosineSimilarity([1, 0], [0, 1])).toBeCloseTo(0.0);
+      expect(cosineSimilarity([1, 0], [0, 1])).toBeCloseTo(0);
     });
 
     it('returns 0 when either vector is zero', () => {
@@ -59,7 +59,7 @@ describe('vectorMath', () => {
     });
 
     it('returns 1 for scaled versions of same vector', () => {
-      expect(cosineSimilarity([1, 2, 3], [2, 4, 6])).toBeCloseTo(1.0);
+      expect(cosineSimilarity([1, 2, 3], [2, 4, 6])).toBeCloseTo(1);
     });
 
     it('handles high-dimensional vectors (384d)', () => {
@@ -91,7 +91,7 @@ describe('vectorMath', () => {
       const results = topKSimilar(query, candidates, 2);
       expect(results).toHaveLength(2);
       expect(results[0].index).toBe(1);  // identical vector first
-      expect(results[0].score).toBeCloseTo(1.0);
+      expect(results[0].score).toBeCloseTo(1);
       expect(results[1].index).toBe(2);  // partially similar second
     });
 

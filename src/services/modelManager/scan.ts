@@ -11,7 +11,7 @@ export function isMMProjFile(fileName: string): boolean {
 }
 
 function parseSizeInt(size: string | number): number {
-  return typeof size === 'string' ? parseInt(size, 10) : size;
+  return typeof size === 'string' ? Number.parseInt(size, 10) : size;
 }
 
 async function getDirSize(dirPath: string): Promise<number> {
@@ -46,7 +46,7 @@ function findMatchingMmProj(
   baseName: string,
   mmProjFiles: RNFS.ReadDirItem[],
 ): RNFS.ReadDirItem | undefined {
-  const noSeparators = baseName.replace(/-/g, '').replace(/_/g, '');
+  const noSeparators = baseName.replaceAll('-', '').replaceAll('_', '');
   return mmProjFiles.find(mf => {
     const lower = mf.name.toLowerCase();
     return lower.includes(noSeparators) || lower.includes(baseName);
@@ -117,7 +117,7 @@ export async function scanForUntrackedImageModels(opts: ScanImageModelsOpts): Pr
 
     const newModel: ONNXImageModel = {
       id: `recovered_${item.name}_${Date.now()}`,
-      name: item.name.replace(/_/g, ' ').replace(/\.(zip|tar|gz)$/i, ''),
+      name: item.name.replaceAll('_', ' ').replaceAll(/\.(zip|tar|gz)$/gi, ''),
       description: `Recovered ${item.name} model`,
       modelPath: item.path,
       size: totalSize,

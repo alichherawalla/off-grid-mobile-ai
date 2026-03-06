@@ -179,7 +179,7 @@ export async function buildDownloadedModel(opts: BuildModelOpts): Promise<Downlo
   if (mmProjPath) {
     try {
       const mmStat = await RNFS.stat(mmProjPath);
-      mmProjFileSize = typeof mmStat.size === 'string' ? parseInt(mmStat.size, 10) : mmStat.size;
+      mmProjFileSize = typeof mmStat.size === 'string' ? Number.parseInt(mmStat.size, 10) : mmStat.size;
     } catch {
       // Keep fallback size from metadata.
     }
@@ -191,7 +191,7 @@ export async function buildDownloadedModel(opts: BuildModelOpts): Promise<Downlo
     author,
     filePath: resolvedLocalPath,
     fileName: file.name,
-    fileSize: typeof stat.size === 'string' ? parseInt(stat.size, 10) : stat.size,
+    fileSize: typeof stat.size === 'string' ? Number.parseInt(stat.size, 10) : stat.size,
     quantization: file.quantization,
     downloadedAt: new Date().toISOString(),
     credibility: determineCredibility(author),

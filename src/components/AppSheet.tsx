@@ -35,7 +35,7 @@ export interface AppSheetProps {
 function resolveSnapPoint(snap: string | number): number {
   if (typeof snap === 'number') return snap;
   if (typeof snap === 'string' && snap.endsWith('%')) {
-    return (parseFloat(snap) / 100) * SCREEN_HEIGHT;
+    return (Number.parseFloat(snap) / 100) * SCREEN_HEIGHT;
   }
   return SCREEN_HEIGHT * 0.5;
 }

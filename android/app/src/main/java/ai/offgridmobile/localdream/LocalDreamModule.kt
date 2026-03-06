@@ -417,7 +417,9 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
             }
             runtimeDirFile.exists() -> {
                 Log.d(TAG, "Using executable from runtime_libs: ${runtimeDirFile.absolutePath}")
-                runtimeDirFile.setExecutable(true, true)
+                if (!runtimeDirFile.setExecutable(true, true)) {
+                    Log.w(TAG, "Failed to set executable permission on ${runtimeDirFile.absolutePath}")
+                }
                 runtimeDirFile
             }
             else -> {

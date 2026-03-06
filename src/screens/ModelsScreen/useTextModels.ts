@@ -187,7 +187,7 @@ export function useTextModels(setAlertState: (s: AlertState) => void) {
 
   const parseParamCount = useCallback((model: ModelInfo): number | null => {
     const match = PARAM_COUNT_REGEX.exec(model.name) ?? PARAM_COUNT_REGEX.exec(model.id);
-    return match ? parseFloat(match[1]) : null;
+    return match ? Number.parseFloat(match[1]) : null;
   }, []);
 
   const matchesOrgFilter = useCallback((model: ModelInfo, orgs: string[]): boolean => {

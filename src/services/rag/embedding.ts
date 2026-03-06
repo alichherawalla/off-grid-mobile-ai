@@ -13,7 +13,7 @@ class EmbeddingService {
 
   async load(): Promise<void> {
     if (this.context) return;
-    if (this.loading) return this.loading;
+    if (this.loading !== null) return this.loading;
 
     this.loading = this.doLoad();
     try {
@@ -41,15 +41,16 @@ class EmbeddingService {
 
   private async ensureModelCopied(): Promise<string> {
     const destPath = `${RNFS.DocumentDirectoryPath}/${EMBEDDING_MODEL_FILENAME}`;
-    if (await RNFS.exists(destPath)) return destPath;
-
-    if (Platform.OS === 'android') {
-      await RNFS.copyFileAssets(`models/${EMBEDDING_MODEL_FILENAME}`, destPath);
-    } else {
-      const bundlePath = `${RNFS.MainBundlePath}/${EMBEDDING_MODEL_FILENAME}`;
-      await RNFS.copyFile(bundlePath, destPath);
+    const exists = await RNFS.exists(destPath);
+    if (!exists) {
+      if (Platform.OS === 'android') {
+        await RNFS.copyFileAssets(`models/${EMBEDDING_MODEL_FILENAME}`, destPath);
+      } else {
+        const bundlePath = `${RNFS.MainBundlePath}/${EMBEDDING_MODEL_FILENAME}`;
+        await RNFS.copyFile(bundlePath, destPath);
+      }
+      logger.log('[Embedding] Copied embedding model to documents directory');
     }
-    logger.log('[Embedding] Copied embedding model to documents directory');
     return destPath;
   }
 

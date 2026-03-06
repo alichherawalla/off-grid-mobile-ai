@@ -43,10 +43,11 @@ export const SecuritySettingsScreen: React.FC = () => {
           {
             text: 'Disable',
             style: 'destructive',
-            onPress: async () => {
+            onPress: () => {
               setAlertState(hideAlert());
-              await authService.removePassphrase();
-              setAuthEnabled(false);
+              authService.removePassphrase().then(() => {
+                setAuthEnabled(false);
+              });
             },
           },
         ]

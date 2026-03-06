@@ -10,11 +10,6 @@
  * - duplicateProject
  */
 
-const mockDeleteProjectDocuments = jest.fn<Promise<void>, [string]>(() => Promise.resolve());
-jest.mock('../../../src/services/rag', () => ({
-  ragService: { deleteProjectDocuments: (id: string) => mockDeleteProjectDocuments(id) },
-}));
-
 import { useProjectStore } from '../../../src/stores/projectStore';
 
 describe('projectStore', () => {
@@ -473,26 +468,6 @@ describe('projectStore', () => {
       const afterCount = useProjectStore.getState().projects.length;
 
       expect(afterCount).toBe(beforeCount);
-    });
-  });
-
-  // ============================================================================
-  // RAG cleanup on delete
-  // ============================================================================
-  describe('RAG cleanup on deleteProject', () => {
-    it('calls ragService.deleteProjectDocuments when deleting a project', () => {
-      const { deleteProject } = useProjectStore.getState();
-      deleteProject('default-assistant');
-      expect(mockDeleteProjectDocuments).toHaveBeenCalledWith('default-assistant');
-    });
-
-    it('removes the project even if RAG cleanup fails', () => {
-      mockDeleteProjectDocuments.mockRejectedValueOnce(new Error('DB error'));
-      const { deleteProject } = useProjectStore.getState();
-      const beforeCount = useProjectStore.getState().projects.length;
-      deleteProject('default-assistant');
-      const afterCount = useProjectStore.getState().projects.length;
-      expect(afterCount).toBe(beforeCount - 1);
     });
   });
 });

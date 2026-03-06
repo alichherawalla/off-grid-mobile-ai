@@ -3,8 +3,6 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Project } from '../types';
 import { generateId } from '../utils/generateId';
-import { ragService } from '../services/rag';
-import logger from '../utils/logger';
 
 interface ProjectState {
   projects: Project[];
@@ -113,7 +111,6 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       deleteProject: (id) => {
-        ragService.deleteProjectDocuments(id).catch((err) => logger.error(`Failed to delete RAG documents for project ${id}`, err));
         set((state) => ({
           projects: state.projects.filter((project) => project.id !== id),
         }));

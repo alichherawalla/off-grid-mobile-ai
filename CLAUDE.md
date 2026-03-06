@@ -16,15 +16,6 @@ All quality gates run automatically via Husky on every `git commit`, scoped to t
 
 Before writing new code, ensure tests exist for your changes. If the hook fails, fix the issue and recommit — never skip with `--no-verify`.
 
-## Testing Requirements
-
-Always write **both** unit tests and integration tests for new features and significant changes:
-
-- **Unit tests** (`__tests__/unit/`): Test individual functions, hooks, and store actions in isolation with mocked dependencies.
-- **Integration tests** (`__tests__/integration/`): Test how multiple modules work together end-to-end (e.g., service A calls service B which writes to database C). Use mocked native modules but real logic across layers.
-
-Do not consider a feature complete with only unit tests. Integration tests catch wiring bugs, incorrect data flow between layers, and lifecycle issues that unit tests miss.
-
 ## Push = Create PR + Address Review
 
 When asked to push code, follow this full workflow:

@@ -17,8 +17,6 @@ import {
   ImageGenerationState,
   buildToolSystemPromptHint,
   contextCompactionService,
-  ragService,
-  retrievalService,
 } from '../../services';
 import { useChatStore, useProjectStore } from '../../stores';
 import { Message, MediaAttachment, Project, DownloadedModel, ModelLoadingStrategy, CacheType } from '../../types';
@@ -76,6 +74,7 @@ function applyCompactionPrefix(conversation: any, systemPrompt: string, messages
   }
   return { prefix, filtered };
 }
+
 function buildMessagesForContext(conversationId: string, messageText: string, systemPrompt: string): Message[] {
   const conversation = useChatStore.getState().conversations.find(c => c.id === conversationId);
   const allMessages = (conversation?.messages || []).filter(m => !m.isSystemInfo);
@@ -84,6 +83,7 @@ function buildMessagesForContext(conversationId: string, messageText: string, sy
   const userMessageForContext = (lastMsg?.role === 'user' ? { ...lastMsg, content: messageText } : lastMsg) as Message;
   return [...prefix, ...filtered.slice(0, -1), userMessageForContext];
 }
+
 export async function shouldRouteToImageGenerationFn(
   deps: Pick<GenerationDeps, 'isGeneratingImage' | 'settings' | 'imageModelLoaded' | 'downloadedModels' | 'setIsClassifying' | 'setAppImageGenerationStatus' | 'setAppIsGeneratingImage'>,
   text: string,
@@ -120,11 +120,13 @@ export async function shouldRouteToImageGenerationFn(
     return false;
   }
 }
+
 export type ImageGenCall = {
   prompt: string;
   conversationId: string;
   skipUserMessage?: boolean;
 };
+
 export async function handleImageGenerationFn(
   deps: Pick<GenerationDeps, 'activeImageModel' | 'settings' | 'imageGenState' | 'setAlertState' | 'addMessage'>,
   call: ImageGenCall,
@@ -148,13 +150,16 @@ export async function handleImageGenerationFn(
     deps.setAlertState(showAlert('Error', `Image generation failed: ${deps.imageGenState.error}`));
   }
 }
+
 export type StartGenerationCall = { setDebugInfo: SetState<any>; targetConversationId: string; messageText: string };
+
 async function ensureModelReady(deps: GenerationDeps): Promise<boolean> {
   const loadedPath = llmService.getLoadedModelPath();
   if (loadedPath && loadedPath === deps.activeModel!.filePath) return true;
   await deps.ensureModelLoaded();
   return llmService.isModelLoaded() && llmService.getLoadedModelPath() === deps.activeModel!.filePath;
 }
+
 async function prepareContext(setDebugInfo: SetState<any>, systemPrompt: string, messages: Message[]): Promise<void> {
   try {
     const contextDebug = await llmService.getContextDebugInfo(messages);
@@ -165,6 +170,7 @@ async function prepareContext(setDebugInfo: SetState<any>, systemPrompt: string,
     }
   } catch (e) { logger.log('Debug info error:', e); }
 }
+
 /** Run generation; if context is full, compact old messages and retry once. */
 async function generateWithCompactionRetry(
   opts: { id: string; prompt: string; messages: Message[] },
@@ -188,16 +194,7 @@ async function generateWithCompactionRetry(
     await gen(compacted);
   }
 }
-async function injectRagContext(projectId: string | undefined, query: string, prompt: string): Promise<string> {
-  if (!projectId) return prompt;
-  try {
-    const r = await ragService.searchProject(projectId, query);
-    if (r.chunks.length > 0) return `${prompt}\n\n${retrievalService.formatForPrompt(r)}`;
-  } catch (err) {
-    logger.error('[RAG] Context injection failed', err);
-  }
-  return prompt;
-}
+
 export async function startGenerationFn(deps: GenerationDeps, call: StartGenerationCall): Promise<void> {
   const { setDebugInfo, targetConversationId, messageText } = call;
   if (!deps.activeModel) return;
@@ -210,9 +207,8 @@ export async function startGenerationFn(deps: GenerationDeps, call: StartGenerat
   const conversation = useChatStore.getState().conversations.find(c => c.id === targetConversationId);
   const project = conversation?.projectId ? useProjectStore.getState().getProject(conversation.projectId) : null;
   const enabledTools = llmService.supportsToolCalling() ? (deps.settings.enabledTools || []) : [];
-  const rawPrompt = project?.systemPrompt || deps.settings.systemPrompt || APP_CONFIG.defaultSystemPrompt;
-  const basePrompt = await injectRagContext(conversation?.projectId, messageText, rawPrompt);
-  const systemPrompt = enabledTools.length > 0 ? `${basePrompt}${buildToolSystemPromptHint(enabledTools)}` : basePrompt;
+  const basePrompt = project?.systemPrompt || deps.settings.systemPrompt || APP_CONFIG.defaultSystemPrompt;
+  const systemPrompt = enabledTools.length > 0 ? basePrompt + buildToolSystemPromptHint(enabledTools) : basePrompt;
   const messagesForContext = buildMessagesForContext(targetConversationId, messageText, systemPrompt);
   await prepareContext(setDebugInfo, systemPrompt, messagesForContext);
   try {
@@ -242,6 +238,7 @@ export async function startGenerationFn(deps: GenerationDeps, call: StartGenerat
     ));
   }
 }
+
 export type SendCall = {
   text: string;
   attachments?: MediaAttachment[];
@@ -287,6 +284,7 @@ export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promis
   deps.addMessage(targetConversationId, { role: 'user', content: text, attachments });
   await startGeneration(targetConversationId, messageText);
 }
+
 export async function handleStopFn(deps: Pick<GenerationDeps, 'isGeneratingImage' | 'generatingForConversationRef'>): Promise<void> {
   deps.generatingForConversationRef.current = null;
   try { await generationService.stopGeneration().catch(() => {}); }
@@ -310,7 +308,9 @@ export async function executeDeleteConversationFn(
   deps.setActiveConversation(null);
   deps.navigation.goBack();
 }
+
 export type RegenerateCall = { setDebugInfo: SetState<any>; userMessage: Message };
+
 export async function regenerateResponseFn(deps: GenerationDeps, call: RegenerateCall): Promise<void> {
   const { userMessage } = call;
   if (!deps.activeConversationId || !deps.activeModel) return;
@@ -325,8 +325,7 @@ export async function regenerateResponseFn(deps: GenerationDeps, call: Regenerat
   const conversation = useChatStore.getState().conversations.find(c => c.id === targetConversationId);
   const messages = (conversation?.messages || []).filter((m: Message) => !m.isSystemInfo);
   const messagesUpToUser = messages.slice(0, messages.findIndex((m: Message) => m.id === userMessage.id) + 1);
-  const rawPrompt = deps.activeProject?.systemPrompt || deps.settings.systemPrompt || APP_CONFIG.defaultSystemPrompt;
-  const systemPrompt = await injectRagContext(conversation?.projectId, userMessage.content, rawPrompt);
+  const systemPrompt = deps.activeProject?.systemPrompt || deps.settings.systemPrompt || APP_CONFIG.defaultSystemPrompt;
   const { prefix, filtered } = applyCompactionPrefix(conversation, systemPrompt, messagesUpToUser);
   const messagesForContext = [...prefix, ...filtered];
   try {
@@ -342,6 +341,7 @@ export type SelectProjectDeps = {
   setConversationProject: (convId: string, projectId: string | null) => void;
   setShowProjectSelector: SetState<boolean>;
 };
+
 export function handleSelectProjectFn(deps: SelectProjectDeps, project: Project | null): void {
   if (deps.activeConversationId) {
     deps.setConversationProject(deps.activeConversationId, project?.id || null);

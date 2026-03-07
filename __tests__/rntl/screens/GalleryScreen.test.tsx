@@ -33,11 +33,11 @@ jest.mock('../../../src/components', () => ({
     return <View style={style}>{children}</View>;
   },
   Button: ({ title, onPress, disabled }: any) => {
-    const { TouchableOpacity: TO, Text } = require('react-native');
+    const { TouchableOpacity: Btn, Text } = require('react-native');
     return (
-      <TO onPress={onPress} disabled={disabled}>
+      <Btn onPress={onPress} disabled={disabled}>
         <Text>{title}</Text>
-      </TO>
+      </Btn>
     );
   },
 }));
@@ -58,19 +58,19 @@ const mockHideAlert = jest.fn(() => ({ visible: false, title: '', message: '', b
 jest.mock('../../../src/components/CustomAlert', () => ({
   CustomAlert: ({ visible, title, message, buttons, onClose }: any) => {
     if (!visible) return null;
-    const { View, Text, TouchableOpacity: TO } = require('react-native');
+    const { View, Text, TouchableOpacity: Btn } = require('react-native');
     return (
       <View testID="custom-alert">
         <Text testID="alert-title">{title}</Text>
         <Text testID="alert-message">{message}</Text>
-        {buttons && buttons.map((btn: any, i: number) => (
-          <TO key={i} testID={`alert-button-${btn.text}`} onPress={btn.onPress}>
+        {buttons?.map((btn: any) => (
+          <Btn key={btn.text} testID={`alert-button-${btn.text}`} onPress={btn.onPress}>
             <Text>{btn.text}</Text>
-          </TO>
+          </Btn>
         ))}
-        <TO testID="alert-close" onPress={onClose}>
+        <Btn testID="alert-close" onPress={onClose}>
           <Text>CloseAlert</Text>
-        </TO>
+        </Btn>
       </View>
     );
   },
@@ -81,11 +81,11 @@ jest.mock('../../../src/components/CustomAlert', () => ({
 
 jest.mock('../../../src/components/Button', () => ({
   Button: ({ title, onPress, disabled }: any) => {
-    const { TouchableOpacity: TO, Text } = require('react-native');
+    const { TouchableOpacity: Btn, Text } = require('react-native');
     return (
-      <TO onPress={onPress} disabled={disabled}>
+      <Btn onPress={onPress} disabled={disabled}>
         <Text>{title}</Text>
-      </TO>
+      </Btn>
     );
   },
 }));

@@ -16,8 +16,8 @@ describe('Tool Registry', () => {
   // AVAILABLE_TOOLS
   // ========================================================================
   describe('AVAILABLE_TOOLS', () => {
-    it('has exactly 5 tools with correct IDs', () => {
-      expect(AVAILABLE_TOOLS).toHaveLength(5);
+    it('has exactly 6 tools with correct IDs', () => {
+      expect(AVAILABLE_TOOLS).toHaveLength(6);
 
       const ids = AVAILABLE_TOOLS.map(t => t.id);
       expect(ids).toEqual([
@@ -25,6 +25,7 @@ describe('Tool Registry', () => {
         'calculator',
         'get_current_datetime',
         'get_device_info',
+        'search_knowledge_base',
         'read_url',
       ]);
     });

@@ -359,7 +359,7 @@ describe('HuggingFaceService', () => {
         ok: true,
         json: () => Promise.resolve([]),
       });
-      (global as any).fetch = mockFetch;
+      global.fetch = mockFetch;
 
       await huggingFaceService.searchModels();
 
@@ -372,7 +372,7 @@ describe('HuggingFaceService', () => {
         ok: true,
         json: () => Promise.resolve([]),
       });
-      (global as any).fetch = mockFetch;
+      global.fetch = mockFetch;
 
       await huggingFaceService.searchModels('llama');
 
@@ -385,7 +385,7 @@ describe('HuggingFaceService', () => {
         ok: true,
         json: () => Promise.resolve([]),
       });
-      (global as any).fetch = mockFetch;
+      global.fetch = mockFetch;
 
       await huggingFaceService.searchModels('');
 
@@ -394,7 +394,7 @@ describe('HuggingFaceService', () => {
     });
 
     it('throws on API error', async () => {
-      (global as any).fetch = jest.fn().mockResolvedValue({
+      global.fetch = jest.fn().mockResolvedValue({
         ok: false,
         status: 500,
       });
@@ -407,7 +407,7 @@ describe('HuggingFaceService', () => {
         ok: true,
         json: () => Promise.resolve([]),
       });
-      (global as any).fetch = mockFetch;
+      global.fetch = mockFetch;
 
       await huggingFaceService.searchModels('', { limit: 10 });
 
@@ -420,7 +420,7 @@ describe('HuggingFaceService', () => {
         ok: true,
         json: () => Promise.resolve([]),
       });
-      (global as any).fetch = mockFetch;
+      global.fetch = mockFetch;
 
       await huggingFaceService.searchModels('', { pipelineTag: 'image-text-to-text' });
 
@@ -433,7 +433,7 @@ describe('HuggingFaceService', () => {
         ok: true,
         json: () => Promise.resolve([]),
       });
-      (global as any).fetch = mockFetch;
+      global.fetch = mockFetch;
 
       await huggingFaceService.searchModels('test');
 
@@ -446,7 +446,7 @@ describe('HuggingFaceService', () => {
         ok: true,
         json: () => Promise.resolve([]),
       });
-      (global as any).fetch = mockFetch;
+      global.fetch = mockFetch;
 
       await huggingFaceService.searchModels('qwen', { pipelineTag: 'image-text-to-text' });
 
@@ -461,7 +461,7 @@ describe('HuggingFaceService', () => {
   // ============================================================================
   describe('getModelFiles', () => {
     it('separates mmproj files from model files', async () => {
-      (global as any).fetch = jest.fn().mockResolvedValue({
+      global.fetch = jest.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve([
           { type: 'file', path: 'model-Q4_K_M.gguf', size: 4000000000 },
@@ -481,7 +481,7 @@ describe('HuggingFaceService', () => {
     });
 
     it('sorts files by size ascending', async () => {
-      (global as any).fetch = jest.fn().mockResolvedValue({
+      global.fetch = jest.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve([
           { type: 'file', path: 'model-Q8_0.gguf', size: 8000000000 },
@@ -497,7 +497,7 @@ describe('HuggingFaceService', () => {
     });
 
     it('falls back to siblings when tree endpoint fails', async () => {
-      (global as any).fetch = jest.fn()
+      global.fetch = jest.fn()
         .mockResolvedValueOnce({ ok: false, status: 404 }) // tree fails
         .mockResolvedValueOnce({
           ok: true,
@@ -532,7 +532,7 @@ describe('HuggingFaceService', () => {
           siblings: [{ rfilename: 'model-Q4_K_M.gguf', size: 4000000000 }],
         }),
       });
-      (global as any).fetch = mockFetch;
+      global.fetch = mockFetch;
 
       const result = await huggingFaceService.getModelDetails('org/test-model');
 
@@ -541,7 +541,7 @@ describe('HuggingFaceService', () => {
     });
 
     it('throws on API error', async () => {
-      (global as any).fetch = jest.fn().mockResolvedValue({
+      global.fetch = jest.fn().mockResolvedValue({
         ok: false,
         status: 404,
       });
@@ -586,7 +586,7 @@ describe('HuggingFaceService', () => {
 
   describe('getModelFilesFromSiblings with no siblings', () => {
     it('returns empty array when siblings is null', async () => {
-      (global as any).fetch = jest.fn()
+      global.fetch = jest.fn()
         .mockResolvedValueOnce({ ok: false, status: 404 }) // tree fails
         .mockResolvedValueOnce({
           ok: true,

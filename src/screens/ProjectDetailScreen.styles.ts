@@ -174,4 +174,50 @@ export const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
     marginBottom: SPACING.sm,
     marginLeft: 10,
   },
+  kbEmpty: {
+    alignItems: 'center' as const,
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+  },
+  kbEmptyText: {
+    ...TYPOGRAPHY.bodySmall,
+    color: colors.textMuted,
+    marginTop: SPACING.sm,
+  },
+  kbIndexing: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  kbIndexingText: {
+    ...TYPOGRAPHY.bodySmall,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  kbDocRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  kbDocInfo: {
+    flex: 1,
+    marginRight: SPACING.sm,
+  },
+  kbDocName: {
+    ...TYPOGRAPHY.body,
+    color: colors.text,
+  },
+  kbDocSize: {
+    ...TYPOGRAPHY.labelSmall,
+    color: colors.textMuted,
+  },
+  kbDocDelete: {
+    padding: SPACING.sm,
+    marginLeft: SPACING.sm,
+  },
 });

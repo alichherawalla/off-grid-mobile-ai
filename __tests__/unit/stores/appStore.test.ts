@@ -826,7 +826,7 @@ describe('appStore', () => {
       const merged = {
         ...currentState,
         ...oldPersistedState,
-      } as any;
+      };
 
       // Apply the same logic as the merge function
       if (typeof merged.imageModelDownloadId === 'number') {

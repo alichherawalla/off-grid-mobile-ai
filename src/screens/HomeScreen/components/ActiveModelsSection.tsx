@@ -34,25 +34,33 @@ const TextModelCard: React.FC<TextModelCardProps> = ({
           ? <ActivityIndicator size="small" color={colors.primary} />
           : <Icon name="chevron-down" size={14} color={colors.textMuted} />}
       </View>
-      {isLoading ? (
-        <>
-          <Text style={styles.modelCardName} numberOfLines={1}>
-            {loadingState.modelName || 'Unloading...'}
+      {(() => {
+        if (isLoading) {
+          return (
+            <>
+              <Text style={styles.modelCardName} numberOfLines={1}>
+                {loadingState.modelName || 'Unloading...'}
+              </Text>
+              <Text style={styles.modelCardLoading}>Loading...</Text>
+            </>
+          );
+        }
+        if (activeTextModel) {
+          return (
+            <>
+              <Text style={styles.modelCardName} numberOfLines={1}>{activeTextModel.name}</Text>
+              <Text style={styles.modelCardMeta}>
+                {activeTextModel.quantization} · ~{(((activeTextModel.fileSize + (activeTextModel.mmProjFileSize || 0)) * 1.5) / (1024 * 1024 * 1024)).toFixed(1)} GB
+              </Text>
+            </>
+          );
+        }
+        return (
+          <Text style={styles.modelCardEmpty}>
+            {downloadedModels.length > 0 ? 'Tap to select' : 'No models'}
           </Text>
-          <Text style={styles.modelCardLoading}>Loading...</Text>
-        </>
-      ) : activeTextModel ? (
-        <>
-          <Text style={styles.modelCardName} numberOfLines={1}>{activeTextModel.name}</Text>
-          <Text style={styles.modelCardMeta}>
-            {activeTextModel.quantization} · ~{(((activeTextModel.fileSize + (activeTextModel.mmProjFileSize || 0)) * 1.5) / (1024 * 1024 * 1024)).toFixed(1)} GB
-          </Text>
-        </>
-      ) : (
-        <Text style={styles.modelCardEmpty}>
-          {downloadedModels.length > 0 ? 'Tap to select' : 'No models'}
-        </Text>
-      )}
+        );
+      })()}
     </AnimatedPressable>
   );
 };
@@ -88,25 +96,33 @@ const ImageModelCard: React.FC<ImageModelCardProps> = ({
           ? <ActivityIndicator size="small" color={colors.primary} />
           : <Icon name="chevron-down" size={14} color={colors.textMuted} />}
       </View>
-      {isLoading ? (
-        <>
-          <Text style={styles.modelCardName} numberOfLines={1}>
-            {loadingState.modelName || 'Unloading...'}
+      {(() => {
+        if (isLoading) {
+          return (
+            <>
+              <Text style={styles.modelCardName} numberOfLines={1}>
+                {loadingState.modelName || 'Unloading...'}
+              </Text>
+              <Text style={styles.modelCardLoading}>Loading...</Text>
+            </>
+          );
+        }
+        if (activeImageModel) {
+          return (
+            <>
+              <Text style={styles.modelCardName} numberOfLines={1}>{activeImageModel.name}</Text>
+              <Text style={styles.modelCardMeta}>
+                {activeImageModel.style || 'Ready'} · ~{((activeImageModel.size * 1.8) / (1024 * 1024 * 1024)).toFixed(1)} GB
+              </Text>
+            </>
+          );
+        }
+        return (
+          <Text style={styles.modelCardEmpty}>
+            {downloadedImageModels.length > 0 ? 'Tap to select' : 'No models'}
           </Text>
-          <Text style={styles.modelCardLoading}>Loading...</Text>
-        </>
-      ) : activeImageModel ? (
-        <>
-          <Text style={styles.modelCardName} numberOfLines={1}>{activeImageModel.name}</Text>
-          <Text style={styles.modelCardMeta}>
-            {activeImageModel.style || 'Ready'} · ~{((activeImageModel.size * 1.8) / (1024 * 1024 * 1024)).toFixed(1)} GB
-          </Text>
-        </>
-      ) : (
-        <Text style={styles.modelCardEmpty}>
-          {downloadedImageModels.length > 0 ? 'Tap to select' : 'No models'}
-        </Text>
-      )}
+        );
+      })()}
     </AnimatedPressable>
   );
 };

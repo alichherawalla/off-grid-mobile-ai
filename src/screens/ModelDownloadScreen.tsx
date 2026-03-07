@@ -27,8 +27,8 @@ export const ModelDownloadScreen: React.FC<ModelDownloadScreenProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [recommendedModels, setRecommendedModels] = useState<typeof RECOMMENDED_MODELS>([]);
   const [modelFiles, setModelFiles] = useState<Record<string, ModelFile[]>>({});
-  const [_selectedModel, setSelectedModel] = useState<string | null>(null);
-  const [_selectedFile, setSelectedFile] = useState<ModelFile | null>(null);
+  const [, setSelectedModel] = useState<string | null>(null);
+  const [, setSelectedFile] = useState<ModelFile | null>(null);
   const [alertState, setAlertState] = useState<AlertState>(initialAlertState);
 
   const { colors } = useTheme();
@@ -69,16 +69,15 @@ export const ModelDownloadScreen: React.FC<ModelDownloadScreenProps> = ({
       const filesToFetch = compatibleModels;
       const filesMap: Record<string, ModelFile[]> = {};
 
+      const RECOMMENDED_QUANTS = ['Q4_K_M', 'Q4_K_S', 'Q4_0'];
+      const isRecommendedQuant = (f: ModelFile) =>
+        RECOMMENDED_QUANTS.some((q) => f.quantization.toUpperCase().includes(q.replace('_', '')));
+
       await Promise.all(
         filesToFetch.map(async (model) => {
           try {
             const files = await huggingFaceService.getModelFiles(model.id);
-            // Filter for Q4_K_M or similar recommended quantizations
-            const recommendedFiles = files.filter((f) =>
-              ['Q4_K_M', 'Q4_K_S', 'Q4_0'].some((q) =>
-                f.quantization.toUpperCase().includes(q.replace('_', ''))
-              )
-            );
+            const recommendedFiles = files.filter(isRecommendedQuant);
             filesMap[model.id] = recommendedFiles.length > 0 ? recommendedFiles : files.slice(0, 2);
           } catch (error) {
             logger.error(`Error fetching files for ${model.id}:`, error);

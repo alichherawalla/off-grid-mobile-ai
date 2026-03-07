@@ -294,7 +294,7 @@ export const TextModelsTab: React.FC<Props> = (props) => {
           contentContainerStyle={styles.listContent}
           testID="models-list"
           refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
-          ListHeaderComponent={!hasSearched ? (
+          ListHeaderComponent={hasSearched ? null : (
             <View>
               <View style={styles.deviceBanner}>
                 <Text style={styles.deviceBannerText}>
@@ -303,13 +303,15 @@ export const TextModelsTab: React.FC<Props> = (props) => {
               </View>
               {recommendedAsModelInfo.length > 0 && <Text style={styles.recommendedTitle}>Recommended for your device</Text>}
             </View>
-          ) : null}
+          )}
           ListEmptyComponent={
             <Card style={styles.emptyCard}>
               <Text style={styles.emptyText}>
-                {hasSearched
-                  ? hasActiveFilters ? 'No models match your filters. Try adjusting or clearing them.' : 'No models found. Try a different search term.'
-                  : 'No recommended models available.'}
+                {(() => {
+                  if (!hasSearched) return 'No recommended models available.';
+                  if (hasActiveFilters) return 'No models match your filters. Try adjusting or clearing them.';
+                  return 'No models found. Try a different search term.';
+                })()}
               </Text>
             </Card>
           }

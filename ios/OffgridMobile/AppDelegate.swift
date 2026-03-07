@@ -11,7 +11,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
   var reactNativeFactory: RCTReactNativeFactory?
 
   func application(
-    _ application: UIApplication,
+    _: UIApplication,
     handleEventsForBackgroundURLSession identifier: String,
     completionHandler: @escaping () -> Void
   ) {
@@ -22,7 +22,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
   }
 
   func application(
-    _ application: UIApplication,
+    _: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
     let delegate = ReactNativeDelegate()
@@ -45,7 +45,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 }
 
 class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {
-  override func sourceURL(for bridge: RCTBridge) -> URL? {
+  override func sourceURL(for _: RCTBridge) -> URL? {
     self.bundleURL()
   }
 

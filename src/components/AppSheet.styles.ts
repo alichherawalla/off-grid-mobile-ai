@@ -7,13 +7,11 @@ export const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
     justifyContent: 'flex-end' as const,
   },
   backdrop: {
-    ...({
-      position: 'absolute' as const,
-      left: 0,
-      right: 0,
-      top: 0,
-      bottom: 0,
-    }),
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     backgroundColor: '#000000',
   },
   sheet: {

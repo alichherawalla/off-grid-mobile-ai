@@ -36,7 +36,7 @@ export const StorageSettingsScreen: React.FC = () => {
   const imageStorageUsed = downloadedImageModels.reduce((total, m) => total + (m.size || 0), 0);
 
   const staleDownloads = Object.entries(activeBackgroundDownloads).filter(([_, info]) => {
-    return !info || !info.modelId || !info.fileName || !info.totalBytes;
+    return !info?.modelId || !info?.fileName || !info?.totalBytes;
   });
 
   const loadStorageInfo = useCallback(async () => {
@@ -173,7 +173,11 @@ export const StorageSettingsScreen: React.FC = () => {
                 <View style={styles.modelInfo}>
                   <Text style={styles.modelName} numberOfLines={1}>{model.name}</Text>
                   <Text style={styles.modelMeta}>
-                    {model.backend === 'coreml' ? 'Core ML' : model.backend === 'qnn' ? 'Qualcomm NPU' : 'GPU'}
+                    {(() => {
+                      if (model.backend === 'coreml') return 'Core ML';
+                      if (model.backend === 'qnn') return 'Qualcomm NPU';
+                      return 'GPU';
+                    })()}
                     {model.style ? ` • ${model.style}` : ''}
                   </Text>
                 </View>

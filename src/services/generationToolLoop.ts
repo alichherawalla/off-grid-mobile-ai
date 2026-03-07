@@ -98,9 +98,10 @@ export function parseToolCallsFromText(text: string): { cleanText: string; toolC
     }
   }
 
-  // Remove all matched ranges from text
+  // Remove all matched ranges from text (process in reverse order to preserve indices)
+  matchedRanges.sort((a, b) => b[0] - a[0]);
   let cleanText = text;
-  for (const [start, end] of matchedRanges.sort((a, b) => b[0] - a[0])) {
+  for (const [start, end] of matchedRanges) {
     cleanText = cleanText.slice(0, start) + cleanText.slice(end);
   }
   cleanText = cleanText.trim();
@@ -118,6 +119,7 @@ export interface ToolLoopContext {
   conversationId: string;
   messages: Message[];
   enabledToolIds: string[];
+  projectId?: string;
   callbacks?: ToolLoopCallbacks;
   isAborted: () => boolean;
   onThinkingDone: () => void;
@@ -154,6 +156,7 @@ async function executeToolCalls(
       }
     }
 
+    if (ctx.projectId) tc.context = { projectId: ctx.projectId };
     ctx.callbacks?.onToolCallStart?.(tc.name, tc.arguments);
     const result = await executeToolCall(tc);
     ctx.callbacks?.onToolCallComplete?.(tc.name, result);
@@ -224,6 +227,41 @@ function resolveToolCalls(fullResponse: string, toolCalls: ToolCall[]) {
   return { effectiveToolCalls: toolCalls, displayResponse: fullResponse };
 }
 
+interface ToolLoopState {
+  firstTokenFired: boolean;
+  streamedContent: string;
+}
+
+function buildStreamHandler(
+  ctx: ToolLoopContext,
+  state: ToolLoopState,
+  thinkStream: ((token: string) => void) | null,
+): ((token: string) => void) | undefined {
+  if (!ctx.onStream) return undefined;
+  return (token: string) => {
+    if (ctx.isAborted()) return;
+    if (!state.firstTokenFired) {
+      state.firstTokenFired = true;
+      ctx.onThinkingDone();
+      ctx.callbacks?.onFirstToken?.();
+    }
+    if (thinkStream) {
+      thinkStream(token);
+    } else {
+      state.streamedContent += token;
+      ctx.onStream!(token);
+    }
+  };
+}
+
+function emitFinalResponse(ctx: ToolLoopContext, displayResponse: string, streamedContent: string): void {
+  if (displayResponse && !streamedContent) {
+    ctx.onThinkingDone();
+    ctx.callbacks?.onFirstToken?.();
+    ctx.onFinalResponse(displayResponse);
+  }
+}
+
 /**
  * Run the tool-calling loop: call LLM → execute tools → re-inject results → repeat.
  * Returns when the model produces a final response with no tool calls.
@@ -233,24 +271,17 @@ export async function runToolLoop(ctx: ToolLoopContext): Promise<void> {
   const toolSchemas = getToolsAsOpenAISchema(ctx.enabledToolIds);
   const loopMessages = [...ctx.messages];
   let totalToolCalls = 0;
-  let firstTokenFired = false;
-  let streamedContent = '';
+  const state: ToolLoopState = { firstTokenFired: false, streamedContent: '' };
   const isThinkingModel = llmService.supportsThinking();
 
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
     if (ctx.isAborted()) break;
-    streamedContent = '';
+    state.streamedContent = '';
     logger.log(`[ToolLoop] Iteration ${iteration}, messages: ${loopMessages.length}, tools: ${toolSchemas.length}, totalCalls: ${totalToolCalls}`);
 
-    // For thinking models on iteration 0, wrap stream with <think> injector
     const thinkStream = isThinkingModel && iteration === 0 && ctx.onStream
-      ? createThinkInjector(t => { streamedContent += t; ctx.onStream!(t); }) : null;
-
-    const onStream = ctx.onStream ? (token: string) => {
-      if (ctx.isAborted()) return;
-      if (!firstTokenFired) { firstTokenFired = true; ctx.onThinkingDone(); ctx.callbacks?.onFirstToken?.(); }
-      if (thinkStream) { thinkStream(token); } else { streamedContent += token; ctx.onStream!(token); }
-    } : undefined;
+      ? createThinkInjector(t => { state.streamedContent += t; ctx.onStream!(t); }) : null;
+    const onStream = buildStreamHandler(ctx, state, thinkStream);
 
     const { fullResponse, toolCalls } = await callLLMWithRetry(loopMessages, toolSchemas, onStream);
     logger.log(`[ToolLoop] Result: response=${fullResponse.length} chars, toolCalls=${toolCalls.length}`);
@@ -260,15 +291,11 @@ export async function runToolLoop(ctx: ToolLoopContext): Promise<void> {
     totalToolCalls += cappedToolCalls.length;
 
     if (cappedToolCalls.length === 0 || iteration === MAX_TOOL_ITERATIONS - 1) {
-      if (displayResponse && !streamedContent) {
-        ctx.onThinkingDone();
-        ctx.callbacks?.onFirstToken?.();
-        ctx.onFinalResponse(displayResponse);
-      }
+      emitFinalResponse(ctx, displayResponse, state.streamedContent);
       return;
     }
 
-    if (streamedContent) { ctx.onStreamReset?.(); chatStore.setStreamingMessage(''); }
+    if (state.streamedContent) { ctx.onStreamReset?.(); chatStore.setStreamingMessage(''); }
 
     const assistantMsg: Message = {
       id: `tool-assist-${Date.now()}-${iteration}`, role: 'assistant',

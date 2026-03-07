@@ -3,60 +3,50 @@ import DeviceInfo from 'react-native-device-info';
 import { ToolCall, ToolResult } from './types';
 import logger from '../../utils/logger';
 
+function makeResult(call: ToolCall, start: number, opts: { content: string; error?: string }): ToolResult {
+  return { toolCallId: call.id, name: call.name, content: opts.content, error: opts.error, durationMs: Date.now() - start };
+}
+function requireString(call: ToolCall, param: string): string | null {
+  const val = call.arguments[param];
+  return (val && typeof val === 'string' && val.trim()) ? val.trim() : null;
+}
+
 export async function executeToolCall(call: ToolCall): Promise<ToolResult> {
   const start = Date.now();
   try {
-    let content: string;
-    switch (call.name) {
-      case 'web_search': {
-        const query = call.arguments.query;
-        if (!query || typeof query !== 'string' || !query.trim()) {
-          return { toolCallId: call.id, name: call.name, content: '', error: 'Missing required parameter: query', durationMs: Date.now() - start };
-        }
-        content = await handleWebSearch(query.trim());
-        break;
-      }
-      case 'calculator':
-        content = handleCalculator(call.arguments.expression);
-        break;
-      case 'get_current_datetime':
-        content = handleGetDatetime(call.arguments.timezone);
-        break;
-      case 'get_device_info':
-        content = await handleGetDeviceInfo(call.arguments.info_type);
-        break;
-      case 'read_url': {
-        const url = call.arguments.url;
-        if (!url || typeof url !== 'string' || !url.trim()) {
-          return { toolCallId: call.id, name: call.name, content: '', error: 'Missing required parameter: url', durationMs: Date.now() - start };
-        }
-        content = await handleReadUrl(url.trim());
-        break;
-      }
-      default:
-        return {
-          toolCallId: call.id,
-          name: call.name,
-          content: '',
-          error: `Unknown tool: ${call.name}`,
-          durationMs: Date.now() - start,
-        };
-    }
-    return {
-      toolCallId: call.id,
-      name: call.name,
-      content,
-      durationMs: Date.now() - start,
-    };
+    const content = await dispatchTool(call);
+    return makeResult(call, start, { content });
   } catch (error: any) {
     logger.error(`[Tools] Error executing ${call.name}:`, error);
-    return {
-      toolCallId: call.id,
-      name: call.name,
-      content: '',
-      error: error.message || 'Tool execution failed',
-      durationMs: Date.now() - start,
-    };
+    return makeResult(call, start, { content: '', error: error.message || 'Tool execution failed' });
+  }
+}
+
+async function dispatchTool(call: ToolCall): Promise<string> {
+  switch (call.name) {
+    case 'web_search': {
+      const q = requireString(call, 'query');
+      if (!q) throw new Error('Missing required parameter: query');
+      return handleWebSearch(q);
+    }
+    case 'calculator':
+      return handleCalculator(call.arguments.expression);
+    case 'get_current_datetime':
+      return handleGetDatetime(call.arguments.timezone);
+    case 'get_device_info':
+      return handleGetDeviceInfo(call.arguments.info_type);
+    case 'search_knowledge_base': {
+      const q = requireString(call, 'query');
+      if (!q) throw new Error('Missing required parameter: query');
+      return handleSearchKnowledgeBase(q, call.context?.projectId);
+    }
+    case 'read_url': {
+      const url = requireString(call, 'url');
+      if (!url) throw new Error('Missing required parameter: url');
+      return handleReadUrl(url);
+    }
+    default:
+      throw new Error(`Unknown tool: ${call.name}`);
   }
 }
 
@@ -82,7 +72,10 @@ async function handleWebSearch(query: string): Promise<string> {
 
     return results
       .slice(0, 5)
-      .map((r, i) => `${i + 1}. ${r.url ? `[${r.title}](${r.url})` : r.title}\n   ${r.snippet}`)
+      .map((r, i) => {
+        const heading = r.url ? `[${r.title}](${r.url})` : r.title;
+        return `${i + 1}. ${heading}\n   ${r.snippet}`;
+      })
       .join('\n\n');
   } finally {
     clearTimeout(timeout);
@@ -94,10 +87,10 @@ type SearchResult = { title: string; snippet: string; url?: string };
 function stripHtmlTags(html: string): string {
   let result = '';
   let inTag = false;
-  for (let i = 0; i < html.length; i++) {
-    if (html[i] === '<') { inTag = true; continue; }
-    if (html[i] === '>') { inTag = false; continue; }
-    if (!inTag) result += html[i];
+  for (const ch of html) {
+    if (ch === '<') { inTag = true; continue; }
+    if (ch === '>') { inTag = false; continue; }
+    if (!inTag) result += ch;
   }
   return result;
 }
@@ -155,8 +148,8 @@ function decodeHTMLEntities(text: string): string {
     .replaceAll('&#x2F;', '/')
     .replaceAll('&nbsp;', ' ')
     .replaceAll('&apos;', "'")
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)));
+    .replaceAll(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replaceAll(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)));
 }
 
 /**
@@ -166,7 +159,7 @@ function decodeHTMLEntities(text: string): string {
  */
 function evaluateExpression(expr: string): number {
   let pos = 0;
-  const str = expr.replace(/\s/g, '');
+  const str = expr.replaceAll(/\s/g, '');
 
   function parseExpr(): number {
     let left = parseTerm();
@@ -226,7 +219,7 @@ function evaluateExpression(expr: string): number {
 }
 
 function handleCalculator(expression: string): string {
-  const sanitized = expression.replace(/\s/g, '');
+  const sanitized = expression.replaceAll(/\s/g, '');
   if (!/^[0-9+\-*/().,%^]+$/.test(sanitized)) {
     throw new Error('Invalid expression: only numbers and basic operators (+, -, *, /, ^, %, parentheses) are allowed');
   }
@@ -234,7 +227,7 @@ function handleCalculator(expression: string): string {
   const result = evaluateExpression(sanitized);
 
   if (typeof result !== 'number' || !Number.isFinite(result)) {
-    throw new Error('Expression did not evaluate to a finite number');
+    throw new TypeError('Expression did not evaluate to a finite number');
   }
 
   return `${expression} = ${result}`;
@@ -264,8 +257,8 @@ async function collectDeviceSection(
   try { return await fetcher(); } catch { return `${label}: unavailable`; }
 }
 
-async function handleGetDeviceInfo(infoType?: string): Promise<string> {
-  const type = infoType ?? 'all';
+async function handleGetDeviceInfo(infoType = 'all'): Promise<string> {
+  const type = infoType;
   const parts: string[] = [];
 
   if (type === 'all' || type === 'memory') {
@@ -331,7 +324,7 @@ async function handleReadUrl(rawUrl: string): Promise<string> {
     });
     logger.log(`[Tools] read_url response: status=${response.status}, ok=${response.ok}`);
     if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    const text = stripHtmlTags(await response.text()).replace(/\s+/g, ' ').trim();
+    const text = stripHtmlTags(await response.text()).replaceAll(/\s+/g, ' ').trim();
     if (!text) return `The page at ${url} returned no readable content.`;
     return text.length > 4000 ? `${text.slice(0, 4000)}\n\n[Content truncated]` : text;
   } catch (e: any) {
@@ -340,9 +333,18 @@ async function handleReadUrl(rawUrl: string): Promise<string> {
   } finally { clearTimeout(timeout); }
 }
 
+async function handleSearchKnowledgeBase(query: string, projectId?: string): Promise<string> {
+  if (!projectId) return 'No project context. Knowledge base requires an active project.';
+  const { ragService } = require('../rag');
+  const result = await ragService.searchProject(projectId, query);
+  if (result.chunks.length === 0) return `No results found for "${query}" in the knowledge base.`;
+  return result.chunks
+    .map((c: import('../rag').RagSearchResult, i: number) => `[${i + 1}] ${c.name} (part ${c.position + 1}):\n${c.content}`)
+    .join('\n\n---\n\n');
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+  return bytes < 1024 ** 3 ? `${(bytes / 1024 ** 2).toFixed(1)} MB` : `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }

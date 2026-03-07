@@ -35,6 +35,12 @@ interface ChatInputProps {
 
 const IMAGE_MODE_CYCLE: ImageModeState[] = ['auto', 'force', 'disabled'];
 
+function getImageModeIcon(imageMode: ImageModeState, imageModelLoaded: boolean, colors: any): { color: string; badge: string; badgeStyle: 'on' | 'off' | 'auto' } {
+  if (imageMode === 'force') return { color: imageModelLoaded ? colors.primary : colors.textMuted, badge: 'ON', badgeStyle: 'on' };
+  if (imageMode === 'disabled') return { color: colors.textMuted, badge: 'OFF', badgeStyle: 'off' };
+  return { color: imageModelLoaded ? colors.textSecondary : colors.textMuted, badge: 'A', badgeStyle: 'auto' };
+}
+
 const ToolsButton: React.FC<{
   supportsToolCalling: boolean; enabledToolCount: number; disabled?: boolean;
   onToolsPress?: () => void; styles: any; colors: any; onUnsupported: () => void;
@@ -46,7 +52,10 @@ const ToolsButton: React.FC<{
     disabled={disabled}
     hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
   >
-    <Icon name="tool" size={18} color={supportsToolCalling ? (enabledToolCount > 0 ? colors.primary : colors.textSecondary) : colors.textMuted} />
+    <Icon name="tool" size={18} color={(() => {
+      if (!supportsToolCalling) return colors.textMuted;
+      return enabledToolCount > 0 ? colors.primary : colors.textSecondary;
+    })()} />
     {supportsToolCalling && enabledToolCount > 0 && (
       <View style={[styles.iconBadge, styles.iconBadgeOn]}><Text style={styles.iconBadgeText}>{enabledToolCount}</Text></View>
     )}
@@ -137,50 +146,49 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   };
 
-  const imageModeIcon = (): { color: string; badge: string; badgeStyle: 'on' | 'off' | 'auto' } => {
-    switch (imageMode) {
-      case 'force':
-        return { color: imageModelLoaded ? colors.primary : colors.textMuted, badge: 'ON', badgeStyle: 'on' };
-      case 'disabled':
-        return { color: colors.textMuted, badge: 'OFF', badgeStyle: 'off' };
-      default:
-        return { color: imageModelLoaded ? colors.textSecondary : colors.textMuted, badge: 'A', badgeStyle: 'auto' };
+  const imgState = getImageModeIcon(imageMode, imageModelLoaded, colors);
+
+  const getActionButton = () => {
+    if (canSend) {
+      return (
+        <TouchableOpacity
+          testID="send-button"
+          style={styles.circleButton}
+          onPress={handleSend}
+        >
+          <Icon name="send" size={18} color={colors.background} />
+        </TouchableOpacity>
+      );
     }
+    if (isGenerating && onStop) {
+      return (
+        <TouchableOpacity
+          testID="stop-button"
+          style={[styles.circleButton, styles.circleButtonStop]}
+          onPress={handleStop}
+        >
+          <Icon name="square" size={18} color={colors.background} />
+        </TouchableOpacity>
+      );
+    }
+    return (
+      <VoiceRecordButton
+        isRecording={isRecording}
+        isAvailable={voiceAvailable}
+        isModelLoading={isModelLoading}
+        isTranscribing={isTranscribing}
+        partialResult={partialResult}
+        error={error}
+        disabled={disabled}
+        onStartRecording={startRecording}
+        onStopRecording={stopRecording}
+        onCancelRecording={() => { stopRecording(); clearResult(); }}
+        asSendButton
+      />
+    );
   };
 
-  const imgState = imageModeIcon();
-
-  const actionButton = canSend ? (
-    <TouchableOpacity
-      testID="send-button"
-      style={styles.circleButton}
-      onPress={handleSend}
-    >
-      <Icon name="send" size={18} color={colors.background} />
-    </TouchableOpacity>
-  ) : isGenerating && onStop ? (
-    <TouchableOpacity
-      testID="stop-button"
-      style={[styles.circleButton, styles.circleButtonStop]}
-      onPress={handleStop}
-    >
-      <Icon name="square" size={18} color={colors.background} />
-    </TouchableOpacity>
-  ) : (
-    <VoiceRecordButton
-      isRecording={isRecording}
-      isAvailable={voiceAvailable}
-      isModelLoading={isModelLoading}
-      isTranscribing={isTranscribing}
-      partialResult={partialResult}
-      error={error}
-      disabled={disabled}
-      onStartRecording={startRecording}
-      onStopRecording={stopRecording}
-      onCancelRecording={() => { stopRecording(); clearResult(); }}
-      asSendButton
-    />
-  );
+  const actionButton = getActionButton();
 
   const content = (
     <View style={styles.container}>
@@ -272,9 +280,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 testID={`image-mode-${imageMode}-badge`}
                 style={[
                   styles.iconBadge,
-                  imgState.badgeStyle === 'on' ? styles.iconBadgeOn
-                    : imgState.badgeStyle === 'off' ? styles.iconBadgeOff
-                    : styles.iconBadgeAuto,
+                  (() => {
+                    if (imgState.badgeStyle === 'on') return styles.iconBadgeOn;
+                    if (imgState.badgeStyle === 'off') return styles.iconBadgeOff;
+                    return styles.iconBadgeAuto;
+                  })(),
                 ]}
               >
                 <Text style={styles.iconBadgeText}>{imgState.badge}</Text>

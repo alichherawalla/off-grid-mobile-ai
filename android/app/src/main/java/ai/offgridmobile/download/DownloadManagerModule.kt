@@ -351,7 +351,9 @@ class DownloadManagerModule(reactContext: ReactApplicationContext) :
             } else {
                 // If rename fails (different filesystem), copy then delete
                 sourceFile.copyTo(targetFile, overwrite = true)
-                sourceFile.delete()
+                if (!sourceFile.delete()) {
+                    android.util.Log.w("DownloadManager", "Failed to delete source file: ${sourceFile.absolutePath}")
+                }
                 markMoveCompleted(id)
                 promise.resolve(targetFile.absolutePath)
             }
@@ -384,6 +386,38 @@ class DownloadManagerModule(reactContext: ReactApplicationContext) :
         // Required for RN event emitter
     }
 
+    private fun isHostAllowed(host: String?): Boolean {
+        if (host == null) return false
+        return allowedDownloadHosts.any { host == it || host.endsWith(".$it") }
+    }
+
+    private fun followOneRedirect(currentUrl: String): String? {
+        val connection = URL(currentUrl).openConnection() as HttpURLConnection
+        try {
+            connection.instanceFollowRedirects = false
+            connection.requestMethod = "HEAD"
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 10_000
+            val responseCode = connection.responseCode
+            if (responseCode !in 300..399) return null
+
+            val location = connection.getHeaderField("Location")
+            if (location.isNullOrEmpty()) return null
+
+            val nextUrl = if (location.startsWith("http")) location
+                else URL(URL(currentUrl), location).toString()
+
+            val nextHost = try { URL(nextUrl).host } catch (_: Exception) { null }
+            if (!isHostAllowed(nextHost)) {
+                android.util.Log.w("DownloadManager", "Redirect to unauthorized host blocked: $nextHost")
+                return null
+            }
+            return nextUrl
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     /**
      * Follow HTTP redirects manually and return the final URL.
      * Some OEM DownloadManager implementations silently fail on 302 redirects
@@ -394,40 +428,63 @@ class DownloadManagerModule(reactContext: ReactApplicationContext) :
     internal fun resolveRedirects(originalUrl: String, maxRedirects: Int = 5): String {
         var currentUrl = originalUrl
         for (i in 0 until maxRedirects) {
-            val connection = URL(currentUrl).openConnection() as HttpURLConnection
             try {
-                connection.instanceFollowRedirects = false
-                connection.requestMethod = "HEAD"
-                connection.connectTimeout = 10_000
-                connection.readTimeout = 10_000
-                val responseCode = connection.responseCode
-                if (responseCode in 300..399) {
-                    val location = connection.getHeaderField("Location")
-                    if (location.isNullOrEmpty()) return currentUrl
-                    val nextUrl = if (location.startsWith("http")) {
-                        location
-                    } else {
-                        URL(URL(currentUrl), location).toString()
-                    }
-                    // Re-validate redirected host against allowlist to prevent SSRF bypass
-                    val nextHost = try { URL(nextUrl).host } catch (_: Exception) { null }
-                    if (nextHost == null || !allowedDownloadHosts.any { nextHost == it || nextHost.endsWith(".$it") }) {
-                        android.util.Log.w("DownloadManager", "Redirect to unauthorized host blocked: $nextHost")
-                        return currentUrl
-                    }
-                    currentUrl = nextUrl
-                } else {
-                    return currentUrl
-                }
+                val nextUrl = followOneRedirect(currentUrl) ?: return currentUrl
+                currentUrl = nextUrl
             } catch (e: Exception) {
                 android.util.Log.w("DownloadManager", "Redirect resolution failed, using original URL", e)
                 return originalUrl
-            } finally {
-                connection.disconnect()
             }
         }
         android.util.Log.w("DownloadManager", "Redirect resolution exceeded max redirects ($maxRedirects), using original URL")
         return originalUrl
+    }
+
+    private fun buildEventParams(
+        downloadId: Long, download: JSONObject, statusInfo: ReadableMap, status: String,
+    ): WritableMap = Arguments.createMap().apply {
+        putDouble("downloadId", downloadId.toDouble())
+        putString("fileName", download.optString("fileName"))
+        putString("modelId", download.optString("modelId"))
+        putDouble("bytesDownloaded", statusInfo.getDouble("bytesDownloaded"))
+        putDouble("totalBytes", statusInfo.getDouble("totalBytes").takeIf { it > 0 }
+            ?: download.optDouble("totalBytes", 0.0))
+        putString("status", status)
+        putString("reason", statusInfo.getString("reason") ?: "")
+    }
+
+    private fun handlePollCompleted(
+        downloadId: Long, eventParams: WritableMap, statusInfo: ReadableMap, completedEventSent: Boolean,
+    ) {
+        eventParams.putString("localUri", statusInfo.getString("localUri"))
+        if (!completedEventSent) {
+            android.util.Log.d("DownloadManager", "Sending DownloadComplete event for $downloadId")
+            sendEvent("DownloadComplete", eventParams)
+            updateDownloadStatus(downloadId, "completed", statusInfo.getString("localUri"))
+        }
+    }
+
+    private fun handlePollUnknown(downloadId: Long, eventParams: WritableMap, completedEventSent: Boolean) {
+        android.util.Log.w("DownloadManager", "Download $downloadId has unknown status - may have completed or been removed")
+        val downloadInfo = getDownloadInfo(downloadId)
+        val fileName = downloadInfo?.optString("fileName")
+        if (fileName == null) {
+            android.util.Log.d("DownloadManager", "No info for unknown download $downloadId, removing stale entry")
+            removeDownload(downloadId)
+            return
+        }
+        val file = java.io.File(
+            reactApplicationContext.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), fileName
+        )
+        if (file.exists() && file.length() > 0) {
+            android.util.Log.d("DownloadManager", "File exists, treating as completed: ${file.absolutePath}")
+            eventParams.putString("localUri", file.toURI().toString())
+            if (!completedEventSent) sendEvent("DownloadComplete", eventParams)
+            updateDownloadStatus(downloadId, "completed", file.toURI().toString())
+        } else {
+            android.util.Log.d("DownloadManager", "No file found for unknown download $downloadId, removing stale entry")
+            removeDownload(downloadId)
+        }
     }
 
     private fun pollAllDownloads() {
@@ -437,87 +494,54 @@ class DownloadManagerModule(reactContext: ReactApplicationContext) :
             val download = downloads.getJSONObject(i)
             val downloadId = download.getLong("downloadId")
             val statusInfo = queryDownloadStatus(downloadId)
-            val status = statusInfo.getString("status")
-
-            val eventParams = Arguments.createMap().apply {
-                putDouble("downloadId", downloadId.toDouble())
-                putString("fileName", download.optString("fileName"))
-                putString("modelId", download.optString("modelId"))
-                putDouble("bytesDownloaded", statusInfo.getDouble("bytesDownloaded"))
-                putDouble("totalBytes", statusInfo.getDouble("totalBytes").takeIf { it > 0 }
-                    ?: download.optDouble("totalBytes", 0.0))
-                putString("status", status)
-                putString("reason", statusInfo.getString("reason") ?: "")
-            }
-
-            val previousStatus = download.optString("status", "pending")
+            val status = statusInfo.getString("status") ?: "unknown"
+            val eventParams = buildEventParams(downloadId, download, statusInfo, status)
             val completedEventSent = download.optBoolean("completedEventSent", false)
-            android.util.Log.d("DownloadManager", "Polling $downloadId: status=$status, previousStatus=$previousStatus, eventSent=$completedEventSent, bytesDownloaded=${statusInfo.getDouble("bytesDownloaded")}, totalBytes=${statusInfo.getDouble("totalBytes")}")
 
             when (status) {
-                "completed" -> {
-                    android.util.Log.d("DownloadManager", "Download $downloadId completed! previousStatus=$previousStatus, eventSent=$completedEventSent")
-                    eventParams.putString("localUri", statusInfo.getString("localUri"))
-                    // Only emit DownloadComplete once — check if we've sent the event, not just if status is completed
-                    if (!completedEventSent) {
-                        android.util.Log.d("DownloadManager", "Sending DownloadComplete event for $downloadId")
-                        sendEvent("DownloadComplete", eventParams)
-                        updateDownloadStatus(downloadId, "completed", statusInfo.getString("localUri"))
-                    } else {
-                        // Event already sent — entry will be cleaned up by shouldRemoveDownload
-                        // after moveCompletedDownload marks it as moved. No time-based removal.
-                    }
-                }
+                "completed" -> handlePollCompleted(downloadId, eventParams, statusInfo, completedEventSent)
                 "failed" -> {
-                    android.util.Log.e("DownloadManager", "Download $downloadId failed: ${statusInfo.getString("reason")}")
                     eventParams.putString("reason", statusInfo.getString("reason"))
                     sendEvent("DownloadError", eventParams)
                     removeDownload(downloadId)
                 }
                 "paused" -> {
-                    val reason = statusInfo.getString("reason")
-                    android.util.Log.w("DownloadManager", "Download $downloadId paused: $reason")
-                    eventParams.putString("reason", reason)
+                    eventParams.putString("reason", statusInfo.getString("reason"))
                     sendEvent("DownloadProgress", eventParams)
                 }
-                "running", "pending" -> {
-                    val progress = if (statusInfo.getDouble("totalBytes") > 0) {
-                        (statusInfo.getDouble("bytesDownloaded") / statusInfo.getDouble("totalBytes") * 100).toInt()
-                    } else 0
-                    if (progress >= 95) {
-                        android.util.Log.d("DownloadManager", "Download $downloadId at $progress% (status=$status)")
-                    }
-                    sendEvent("DownloadProgress", eventParams)
-                }
-                "unknown" -> {
-                    android.util.Log.w("DownloadManager", "Download $downloadId has unknown status - may have completed or been removed")
-                    // Query the file directly to see if it completed
-                    val downloadInfo = getDownloadInfo(downloadId)
-                    val fileName = downloadInfo?.optString("fileName")
-                    if (fileName != null) {
-                        val file = java.io.File(
-                            reactApplicationContext.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS),
-                            fileName
-                        )
-                        if (file.exists() && file.length() > 0) {
-                            android.util.Log.d("DownloadManager", "File exists, treating as completed: ${file.absolutePath}")
-                            eventParams.putString("localUri", file.toURI().toString())
-                            if (!completedEventSent) {
-                                sendEvent("DownloadComplete", eventParams)
-                            }
-                            updateDownloadStatus(downloadId, "completed", file.toURI().toString())
-                        } else {
-                            // No file and no native download - stale entry, remove it
-                            android.util.Log.d("DownloadManager", "No file found for unknown download $downloadId, removing stale entry")
-                            removeDownload(downloadId)
-                        }
-                    } else {
-                        // No download info at all - remove stale entry
-                        android.util.Log.d("DownloadManager", "No info for unknown download $downloadId, removing stale entry")
-                        removeDownload(downloadId)
-                    }
-                }
+                "running", "pending" -> sendEvent("DownloadProgress", eventParams)
+                "unknown" -> handlePollUnknown(downloadId, eventParams, completedEventSent)
             }
+        }
+    }
+
+    private fun buildUnknownStatusMap(reason: String): WritableMap = Arguments.createMap().apply {
+        putDouble("bytesDownloaded", 0.0)
+        putDouble("totalBytes", 0.0)
+        putString("localUri", "")
+        putString("status", "unknown")
+        putString("reason", reason)
+    }
+
+    private fun buildStatusFromCursor(cursor: Cursor): WritableMap {
+        val bytesDownloadedIdx = cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+        val totalBytesIdx = cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+        val statusIdx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+        val reasonIdx = cursor.getColumnIndex(DownloadManager.COLUMN_REASON)
+        val localUriIdx = cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
+
+        val bytesDownloaded = if (bytesDownloadedIdx >= 0) cursor.getLong(bytesDownloadedIdx) else 0L
+        val totalBytes = if (totalBytesIdx >= 0) cursor.getLong(totalBytesIdx) else 0L
+        val status = if (statusIdx >= 0) cursor.getInt(statusIdx) else DownloadManager.STATUS_PENDING
+        val reason = if (reasonIdx >= 0) cursor.getInt(reasonIdx) else 0
+        val localUri = if (localUriIdx >= 0) cursor.getString(localUriIdx) else null
+
+        return Arguments.createMap().apply {
+            putDouble("bytesDownloaded", bytesDownloaded.toDouble())
+            putDouble("totalBytes", totalBytes.toDouble())
+            putString("localUri", localUri ?: "")
+            putString("status", statusToString(status))
+            putString("reason", reasonToString(status, reason))
         }
     }
 
@@ -525,44 +549,12 @@ class DownloadManagerModule(reactContext: ReactApplicationContext) :
         val query = DownloadManager.Query().setFilterById(downloadId)
         val cursor: Cursor? = downloadManager.query(query)
 
-        val result = Arguments.createMap()
-
         cursor?.use {
-            if (it.moveToFirst()) {
-                val bytesDownloadedIdx = it.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
-                val totalBytesIdx = it.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
-                val statusIdx = it.getColumnIndex(DownloadManager.COLUMN_STATUS)
-                val reasonIdx = it.getColumnIndex(DownloadManager.COLUMN_REASON)
-                val localUriIdx = it.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
-
-                val bytesDownloaded = if (bytesDownloadedIdx >= 0) it.getLong(bytesDownloadedIdx) else 0L
-                val totalBytes = if (totalBytesIdx >= 0) it.getLong(totalBytesIdx) else 0L
-                val status = if (statusIdx >= 0) it.getInt(statusIdx) else DownloadManager.STATUS_PENDING
-                val reason = if (reasonIdx >= 0) it.getInt(reasonIdx) else 0
-                val localUri = if (localUriIdx >= 0) it.getString(localUriIdx) else null
-
-                result.putDouble("bytesDownloaded", bytesDownloaded.toDouble())
-                result.putDouble("totalBytes", totalBytes.toDouble())
-                result.putString("localUri", localUri ?: "")
-                result.putString("status", statusToString(status))
-                result.putString("reason", reasonToString(status, reason))
-            } else {
-                // Download not found - might have been removed or completed
-                result.putDouble("bytesDownloaded", 0.0)
-                result.putDouble("totalBytes", 0.0)
-                result.putString("localUri", "")
-                result.putString("status", "unknown")
-                result.putString("reason", "Download not found")
-            }
-        } ?: run {
-            result.putDouble("bytesDownloaded", 0.0)
-            result.putDouble("totalBytes", 0.0)
-            result.putString("localUri", "")
-            result.putString("status", "unknown")
-            result.putString("reason", "Query failed")
+            return if (it.moveToFirst()) buildStatusFromCursor(it)
+                else buildUnknownStatusMap("Download not found")
         }
 
-        return result
+        return buildUnknownStatusMap("Query failed")
     }
 
     private fun sendEvent(eventName: String, params: WritableMap) {

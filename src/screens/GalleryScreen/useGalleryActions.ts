@@ -9,7 +9,7 @@ import { GeneratedImage } from '../../types';
 
 export const formatDate = (dateStr: string): string => {
   const ts = Number(dateStr);
-  const date = isNaN(ts) ? new Date(dateStr) : new Date(ts);
+  const date = Number.isNaN(ts) ? new Date(dateStr) : new Date(ts);
   return date.toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
@@ -173,7 +173,7 @@ export const useGalleryActions = (conversationId: string | undefined) => {
       if (!(await RNFS.exists(picturesDir))) {
         await RNFS.mkdir(picturesDir);
       }
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const timestamp = new Date().toISOString().replaceAll(/[:.]/g, '-');
       const fileName = `generated_${timestamp}.png`;
       await RNFS.copyFile(image.imagePath, `${picturesDir}/${fileName}`);
       setAlertState(showAlert('Image Saved', `Saved to Pictures/OffgridMobile/${fileName}`));

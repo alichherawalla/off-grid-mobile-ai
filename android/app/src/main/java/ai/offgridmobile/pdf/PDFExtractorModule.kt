@@ -4,6 +4,7 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.Promise
+import io.legere.pdfiumandroid.PdfDocument
 import io.legere.pdfiumandroid.PdfiumCore
 import android.os.ParcelFileDescriptor
 import java.io.File
@@ -11,6 +12,18 @@ import java.io.File
 class PDFExtractorModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
     override fun getName(): String = "PDFExtractorModule"
+
+    private fun extractPageText(doc: PdfDocument, pageIndex: Int, sb: StringBuilder) {
+        val page = doc.openPage(pageIndex)
+        val textPage = page.openTextPage()
+        val charCount = textPage.textPageCountChars()
+        if (charCount > 0) {
+            val text = textPage.textPageGetText(0, charCount)
+            if (text != null) sb.append(text).append("\n\n")
+        }
+        textPage.close()
+        page.close()
+    }
 
     @ReactMethod
     fun extractText(filePath: String, maxChars: Double, promise: Promise) {
@@ -30,15 +43,7 @@ class PDFExtractorModule(reactContext: ReactApplicationContext) : ReactContextBa
                 val sb = StringBuilder()
 
                 for (i in 0 until pageCount) {
-                    val page = doc.openPage(i)
-                    val textPage = page.openTextPage()
-                    val charCount = textPage.textPageCountChars()
-                    if (charCount > 0) {
-                        val text = textPage.textPageGetText(0, charCount)
-                        if (text != null) sb.append(text).append("\n\n")
-                    }
-                    textPage.close()
-                    page.close()
+                    extractPageText(doc, i, sb)
 
                     if (sb.length >= limit) {
                         sb.setLength(limit)

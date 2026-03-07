@@ -26,7 +26,7 @@ export function MessageContent({
   showThinking,
   onToggleThinking,
   styles,
-}: MessageContentProps) {
+}: Readonly<MessageContentProps>) {
   if (isThinking) {
     return (
       <View testID="thinking-indicator">
@@ -57,30 +57,42 @@ export function MessageContent({
         />
       )}
 
-      {parsedContent.response ? (
-        !isUser ? (
-          <View testID="message-text">
-            <MarkdownText>{parsedContent.response}</MarkdownText>
-            {isStreaming && <BlinkingCursor />}
-          </View>
-        ) : (
-          <Text
-            testID="message-text"
-            style={[styles.text, styles.userText]}
-            selectable
-          >
-            {parsedContent.response}
-          </Text>
-        )
-      ) : isStreaming && !parsedContent.isThinkingComplete ? (
-        <View testID="streaming-thinking-hint" style={styles.streamingThinkingHint}>
-          <ThinkingIndicator />
-        </View>
-      ) : isStreaming ? (
-        <Text testID="message-text" style={[styles.text, styles.assistantText]}>
-          <BlinkingCursor />
-        </Text>
-      ) : null}
+      {(() => {
+        if (parsedContent.response) {
+          if (isUser) {
+            return (
+              <Text
+                testID="message-text"
+                style={[styles.text, styles.userText]}
+                selectable
+              >
+                {parsedContent.response}
+              </Text>
+            );
+          }
+          return (
+            <View testID="message-text">
+              <MarkdownText>{parsedContent.response}</MarkdownText>
+              {isStreaming && <BlinkingCursor />}
+            </View>
+          );
+        }
+        if (isStreaming && !parsedContent.isThinkingComplete) {
+          return (
+            <View testID="streaming-thinking-hint" style={styles.streamingThinkingHint}>
+              <ThinkingIndicator />
+            </View>
+          );
+        }
+        if (isStreaming) {
+          return (
+            <Text testID="message-text" style={[styles.text, styles.assistantText]}>
+              <BlinkingCursor />
+            </Text>
+          );
+        }
+        return null;
+      })()}
     </View>
   );
 }

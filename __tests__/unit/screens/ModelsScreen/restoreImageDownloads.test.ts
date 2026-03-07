@@ -31,9 +31,7 @@ const mockAddDownloadedImageModel = jest.fn((_m?: any) => Promise.resolve());
 const mockGetActiveBackgroundDownloads = jest.fn(() => Promise.resolve([] as BackgroundDownloadInfo[]));
 const mockGetDownloadedImageModels = jest.fn(() => Promise.resolve([]));
 
-let mockOnCompleteCallbacks: Array<{ id: number; cb: Function }> = [];
-let mockOnErrorCallbacks: Array<{ id: number; cb: Function }> = [];
-let mockOnProgressCallbacks: Array<{ id: number; cb: Function }> = [];
+const mockOnProgressCallbacks: Array<{ id: number; cb: Function }> = [];
 
 jest.mock('../../../../src/services', () => ({
   modelManager: {
@@ -55,14 +53,8 @@ jest.mock('../../../../src/services', () => ({
       mockOnProgressCallbacks.push({ id, cb });
       return jest.fn();
     }),
-    onComplete: jest.fn((id: number, cb: Function) => {
-      mockOnCompleteCallbacks.push({ id, cb });
-      return jest.fn();
-    }),
-    onError: jest.fn((id: number, cb: Function) => {
-      mockOnErrorCallbacks.push({ id, cb });
-      return jest.fn();
-    }),
+    onComplete: jest.fn((_id: number, _cb: Function) => jest.fn()),
+    onError: jest.fn((_id: number, _cb: Function) => jest.fn()),
     moveCompletedDownload: jest.fn(() => Promise.resolve()),
     startProgressPolling: jest.fn(),
     getActiveDownloads: jest.fn(() => Promise.resolve([])),
@@ -172,9 +164,7 @@ function renderUseImageModels() {
 describe('restoreActiveImageDownloads', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockOnCompleteCallbacks = [];
-    mockOnErrorCallbacks = [];
-    mockOnProgressCallbacks = [];
+    mockOnProgressCallbacks.length = 0;
     mockActiveBackgroundDownloads = {};
     mockImageModelDownloading = [];
   });

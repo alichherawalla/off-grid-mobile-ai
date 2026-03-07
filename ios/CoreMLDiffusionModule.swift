@@ -134,7 +134,7 @@ class CoreMLDiffusionModule: RCTEventEmitter {
   // MARK: - unloadModel
 
   @objc func unloadModel(_ resolve: @escaping RCTPromiseResolveBlock,
-                         rejecter reject: @escaping RCTPromiseRejectBlock) {
+                         rejecter _: @escaping RCTPromiseRejectBlock) {
     pipelineQueue.async { [weak self] in
       self?.pipeline = nil
       self?.loadedModelPath = nil
@@ -145,14 +145,14 @@ class CoreMLDiffusionModule: RCTEventEmitter {
   // MARK: - isModelLoaded
 
   @objc func isModelLoaded(_ resolve: @escaping RCTPromiseResolveBlock,
-                           rejecter reject: @escaping RCTPromiseRejectBlock) {
+                           rejecter _: @escaping RCTPromiseRejectBlock) {
     resolve(pipeline != nil)
   }
 
   // MARK: - getLoadedModelPath
 
   @objc func getLoadedModelPath(_ resolve: @escaping RCTPromiseResolveBlock,
-                                rejecter reject: @escaping RCTPromiseRejectBlock) {
+                                rejecter _: @escaping RCTPromiseRejectBlock) {
     resolve(loadedModelPath as Any)
   }
 
@@ -256,7 +256,7 @@ class CoreMLDiffusionModule: RCTEventEmitter {
   // MARK: - cancelGeneration
 
   @objc func cancelGeneration(_ resolve: @escaping RCTPromiseResolveBlock,
-                              rejecter reject: @escaping RCTPromiseRejectBlock) {
+                              rejecter _: @escaping RCTPromiseRejectBlock) {
     cancelRequested = true
     resolve(true)
   }
@@ -264,21 +264,21 @@ class CoreMLDiffusionModule: RCTEventEmitter {
   // MARK: - isGenerating
 
   @objc func isGenerating(_ resolve: @escaping RCTPromiseResolveBlock,
-                          rejecter reject: @escaping RCTPromiseRejectBlock) {
+                          rejecter _: @escaping RCTPromiseRejectBlock) {
     resolve(generating)
   }
 
   // MARK: - isNpuSupported (always true on Apple Silicon)
 
   @objc func isNpuSupported(_ resolve: @escaping RCTPromiseResolveBlock,
-                            rejecter reject: @escaping RCTPromiseRejectBlock) {
+                            rejecter _: @escaping RCTPromiseRejectBlock) {
     resolve(true)
   }
 
   // MARK: - getGeneratedImages
 
   @objc func getGeneratedImages(_ resolve: @escaping RCTPromiseResolveBlock,
-                                rejecter reject: @escaping RCTPromiseRejectBlock) {
+                                rejecter _: @escaping RCTPromiseRejectBlock) {
     guard let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
       resolve([])
       return

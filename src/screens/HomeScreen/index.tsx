@@ -194,7 +194,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           {/* Image Gallery */}
           <AnimatedPressable
             style={styles.galleryCard}
-            onPress={() => (navigation as any).navigate('Gallery')}
+            onPress={() => navigation.navigate('Gallery')}
             hapticType="selection"
           >
             <Icon name="grid" size={18} color={colors.primary} />

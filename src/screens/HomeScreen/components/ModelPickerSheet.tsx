@@ -7,10 +7,9 @@ import { MODEL_PICKER_STEP_INDEX } from '../../../components/onboarding/spotligh
 import { Button } from '../../../components';
 import { useTheme, useThemedStyles } from '../../../theme';
 import { createStyles } from '../styles';
-import { hardwareService } from '../../../services';
+import { hardwareService, ResourceUsage } from '../../../services';
 import { DownloadedModel, ONNXImageModel } from '../../../types';
 import { ModelPickerType, LoadingState } from '../hooks/useHomeScreen';
-import { ResourceUsage } from '../../../services';
 
 type Props = {
   pickerType: ModelPickerType;

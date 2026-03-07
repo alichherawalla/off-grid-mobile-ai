@@ -52,7 +52,7 @@ async function checkMmProjExists(path: string | null, expectedSize?: number): Pr
   if (!exists || !expectedSize) return exists;
   try {
     const stat = await RNFS.stat(path);
-    const actualSize = typeof stat.size === 'string' ? parseInt(stat.size, 10) : stat.size;
+    const actualSize = typeof stat.size === 'string' ? Number.parseInt(stat.size, 10) : stat.size;
     if (actualSize < expectedSize) {
       logger.warn(`[ModelManager] mmproj partial (${actualSize}/${expectedSize}), re-downloading`);
       await RNFS.unlink(path).catch(() => {});

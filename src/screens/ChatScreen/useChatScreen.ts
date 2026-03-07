@@ -154,7 +154,7 @@ export const useChatScreen = () => {
       ) {
         const classifierModel = downloadedModels.find(m => m.id === settings.classifierModelId);
         if (classifierModel?.filePath && !llmService.getLoadedModelPath()) {
-          try { await activeModelService.loadTextModel(settings.classifierModelId!); }
+          try { await activeModelService.loadTextModel(settings.classifierModelId); }
           catch (error) { logger.warn('[ChatScreen] Failed to preload classifier model:', error); }
         }
       }

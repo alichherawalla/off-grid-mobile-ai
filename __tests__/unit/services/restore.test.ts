@@ -70,9 +70,9 @@ describe('restoreInProgressDownloads', () => {
       persistedDownloads: overrides.persistedDownloads ?? {},
       modelsDir: MODELS_DIR,
       backgroundDownloadContext: bgContext,
-      backgroundDownloadMetadataCallback: overrides.metadataCallback !== undefined
-        ? overrides.metadataCallback
-        : metadataCallback,
+      backgroundDownloadMetadataCallback: overrides.metadataCallback === undefined
+        ? metadataCallback
+        : overrides.metadataCallback,
       ...(overrides.onProgress ? { onProgress: overrides.onProgress } : {}),
     });
   }

@@ -152,6 +152,30 @@ jest.mock('react-native-vector-icons/Feather', () => {
   return ({ name }: any) => <Text>{name}</Text>;
 });
 
+const mockGetDocumentsByProject = jest.fn<Promise<any[]>, [string]>(() => Promise.resolve([]));
+const mockIndexDocument = jest.fn<Promise<number>, [any]>(() => Promise.resolve(1));
+const mockDeleteDocumentRag = jest.fn<Promise<void>, [number]>(() => Promise.resolve());
+const mockToggleDocument = jest.fn<Promise<void>, [number, boolean]>(() => Promise.resolve());
+
+jest.mock('../../../src/services/rag', () => ({
+  ragService: {
+    getDocumentsByProject: (projectId: string) => mockGetDocumentsByProject(projectId),
+    indexDocument: (params: any) => mockIndexDocument(params),
+    deleteDocument: (docId: number) => mockDeleteDocumentRag(docId),
+    toggleDocument: (docId: number, enabled: boolean) => mockToggleDocument(docId, enabled),
+    deleteProjectDocuments: jest.fn(() => Promise.resolve()),
+    ensureReady: jest.fn(() => Promise.resolve()),
+  },
+}));
+
+jest.mock('@react-native-documents/picker', () => ({
+  pick: jest.fn(() => Promise.resolve([{
+    uri: 'file:///mock/doc.pdf',
+    name: 'doc.pdf',
+    size: 5000,
+  }])),
+}));
+
 jest.mock('react-native-gesture-handler/Swipeable', () => {
   const { View } = require('react-native');
   return ({ children, renderRightActions }: any) => (
@@ -501,6 +525,44 @@ describe('ProjectDetailScreen', () => {
       const { getByText } = render(<ProjectDetailScreen />);
       fireEvent.press(getByText('Go back'));
       expect(mockGoBack).toHaveBeenCalled();
+    });
+  });
+
+  // ============================================================================
+  // Knowledge Base
+  // ============================================================================
+  describe('knowledge base', () => {
+    it('shows Knowledge Base section title', () => {
+      const { getByText } = render(<ProjectDetailScreen />);
+      expect(getByText('Knowledge Base')).toBeTruthy();
+    });
+
+    it('shows empty state when no documents', () => {
+      const { getByText } = render(<ProjectDetailScreen />);
+      expect(getByText('No documents added')).toBeTruthy();
+    });
+
+    it('shows Add button', () => {
+      const { getByText } = render(<ProjectDetailScreen />);
+      expect(getByText('Add')).toBeTruthy();
+    });
+
+    it('shows documents when loaded', async () => {
+      mockGetDocumentsByProject.mockResolvedValue([
+        { id: 1, project_id: 'proj1', name: 'readme.pdf', path: '/p', size: 2048, created_at: '2024-01-01', enabled: 1 },
+      ]);
+
+      const { findByText } = render(<ProjectDetailScreen />);
+      expect(await findByText('readme.pdf')).toBeTruthy();
+    });
+
+    it('shows formatted file size', async () => {
+      mockGetDocumentsByProject.mockResolvedValue([
+        { id: 1, project_id: 'proj1', name: 'big.pdf', path: '/p', size: 1048576, created_at: '2024-01-01', enabled: 1 },
+      ]);
+
+      const { findByText } = render(<ProjectDetailScreen />);
+      expect(await findByText('1.0 MB')).toBeTruthy();
     });
   });
 

@@ -17,6 +17,7 @@ import type { ThemeColors, ThemeShadows } from '../theme';
 import { TYPOGRAPHY, SPACING } from '../constants';
 import { authService } from '../services/authService';
 import { useAuthStore } from '../stores/authStore';
+import logger from '../utils/logger';
 
 interface PassphraseSetupScreenProps {
   isChanging?: boolean;
@@ -88,7 +89,8 @@ export const PassphraseSetupScreen: React.FC<PassphraseSetupScreenProps> = ({
       }
 
       onComplete();
-    } catch (_error) {
+    } catch (err) {
+      logger.warn('[PassphraseSetup] Operation failed:', err);
       setAlertState(showAlert('Error', 'An error occurred. Please try again.'));
     } finally {
       setIsSubmitting(false);
@@ -180,7 +182,10 @@ export const PassphraseSetupScreen: React.FC<PassphraseSetupScreenProps> = ({
           </View>
 
           <Button
-            title={isSubmitting ? 'Saving...' : (isChanging ? 'Change Passphrase' : 'Enable Lock')}
+            title={(() => {
+              if (isSubmitting) return 'Saving...';
+              return isChanging ? 'Change Passphrase' : 'Enable Lock';
+            })()}
             onPress={handleSubmit}
             disabled={isSubmitting}
             style={styles.submitButton}

@@ -159,7 +159,7 @@ jest.mock('../../../src/components', () => {
             <TouchableOpacity
               key={i}
               testID={`alert-button-${btn.text}`}
-              onPress={() => { if (btn.onPress) btn.onPress(); onClose(); }}
+              onPress={() => { if (btn.onPress) { btn.onPress(); } onClose(); }}
             >
               <Text>{btn.text}</Text>
             </TouchableOpacity>

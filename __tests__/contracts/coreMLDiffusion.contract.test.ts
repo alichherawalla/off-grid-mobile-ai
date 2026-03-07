@@ -6,10 +6,8 @@
  * TypeScript bridge (localDreamGenerator.ts) works on both platforms.
  */
 
-export {};
-
 // The CoreMLDiffusionModule must expose the same methods as LocalDreamModule
-interface CoreMLDiffusionModuleInterface {
+export interface CoreMLDiffusionModuleInterface {
   loadModel(params: {
     modelPath: string;
     threads?: number;

@@ -109,6 +109,17 @@ class ChatScreenSpotlightSimulator {
   }
 }
 
+function getAttachStepConfig(spotlight: number | null) {
+  // From ChatScreen: MaybeAttachStep wraps ChatInput for steps 3 and 15
+  let externalIndex: number | null;
+  if (spotlight === 3) externalIndex = 3;
+  else if (spotlight === 15) externalIndex = 15;
+  else externalIndex = null;
+  // ChatInput receives activeSpotlight for steps 12 and 16
+  const internalSpotlight = spotlight === 12 || spotlight === 16 ? spotlight : null;
+  return { externalIndex, internalSpotlight };
+}
+
 describe('ChatScreen Spotlight Coordination', () => {
   let sim: ChatScreenSpotlightSimulator;
 
@@ -297,14 +308,6 @@ describe('ChatScreen Spotlight Coordination', () => {
   // - null → no AttachStep mounted
   // ========================================================================
   describe('chatSpotlight → AttachStep mapping', () => {
-    function getAttachStepConfig(spotlight: number | null) {
-      // From ChatScreen: MaybeAttachStep wraps ChatInput for steps 3 and 15
-      const externalIndex = spotlight === 3 ? 3 : spotlight === 15 ? 15 : null;
-      // ChatInput receives activeSpotlight for steps 12 and 16
-      const internalSpotlight = spotlight === 12 || spotlight === 16 ? spotlight : null;
-      return { externalIndex, internalSpotlight };
-    }
-
     it('step 3: wraps ChatInput externally, no internal spotlight', () => {
       const config = getAttachStepConfig(3);
       expect(config.externalIndex).toBe(3);
@@ -339,8 +342,8 @@ describe('ChatScreen Spotlight Coordination', () => {
       for (const spotlight of [null, 3, 12, 15, 16]) {
         const config = getAttachStepConfig(spotlight);
         const activeCount =
-          (config.externalIndex !== null ? 1 : 0) +
-          (config.internalSpotlight !== null ? 1 : 0);
+          (config.externalIndex === null ? 0 : 1) +
+          (config.internalSpotlight === null ? 0 : 1);
         expect(activeCount).toBeLessThanOrEqual(1);
       }
     });

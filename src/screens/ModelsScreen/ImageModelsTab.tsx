@@ -50,7 +50,10 @@ const ImageModelCardItem: React.FC<ImageModelCardProps> = ({
   const styles = useThemedStyles(createStyles);
   const recommended = isRecommendedModel(model);
   const { isCompatible, incompatibleReason } = getImageModelCompatibility(model, imageRec);
-  const authorLabel = model._coreml ? 'Core ML' : model.backend === 'qnn' ? 'NPU' : 'GPU';
+  let authorLabel: string;
+  if (model._coreml) authorLabel = 'Core ML';
+  else if (model.backend === 'qnn') authorLabel = 'NPU';
+  else authorLabel = 'GPU';
   const variantSuffix = model.variant ? ` \u00B7 ${getVariantLabel(model.variant)}` : '';
   return (
     <View>
@@ -73,9 +76,9 @@ const ImageModelCardItem: React.FC<ImageModelCardProps> = ({
         incompatibleReason={incompatibleReason}
         testID={`image-model-card-${index}`}
         onDownload={
-          !imageModelDownloading.includes(model.id)
-            ? () => handleDownloadImageModel(hfModelToDescriptor(model))
-            : undefined
+          imageModelDownloading.includes(model.id)
+            ? undefined
+            : () => handleDownloadImageModel(hfModelToDescriptor(model))
         }
       />
     </View>
@@ -144,9 +147,14 @@ const ImageModelsScrollContent: React.FC<ScrollContentProps> = ({
       }
     }
   }, [hfModelsLoading, filteredHFModels.length, goTo]);
-  const emptyMessage = imageSearchQuery.trim()
-    ? 'No models match your search'
-    : hasActiveImageFilters ? 'No models match your filters' : 'All available models are downloaded';
+  let emptyMessage: string;
+  if (imageSearchQuery.trim()) {
+    emptyMessage = 'No models match your search';
+  } else if (hasActiveImageFilters) {
+    emptyMessage = 'No models match your filters';
+  } else {
+    emptyMessage = 'All available models are downloaded';
+  }
 
   return (
     <ScrollView keyboardShouldPersistTaps="handled">
@@ -266,7 +274,7 @@ export const ImageModelsTab: React.FC<Props> = ({
             style={[styles.recToggle, showRecommendedOnly && styles.recToggleActive]}
             onPress={() => {
               setShowRecHint(false);
-              setShowRecommendedOnly(v => { if (v) setBackendFilter('all'); return !v; });
+              setShowRecommendedOnly(v => { if (v) { setBackendFilter('all'); } return !v; });
             }}
             hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
             testID="rec-toggle"

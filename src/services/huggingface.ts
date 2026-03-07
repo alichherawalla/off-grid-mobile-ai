@@ -196,7 +196,7 @@ class HuggingFaceService {
     const paramMatch = name.match(/(\d+\.?\d*)\s*b(?:\b|-)/);
     const paramStr = paramMatch ? `${paramMatch[1]}B` : null;
     const license = result.cardData?.license;
-    const licenseStr = license ? license.toUpperCase().replace(/-/g, ' ') : null;
+    const licenseStr = license ? license.toUpperCase().replaceAll('-', ' ') : null;
     const parts: string[] = [type];
     if (paramStr) parts.push(paramStr);
     if (licenseStr) parts.push(licenseStr);

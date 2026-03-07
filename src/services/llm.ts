@@ -19,8 +19,7 @@ import type { ToolCall } from './tools/types';
 export type { MultimodalSupport, LLMPerformanceSettings, LLMPerformanceStats } from './llmTypes';
 import type { MultimodalSupport, LLMPerformanceSettings, LLMPerformanceStats } from './llmTypes';
 import logger from '../utils/logger';
-type StreamCallback = (token: string) => void;
-type CompleteCallback = (fullResponse: string) => void;
+type StreamCallback = (token: string) => void; type CompleteCallback = (fullResponse: string) => void;
 class LLMService {
   private context: LlamaContext | null = null;
   private currentModelPath: string | null = null;
@@ -28,23 +27,19 @@ class LLMService {
   private activeCompletionPromise: Promise<void> | null = null;
   private multimodalSupport: MultimodalSupport | null = null;
   private multimodalInitialized: boolean = false;
-  private performanceStats: LLMPerformanceStats = {
-    lastTokensPerSecond: 0, lastDecodeTokensPerSecond: 0,
-    lastTimeToFirstToken: 0, lastGenerationTime: 0, lastTokenCount: 0,
-  };
+  private performanceStats: LLMPerformanceStats = { lastTokensPerSecond: 0, lastDecodeTokensPerSecond: 0, lastTimeToFirstToken: 0, lastGenerationTime: 0, lastTokenCount: 0 };
   private currentSettings: LLMPerformanceSettings = {
     nThreads: Platform.OS === 'android' ? 6 : 4,
     nBatch: 512,
     contextLength: 2048,
   };
-  private gpuEnabled: boolean = false;
-  private gpuReason: string = '';
-  private gpuDevices: string[] = [];
-  private activeGpuLayers: number = 0;
-  private toolCallingSupported: boolean = false;
-  private thinkingSupported: boolean = false;
-  private lastSystemPromptHash: string | null = null;
-  private sessionCacheDir: string = `${RNFS.CachesDirectoryPath}/llm-sessions`;
+  private readonly gpuEnabled: boolean = false;
+  private readonly gpuReason: string = '';
+  private readonly gpuDevices: string[] = [];
+  private readonly activeGpuLayers: number = 0;
+  private toolCallingSupported: boolean = false; private thinkingSupported: boolean = false;
+  private readonly lastSystemPromptHash: string | null = null;
+  private readonly sessionCacheDir: string = `${RNFS.CachesDirectoryPath}/llm-sessions`;
 
   private hashString(str: string): string { return hashString(str); }
   private ensureSessionCacheDir(): Promise<void> { return ensureSessionCacheDir(this.sessionCacheDir); }
@@ -72,8 +67,7 @@ class LLMService {
       Object.assign(this, captureGpuInfo(context, gpuAttemptFailed, nGpuLayers));
       logger.log(`[LLM] Native lib: ${(context as any).androidLib || 'N/A'}`);
       this.currentModelPath = modelPath;
-      this.multimodalSupport = null;
-      this.multimodalInitialized = false;
+      this.multimodalSupport = null; this.multimodalInitialized = false;
       logger.log('[LLM] mmProjPath:', mmProjPath || 'none');
       if (mmProjPath) await this.initializeMultimodal(mmProjPath);
       else await this.checkMultimodalSupport();
@@ -81,11 +75,7 @@ class LLMService {
       this.detectThinkingSupport();
       logger.log(`[LLM] Model loaded, vision: ${this.supportsVision()}, tools: ${this.toolCallingSupported}, thinking: ${this.thinkingSupported}`);
     } catch (error: any) {
-      this.context = null;
-      this.currentModelPath = null;
-      this.multimodalSupport = null;
-      this.toolCallingSupported = false;
-      this.thinkingSupported = false;
+      Object.assign(this, { context: null, currentModelPath: null, multimodalSupport: null, toolCallingSupported: false, thinkingSupported: false });
       Object.assign(this, { gpuEnabled: false, gpuReason: '', activeGpuLayers: 0, gpuDevices: [] });
       throw new Error(error?.message || 'Unknown error loading model');
     }
@@ -147,7 +137,7 @@ class LLMService {
     try {
       const template = (this.context as any)?.model?.metadata?.['tokenizer.chat_template'] || '';
       this.thinkingSupported = typeof template === 'string' && template.includes('<think>');
-    } catch (_e) { this.thinkingSupported = false; }
+    } catch (e) { logger.warn('[LLM] Failed to detect thinking support:', e); this.thinkingSupported = false; }
   }
 
   async unloadModel(): Promise<void> {
@@ -287,8 +277,16 @@ class LLMService {
     return { contextMemoryMB, totalEstimatedMB: contextMemoryMB };
   }
   getGpuInfo() {
-    const backend = !this.gpuEnabled ? 'CPU' : Platform.OS === 'ios' ? 'Metal'
-      : this.gpuDevices.length > 0 ? this.gpuDevices.join(', ') : 'OpenCL';
+    let backend: string;
+    if (!this.gpuEnabled) {
+      backend = 'CPU';
+    } else if (Platform.OS === 'ios') {
+      backend = 'Metal';
+    } else if (this.gpuDevices.length > 0) {
+      backend = this.gpuDevices.join(', ');
+    } else {
+      backend = 'OpenCL';
+    }
     return { gpu: this.gpuEnabled, gpuBackend: backend, gpuLayers: this.activeGpuLayers, reasonNoGPU: this.gpuReason };
   }
   isCurrentlyGenerating(): boolean { return this.isGenerating; }

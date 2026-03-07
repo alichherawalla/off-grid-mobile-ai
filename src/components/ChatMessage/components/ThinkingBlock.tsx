@@ -15,7 +15,7 @@ export function ThinkingBlock({
   showThinking,
   onToggle,
   styles,
-}: ThinkingBlockProps) {
+}: Readonly<ThinkingBlockProps>) {
   return (
     <View testID="thinking-block" style={styles.thinkingBlock}>
       <TouchableOpacity
@@ -25,9 +25,10 @@ export function ThinkingBlock({
       >
         <View style={styles.thinkingHeaderIconBox}>
           <Text style={styles.thinkingHeaderIconText}>
-            {parsedContent.thinkingLabel?.includes('Enhanced')
-              ? 'E'
-              : parsedContent.isThinkingComplete ? 'T' : '...'}
+            {(() => {
+              if (parsedContent.thinkingLabel?.includes('Enhanced')) return 'E';
+              return parsedContent.isThinkingComplete ? 'T' : '...';
+            })()}
           </Text>
         </View>
         <View style={styles.thinkingHeaderTextContainer}>

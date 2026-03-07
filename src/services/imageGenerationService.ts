@@ -68,7 +68,7 @@ class ImageGenerationService {
     prompt: null, conversationId: null, error: null, result: null,
   };
 
-  private listeners: Set<ImageGenerationListener> = new Set();
+  private readonly listeners: Set<ImageGenerationListener> = new Set();
   private cancelRequested: boolean = false;
 
   getState(): ImageGenerationState { return { ...this.state }; }
@@ -261,11 +261,11 @@ class ImageGenerationService {
       this.updateState({ isGenerating: false, progress: null, status: null, previewPath: null, result, error: null });
       return result;
     } catch (error: any) {
-      if (!error?.message?.includes('cancelled')) {
+      if (error?.message?.includes('cancelled')) {
+        this.resetState();
+      } else {
         logger.error('[ImageGenerationService] Generation error:', error);
         this.updateState({ isGenerating: false, progress: null, status: null, previewPath: null, error: error?.message || 'Image generation failed' });
-      } else {
-        this.resetState();
       }
       return null;
     }

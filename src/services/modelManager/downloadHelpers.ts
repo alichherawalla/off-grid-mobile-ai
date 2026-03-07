@@ -29,12 +29,33 @@ export async function getOrphanedTextFiles(
       orphaned.push({
         name: file.name,
         path: file.path,
-        size: typeof file.size === 'string' ? parseInt(file.size, 10) : file.size,
+        size: typeof file.size === 'string' ? Number.parseInt(file.size, 10) : file.size,
       });
     }
   }
 
   return orphaned;
+}
+
+function parseFileSize(size: string | number): number {
+  return typeof size === 'string' ? Number.parseInt(size, 10) : size;
+}
+
+async function calculateDirectorySize(dirPath: string): Promise<number> {
+  try {
+    const dirFiles = await RNFS.readDir(dirPath);
+    let total = 0;
+    for (const f of dirFiles) {
+      if (f.isFile()) total += parseFileSize(f.size);
+    }
+    return total;
+  } catch {
+    return 0;
+  }
+}
+
+function isItemTracked(itemPath: string, trackedPaths: string[]): boolean {
+  return trackedPaths.some(p => p === itemPath || p.startsWith(`${itemPath}/`));
 }
 
 export async function getOrphanedImageDirs(
@@ -50,26 +71,11 @@ export async function getOrphanedImageDirs(
   const trackedImagePaths = imageModels.map(m => m.modelPath);
 
   for (const item of items) {
-    const isTracked = trackedImagePaths.some(
-      p => p === item.path || p.startsWith(`${item.path}/`),
-    );
-    if (isTracked) continue;
+    if (isItemTracked(item.path, trackedImagePaths)) continue;
 
-    let totalSize = 0;
-    if (item.isDirectory()) {
-      try {
-        const dirFiles = await RNFS.readDir(item.path);
-        for (const f of dirFiles) {
-          if (f.isFile()) {
-            totalSize += typeof f.size === 'string' ? parseInt(f.size, 10) : f.size;
-          }
-        }
-      } catch {
-        // Can't read directory, use 0
-      }
-    } else {
-      totalSize = typeof item.size === 'string' ? parseInt(item.size, 10) : item.size;
-    }
+    const totalSize = item.isDirectory()
+      ? await calculateDirectorySize(item.path)
+      : parseFileSize(item.size);
 
     orphaned.push({ name: item.name, path: item.path, size: totalSize });
   }
@@ -108,6 +114,37 @@ function isMmProjStillRunning(
   return !!mmProjDl && mmProjDl.status !== 'completed' && mmProjDl.status !== 'failed';
 }
 
+async function processCompletedDownload(
+  downloadId: number, metadata: PersistedDownloadInfo, modelsDir: string,
+): Promise<DownloadedModel> {
+  const localPath = `${modelsDir}/${metadata.fileName}`;
+  await backgroundDownloadService.moveCompletedDownload(downloadId, localPath);
+  const finalMmProjPath = await resolveMmProjPath(metadata);
+
+  const mainFileSize = metadata.mainFileSize ?? metadata.totalBytes;
+  const mmProjFileSize = metadata.mmProjFileSize ?? 0;
+  const fileInfo: ModelFile = {
+    name: metadata.fileName, size: mainFileSize,
+    quantization: metadata.quantization, downloadUrl: '',
+    mmProjFile: metadata.mmProjFileName
+      ? { name: metadata.mmProjFileName, size: mmProjFileSize, downloadUrl: '' }
+      : undefined,
+  };
+
+  const model = await buildDownloadedModel({ modelId: metadata.modelId, file: fileInfo, resolvedLocalPath: localPath, mmProjPath: finalMmProjPath });
+  await persistDownloadedModel(model, modelsDir);
+  return model;
+}
+
+function handleFailedDownload(
+  metadata: PersistedDownloadInfo, clearDownloadCallback: (downloadId: number) => void, downloadId: number,
+): void {
+  if (metadata.mmProjDownloadId) {
+    backgroundDownloadService.cancelDownload(metadata.mmProjDownloadId).catch(() => {});
+  }
+  clearDownloadCallback(downloadId);
+}
+
 export async function syncCompletedBackgroundDownloads(opts: SyncDownloadsOpts): Promise<DownloadedModel[]> {
   const { persistedDownloads, modelsDir, clearDownloadCallback } = opts;
   const completedModels: DownloadedModel[] = [];
@@ -120,32 +157,13 @@ export async function syncCompletedBackgroundDownloads(opts: SyncDownloadsOpts):
 
     if (download.status === 'completed') {
       if (isMmProjStillRunning(metadata, activeDownloads)) continue;
-
       try {
-        const localPath = `${modelsDir}/${metadata.fileName}`;
-        await backgroundDownloadService.moveCompletedDownload(download.downloadId, localPath);
-        const finalMmProjPath = await resolveMmProjPath(metadata);
-
-        const mainFileSize = metadata.mainFileSize ?? metadata.totalBytes;
-        const mmProjFileSize = metadata.mmProjFileSize ?? 0;
-        const fileInfo: ModelFile = {
-          name: metadata.fileName, size: mainFileSize,
-          quantization: metadata.quantization, downloadUrl: '',
-          mmProjFile: metadata.mmProjFileName
-            ? { name: metadata.mmProjFileName, size: mmProjFileSize, downloadUrl: '' }
-            : undefined,
-        };
-
-        const model = await buildDownloadedModel({ modelId: metadata.modelId, file: fileInfo, resolvedLocalPath: localPath, mmProjPath: finalMmProjPath });
-        await persistDownloadedModel(model, modelsDir);
+        const model = await processCompletedDownload(download.downloadId, metadata, modelsDir);
         completedModels.push(model);
         clearDownloadCallback(download.downloadId);
       } catch { /* Skip failed syncs */ }
     } else if (download.status === 'failed') {
-      if (metadata.mmProjDownloadId) {
-        backgroundDownloadService.cancelDownload(metadata.mmProjDownloadId).catch(() => {});
-      }
-      clearDownloadCallback(download.downloadId);
+      handleFailedDownload(metadata, clearDownloadCallback, download.downloadId);
     }
   }
 

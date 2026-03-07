@@ -187,7 +187,7 @@ export function useTextModels(setAlertState: (s: AlertState) => void) {
 
   const parseParamCount = useCallback((model: ModelInfo): number | null => {
     const match = PARAM_COUNT_REGEX.exec(model.name) ?? PARAM_COUNT_REGEX.exec(model.id);
-    return match ? parseFloat(match[1]) : null;
+    return match ? Number.parseFloat(match[1]) : null;
   }, []);
 
   const matchesOrgFilter = useCallback((model: ModelInfo, orgs: string[]): boolean => {
@@ -219,7 +219,7 @@ export function useTextModels(setAlertState: (s: AlertState) => void) {
     return filtered.map(model => {
       const type = getModelType(model);
       const params = parseParamCount(model);
-      return { ...model, modelType: type !== 'image-gen' ? type as 'text' | 'vision' | 'code' : undefined, paramCount: params ?? undefined };
+      return { ...model, modelType: type === 'image-gen' ? undefined : type as 'text' | 'vision' | 'code', paramCount: params ?? undefined };
     });
   }, [searchResults, filterState.source, filterState.type, filterState.orgs, filterState.size, matchesOrgFilter, parseParamCount, ramGB]);
 

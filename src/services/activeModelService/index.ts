@@ -168,6 +168,7 @@ class ActiveModelService {
     }
     return { canLoad: true };
   }
+
   async loadImageModel(
     modelId: string,
     timeoutMs: number = 180000,

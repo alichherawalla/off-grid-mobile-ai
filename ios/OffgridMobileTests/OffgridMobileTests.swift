@@ -3,6 +3,16 @@ import PDFKit
 
 @testable import OffgridMobile
 
+// MARK: - Test Constants
+
+private enum TestPaths {
+  static let nonexistentPDF = TestPaths.nonexistentPDF
+  static let tmpModelBin = "/tmp/model.bin"
+  static let exampleModelURL = TestPaths.exampleModelURL
+  static let tmpTestModelGGUF = TestPaths.tmpTestModelGGUF
+  static let tmpShouldNotExist = TestPaths.tmpShouldNotExist
+}
+
 // MARK: - PDFExtractorModule Tests
 
 final class PDFExtractorModuleTests: XCTestCase {
@@ -170,7 +180,7 @@ final class PDFExtractorModuleTests: XCTestCase {
     let exp = expectation(description: "reject invalid path")
 
     module.extractText(
-      "/nonexistent/path/file.pdf",
+      TestPaths.nonexistentPDF,
       maxChars: 10_000,
       resolver: { _ in
         XCTFail("extractText should reject a non-existent file")
@@ -473,7 +483,7 @@ final class DownloadManagerModuleTests: XCTestCase {
     let exp = expectation(description: "moveCompletedDownload rejects unknown id")
     module.moveCompletedDownload(
       99_999,
-      targetPath: "/tmp/model.bin",
+      targetPath: TestPaths.tmpModelBin,
       resolver: { _ in
         XCTFail("should reject for unknown download id")
         exp.fulfill()
@@ -507,7 +517,7 @@ final class DownloadManagerModuleTests: XCTestCase {
   func testStartDownloadRejectsMissingFileName() {
     let exp = expectation(description: "startDownload rejects missing fileName")
     module.startDownload(
-      ["url": "https://example.com/model.bin", "modelId": "m1"],
+      ["url": TestPaths.exampleModelURL, "modelId": "m1"],
       resolver: { _ in
         XCTFail("should reject when fileName is missing")
         exp.fulfill()
@@ -523,7 +533,7 @@ final class DownloadManagerModuleTests: XCTestCase {
   func testStartDownloadRejectsMissingModelId() {
     let exp = expectation(description: "startDownload rejects missing modelId")
     module.startDownload(
-      ["url": "https://example.com/model.bin", "fileName": "model.bin"],
+      ["url": TestPaths.exampleModelURL, "fileName": "model.bin"],
       resolver: { _ in
         XCTFail("should reject when modelId is missing")
         exp.fulfill()
@@ -607,7 +617,7 @@ final class DownloadManagerModuleTests: XCTestCase {
       status: "completed",
       startedAt: Date().timeIntervalSince1970 * 1000,
       task: nil,
-      localUri: "/tmp/test-model.gguf",
+      localUri: TestPaths.tmpTestModelGGUF,
       fileTasks: [:],
       multiFileDestDir: nil,
       isMultiFile: false
@@ -718,7 +728,7 @@ final class DownloadManagerModuleTests: XCTestCase {
     let exp = expectation(description: "moveCompletedDownload rejects not-completed download")
     module.moveCompletedDownload(
       300,
-      targetPath: "/tmp/should-not-exist.bin",
+      targetPath: TestPaths.tmpShouldNotExist,
       resolver: { _ in
         XCTFail("should reject for download that hasn't completed")
         exp.fulfill()

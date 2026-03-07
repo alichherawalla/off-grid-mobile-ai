@@ -110,6 +110,9 @@ jest.mock('llama.rn', () => ({
     })),
     initMultimodal: jest.fn(() => Promise.resolve(true)),
     getMultimodalSupport: jest.fn(() => Promise.resolve({ vision: false, audio: false })),
+    embedding: jest.fn((text: string) => Promise.resolve({
+      embedding: new Array(384).fill(0).map((_, i) => Math.sin(i + text.length * 0.1)),
+    })),
   })),
   releaseContext: jest.fn(() => Promise.resolve()),
   completion: jest.fn(() => Promise.resolve({
@@ -149,6 +152,7 @@ jest.mock('react-native-fs', () => ({
   DocumentDirectoryPath: '/mock/documents',
   CachesDirectoryPath: '/mock/caches',
   ExternalDirectoryPath: '/mock/external',
+  MainBundlePath: '/mock/bundle',
   downloadFile: jest.fn(() => ({
     jobId: 1,
     promise: Promise.resolve({ statusCode: 200, bytesWritten: 1000 }),
@@ -162,6 +166,7 @@ jest.mock('react-native-fs', () => ({
   writeFile: jest.fn(() => Promise.resolve()),
   stat: jest.fn(() => Promise.resolve({ size: 1000, isFile: () => true })),
   copyFile: jest.fn(() => Promise.resolve()),
+  copyFileAssets: jest.fn(() => Promise.resolve()),
   moveFile: jest.fn(() => Promise.resolve()),
   hash: jest.fn(() => Promise.resolve('mockhash')),
 }));
@@ -353,6 +358,20 @@ jest.mock('moti', () => ({
   MotiImage: 'MotiImage',
   AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
 }), { virtual: true });
+
+// @op-engineering/op-sqlite mock
+jest.mock('@op-engineering/op-sqlite', () => {
+  const mockResults = { rows: [], insertId: 0, rowsAffected: 0 };
+  const mockDb = {
+    executeSync: jest.fn(() => mockResults),
+    execute: jest.fn(() => Promise.resolve(mockResults)),
+    close: jest.fn(),
+    delete: jest.fn(),
+  };
+  return {
+    open: jest.fn(() => mockDb),
+  };
+});
 
 // react-native-zip-archive mock
 jest.mock('react-native-zip-archive', () => ({

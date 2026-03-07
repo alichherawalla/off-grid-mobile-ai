@@ -48,6 +48,19 @@ export const OrphanedFilesSection: React.FC<Props> = ({ onStorageChange }) => {
     scanForOrphanedFiles();
   }, [scanForOrphanedFiles]);
 
+  const performDelete = useCallback(async (file: OrphanedFile) => {
+    setIsDeleting(file.path);
+    try {
+      await modelManager.deleteOrphanedFile(file.path);
+      setOrphanedFiles(prev => prev.filter(f => f.path !== file.path));
+      onStorageChange();
+    } catch (_err) {
+      setAlertState(showAlert('Error', 'Failed to delete file'));
+    } finally {
+      setIsDeleting(null);
+    }
+  }, [onStorageChange]);
+
   const handleDeleteFile = useCallback(
     (file: OrphanedFile) => {
       setAlertState(
@@ -60,27 +73,15 @@ export const OrphanedFilesSection: React.FC<Props> = ({ onStorageChange }) => {
               text: 'Delete',
               style: 'destructive',
               onPress: () => {
-                const doDelete = async () => {
-                  setAlertState(hideAlert());
-                  setIsDeleting(file.path);
-                  try {
-                    await modelManager.deleteOrphanedFile(file.path);
-                    setOrphanedFiles(prev => prev.filter(f => f.path !== file.path));
-                    onStorageChange();
-                  } catch (_err) {
-                    setAlertState(showAlert('Error', 'Failed to delete file'));
-                  } finally {
-                    setIsDeleting(null);
-                  }
-                };
-                doDelete();
+                setAlertState(hideAlert());
+                performDelete(file).catch(() => {});
               },
             },
           ],
         ),
       );
     },
-    [onStorageChange],
+    [performDelete],
   );
 
   const handleDeleteAll = useCallback(() => {

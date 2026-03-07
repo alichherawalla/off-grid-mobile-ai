@@ -17,8 +17,8 @@ function formatOptionalMeta(meta: NonNullable<Message['generationMeta']>, tps: n
     ['tps', tps != null && tps > 0 ? `${tps.toFixed(1)} tok/s` : undefined],
     ['ttft', m.timeToFirstToken != null && m.timeToFirstToken > 0 ? `TTFT ${m.timeToFirstToken.toFixed(1)}s` : undefined],
     ['tokens', m.tokenCount != null && m.tokenCount > 0 ? `${m.tokenCount} tokens` : undefined],
-    ['steps', m.steps != null ? `${m.steps} steps` : undefined],
-    ['cfg', m.guidanceScale != null ? `cfg ${m.guidanceScale}` : undefined],
+    ['steps', m.steps == null ? undefined : `${m.steps} steps`],
+    ['cfg', m.guidanceScale == null ? undefined : `cfg ${m.guidanceScale}`],
     ['res', m.resolution],
     ['cache', m.cacheType ? `KV ${m.cacheType}` : undefined],
   ];
@@ -39,7 +39,7 @@ function buildMetaItems(
   ];
 }
 
-export function GenerationMeta({ generationMeta, styles }: GenerationMetaProps) {
+export function GenerationMeta({ generationMeta, styles }: Readonly<GenerationMetaProps>) {
   const tps = generationMeta.decodeTokensPerSecond ?? generationMeta.tokensPerSecond;
   const items = buildMetaItems(generationMeta, tps);
 

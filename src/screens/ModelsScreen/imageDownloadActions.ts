@@ -92,15 +92,14 @@ export async function downloadHuggingFaceModel(
     const files = modelInfo.huggingFaceFiles;
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
     let downloadedSize = 0;
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    for (const file of files) {
       const fileUrl = `https://huggingface.co/${modelInfo.huggingFaceRepo}/resolve/main/${file.path}`;
       const filePath = `${modelDir}/${file.path}`;
       const fileDir = filePath.substring(0, filePath.lastIndexOf('/'));
       if (!(await RNFS.exists(fileDir))) await RNFS.mkdir(fileDir);
 
       // Use a flattened temp filename to avoid path issues in the Downloads dir.
-      const tempFileName = `${modelInfo.id}_${file.path.replace(/\//g, '_')}`;
+      const tempFileName = `${modelInfo.id}_${file.path.replaceAll('/', '_')}`;
       const capturedDownloadedSize = downloadedSize;
       const { promise } = backgroundDownloadService.downloadFileTo({
         params: {
@@ -201,7 +200,7 @@ export async function proceedWithDownload(
   try {
     const fileName = `${modelInfo.id}.zip`;
     const downloadInfo = await backgroundDownloadService.startDownload({
-      url: modelInfo.downloadUrl!, fileName, modelId: `image:${modelInfo.id}`,
+      url: modelInfo.downloadUrl, fileName, modelId: `image:${modelInfo.id}`,
       title: `Downloading ${modelInfo.name}`, description: 'Image generation model', totalBytes: modelInfo.size,
     });
     deps.setImageModelDownloadId(modelInfo.id, downloadInfo.downloadId);
@@ -241,42 +240,55 @@ export async function proceedWithDownload(
   }
 }
 
+function getQnnWarningMessage(
+  modelInfo: ImageModelDescriptor,
+  socInfo: { hasNPU: boolean; qnnVariant?: string },
+): string | null {
+  if (!socInfo.hasNPU) {
+    return 'NPU models require a Qualcomm Snapdragon processor. ' +
+      'Your device does not have a compatible NPU and this model will not work. ' +
+      'Consider downloading a CPU model instead.';
+  }
+  if (!modelInfo.variant || !socInfo.qnnVariant) return null;
+
+  const deviceVariant = socInfo.qnnVariant;
+  const modelVariant = modelInfo.variant;
+  const compatible =
+    modelVariant === deviceVariant || deviceVariant === '8gen2' ||
+    (deviceVariant === '8gen1' && modelVariant !== '8gen2');
+  if (compatible) return null;
+
+  return `This model is built for ${modelVariant === '8gen2' ? 'flagship' : modelVariant} Snapdragon chips. ` +
+    `Your device uses a ${deviceVariant === 'min' ? 'non-flagship' : deviceVariant} chip and this model will likely crash. ` +
+    `Download the non-flagship variant instead.`;
+}
+
+function showQnnWarningAlert(
+  opts: { warningMessage: string; hasNPU: boolean; modelInfo: ImageModelDescriptor },
+  deps: ImageDownloadDeps,
+): void {
+  const { warningMessage, hasNPU, modelInfo } = opts;
+  if (hasNPU) {
+    deps.setAlertState(showAlert('Incompatible Model', warningMessage, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Download Anyway', style: 'destructive', onPress: () => { deps.setAlertState(hideAlert()); proceedWithDownload(modelInfo, deps); } },
+    ]));
+  } else {
+    deps.setAlertState(showAlert('Incompatible Model', warningMessage, [
+      { text: 'OK', style: 'cancel' },
+    ]));
+  }
+}
+
 export async function handleDownloadImageModel(
   modelInfo: ImageModelDescriptor,
   deps: ImageDownloadDeps,
 ): Promise<void> {
   if (modelInfo.backend === 'qnn' && Platform.OS === 'android') {
     const socInfo = await hardwareService.getSoCInfo();
-    let warningMessage: string | null = null;
-    if (!socInfo.hasNPU) {
-      warningMessage = 'NPU models require a Qualcomm Snapdragon processor. ' +
-        'Your device does not have a compatible NPU and this model will not work. ' +
-        'Consider downloading a GPU model instead.';
-    } else if (modelInfo.variant && socInfo.qnnVariant) {
-      const deviceVariant = socInfo.qnnVariant;
-      const modelVariant = modelInfo.variant;
-      const compatible =
-        modelVariant === deviceVariant || deviceVariant === '8gen2' ||
-        (deviceVariant === '8gen1' && modelVariant !== '8gen2');
-      if (!compatible) {
-        warningMessage = `This model is built for ${modelVariant === '8gen2' ? 'flagship' : modelVariant} Snapdragon chips. ` +
-          `Your device uses a ${deviceVariant === 'min' ? 'non-flagship' : deviceVariant} chip and this model will likely crash. ` +
-          `Download the non-flagship variant instead.`;
-      }
-    }
+    const warningMessage = getQnnWarningMessage(modelInfo, socInfo);
     if (warningMessage) {
-      if (socInfo.hasNPU) {
-        // Variant mismatch — allow "Download Anyway" since it might still work
-        deps.setAlertState(showAlert('Incompatible Model', warningMessage, [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Download Anyway', style: 'destructive', onPress: () => { deps.setAlertState(hideAlert()); proceedWithDownload(modelInfo, deps); } },
-        ]));
-      } else {
-        // Device has no NPU — block download entirely, no escape hatch
-        deps.setAlertState(showAlert('Incompatible Model', warningMessage, [
-          { text: 'OK', style: 'cancel' },
-        ]));
-      }
+      showQnnWarningAlert({ warningMessage, hasNPU: socInfo.hasNPU, modelInfo }, deps);
       return;
     }
   }

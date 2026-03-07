@@ -128,6 +128,57 @@ export function useImageModels(setAlertState: (s: AlertState) => void) {
     }
   }, []);
 
+  const restoreDownloadWithoutMetadata = (
+    download: { downloadId: number; status: string; bytesDownloaded: number; totalBytes: number },
+    modelId: string,
+  ) => {
+    if (!['running', 'pending', 'paused'].includes(download.status)) return;
+    addImageModelDownloading(modelId);
+    setImageModelDownloadId(modelId, download.downloadId);
+    updateModelProgress(modelId, download.totalBytes > 0 ? download.bytesDownloaded / download.totalBytes : 0);
+  };
+
+  const restoreCompletedDownload = async (
+    download: { downloadId: number; modelId: string },
+    info: { modelId: string; metadata: PersistedDownloadInfo; deps: ImageDownloadDeps },
+  ) => {
+    const { modelId, metadata, deps } = info;
+    const imageModelsDir = modelManager.getImageModelsDirectory();
+    const modelDir = `${imageModelsDir}/${modelId}`;
+    addImageModelDownloading(modelId);
+    updateModelProgress(modelId, 0.9);
+    try {
+      await handleCompletedImageDownload({
+        metadata, modelId, modelDir, imageModelsDir, downloadId: download.downloadId, deps,
+      });
+    } catch (e: any) {
+      logger.warn('[ModelsScreen] Failed to process completed image download:', e);
+      cleanupDownloadState(deps, modelId, download.downloadId);
+    }
+  };
+
+  const restoreInProgressDownload = (
+    download: { downloadId: number; modelId: string; bytesDownloaded: number; totalBytes: number },
+    info: { modelId: string; metadata: PersistedDownloadInfo; deps: ImageDownloadDeps },
+  ) => {
+    const { modelId, metadata, deps } = info;
+    const imageModelsDir = modelManager.getImageModelsDirectory();
+    const modelDir = `${imageModelsDir}/${modelId}`;
+    addImageModelDownloading(modelId);
+    setImageModelDownloadId(modelId, download.downloadId);
+    updateModelProgress(modelId, download.totalBytes > 0 ? download.bytesDownloaded / download.totalBytes : 0);
+
+    wireDownloadListeners(
+      { downloadId: download.downloadId, modelId, deps },
+      () => handleCompletedImageDownload({
+        metadata, modelId, modelDir, imageModelsDir, downloadId: download.downloadId, deps,
+      }),
+    ).setProgressUnsub(backgroundDownloadService.onProgress(download.downloadId, (ev) => {
+      const scale = metadata.imageDownloadType === 'zip' ? 0.9 : 0.95;
+      deps.updateModelProgress(modelId, ev.totalBytes > 0 ? (ev.bytesDownloaded / ev.totalBytes) * scale : 0);
+    }));
+  };
+
   const restoreActiveImageDownloads = async () => {
     if (!backgroundDownloadService.isAvailable()) return;
     try {
@@ -146,48 +197,16 @@ export function useImageModels(setAlertState: (s: AlertState) => void) {
         const modelId = download.modelId.replace('image:', '');
         const metadata = persistedDownloads[download.downloadId];
 
-        // Skip downloads without persisted image metadata (can't restore without it)
         if (!metadata?.imageDownloadType) {
-          // Still show as downloading for UI, but can't wire completion
-          if (['running', 'pending', 'paused'].includes(download.status)) {
-            addImageModelDownloading(modelId);
-            setImageModelDownloadId(modelId, download.downloadId);
-            updateModelProgress(modelId, download.totalBytes > 0 ? download.bytesDownloaded / download.totalBytes : 0);
-          }
+          restoreDownloadWithoutMetadata(download, modelId);
           continue;
         }
 
-        const imageModelsDir = modelManager.getImageModelsDirectory();
-        const modelDir = `${imageModelsDir}/${modelId}`;
-
         if (download.status === 'completed') {
-          // Download completed while app was dead — run completion handler now
-          addImageModelDownloading(modelId);
-          updateModelProgress(modelId, 0.9);
-          try {
-            await handleCompletedImageDownload({
-              metadata, modelId, modelDir, imageModelsDir, downloadId: download.downloadId, deps,
-            });
-          } catch (e: any) {
-            logger.warn('[ModelsScreen] Failed to process completed image download:', e);
-            cleanupDownloadState(deps, modelId, download.downloadId);
-          }
+          await restoreCompletedDownload(download, { modelId, metadata, deps });
         } else if (['running', 'pending', 'paused'].includes(download.status)) {
-          // Still in progress — wire listeners
-          addImageModelDownloading(modelId);
-          setImageModelDownloadId(modelId, download.downloadId);
-          updateModelProgress(modelId, download.totalBytes > 0 ? download.bytesDownloaded / download.totalBytes : 0);
+          restoreInProgressDownload(download, { modelId, metadata, deps });
           hasActiveDownloads = true;
-
-          wireDownloadListeners(
-            { downloadId: download.downloadId, modelId, deps },
-            () => handleCompletedImageDownload({
-              metadata, modelId, modelDir, imageModelsDir, downloadId: download.downloadId, deps,
-            }),
-          ).setProgressUnsub(backgroundDownloadService.onProgress(download.downloadId, (ev) => {
-            const scale = metadata.imageDownloadType === 'zip' ? 0.9 : 0.95;
-            deps.updateModelProgress(modelId, ev.totalBytes > 0 ? (ev.bytesDownloaded / ev.totalBytes) * scale : 0);
-          }));
         }
       }
 
@@ -207,11 +226,11 @@ export function useImageModels(setAlertState: (s: AlertState) => void) {
       if (cancelled) return;
       setImageRec(rec);
       if (!userChangedBackendFilter && Platform.OS !== 'ios') {
-        setBackendFilter(
-          rec.recommendedBackend === 'qnn' ? 'qnn'
-          : rec.recommendedBackend === 'mnn' ? 'mnn'
-          : 'all'
-        );
+        let filter: 'qnn' | 'mnn' | 'all';
+        if (rec.recommendedBackend === 'qnn') filter = 'qnn';
+        else if (rec.recommendedBackend === 'mnn') filter = 'mnn';
+        else filter = 'all';
+        setBackendFilter(filter);
       }
     });
     return () => { cancelled = true; };

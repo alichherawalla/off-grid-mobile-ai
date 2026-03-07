@@ -35,7 +35,7 @@ function getToolIcon(toolName?: string): string {
 function getToolLabel(toolName?: string, content?: string): string {
   switch (toolName) {
     case 'web_search': {
-      const queryMatch = content?.match(/^No results found for "([^"]+)"/);
+      const queryMatch = content ? /^No results found for "([^"]+)"/.exec(content) : null;
       if (queryMatch) return `Searched: "${queryMatch[1]}" (no results)`;
       return 'Web search result';
     }
@@ -103,7 +103,7 @@ const ToolResultBubble: React.FC<ToolResultBubbleProps> = ({
 const ToolResultMessage: React.FC<{ message: Message; styles: any; colors: any }> = ({ message, styles, colors }) => {
   const toolIcon = getToolIcon(message.toolName);
   const toolLabel = getToolLabel(message.toolName, message.content);
-  const durationLabel = message.generationTimeMs != null ? ` (${message.generationTimeMs}ms)` : '';
+  const durationLabel = message.generationTimeMs == null ? '' : ` (${message.generationTimeMs}ms)`;
   const hasDetails = !!(message.content && message.content.length > 0 && !message.content.startsWith('No results'));
   return <ToolResultBubble toolIcon={toolIcon} toolLabel={toolLabel} toolName={message.toolName || 'unknown'} durationLabel={durationLabel} content={message.content} hasDetails={hasDetails} styles={styles} colors={colors} />;
 };

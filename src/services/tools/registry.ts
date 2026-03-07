@@ -58,6 +58,20 @@ export const AVAILABLE_TOOLS: ToolDefinition[] = [
     },
   },
   {
+    id: 'search_knowledge_base',
+    name: 'search_knowledge_base',
+    displayName: 'Knowledge Base',
+    description: 'Search the project knowledge base for information from uploaded documents',
+    icon: 'book-open',
+    parameters: {
+      query: {
+        type: 'string',
+        description: 'The search query to find relevant information',
+        required: true,
+      },
+    },
+  },
+  {
     id: 'read_url',
     name: 'read_url',
     displayName: 'URL Reader',

@@ -194,9 +194,9 @@ class HardwareService {
     return `~${(this.estimateModelRam(model, multiplier) / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   }
   private detectAppleChip(deviceId: string): SoCInfo['appleChip'] {
-    const match = deviceId.match(/iPhone(\d+)/);
+    const match = /iPhone(\d+)/.exec(deviceId);
     if (!match) return undefined;
-    const major = parseInt(match[1], 10);
+    const major = Number.parseInt(match[1], 10);
     if (major >= 17) return 'A18';
     if (major >= 16) return 'A17Pro';
     if (major >= 15) return 'A16';
@@ -256,7 +256,7 @@ class HardwareService {
     if (!base.startsWith('SM')) return undefined;
     const smMatch = /^SM(\d+)/.exec(base);
     if (!smMatch) return undefined;
-    const num = parseInt(smMatch[1], 10);
+    const num = Number.parseInt(smMatch[1], 10);
     if (FLAGSHIP_8GEN2.has(num)) return '8gen2';
     if (FLAGSHIP_8GEN1.has(num)) return '8gen1';
     return 'min';
@@ -272,8 +272,15 @@ class HardwareService {
     return { recommendedBackend: coreml, recommendedModels: ['v1-5-palettized', '2-1-base-palettized'], bannerText: 'SD 1.5 or SD 2.1 Palettized recommended for your device', compatibleBackends: [coreml] };
   }
   private getQualcommImageRec(socInfo: SoCInfo): ImageModelRecommendation {
-    const label = socInfo.qnnVariant === '8gen2' ? 'flagship' : socInfo.qnnVariant === '8gen1' ? '' : 'lightweight ';
-    const suffix = socInfo.qnnVariant === '8gen2' ? 'NPU models for fastest inference' : socInfo.qnnVariant === '8gen1' ? 'NPU models supported' : 'lightweight NPU models recommended';
+    let label: string;
+    if (socInfo.qnnVariant === '8gen2') label = 'flagship';
+    else if (socInfo.qnnVariant === '8gen1') label = '';
+    else label = 'lightweight ';
+
+    let suffix: string;
+    if (socInfo.qnnVariant === '8gen2') suffix = 'NPU models for fastest inference';
+    else if (socInfo.qnnVariant === '8gen1') suffix = 'NPU models supported';
+    else suffix = 'lightweight NPU models recommended';
     return { recommendedBackend: 'qnn', qnnVariant: socInfo.qnnVariant, bannerText: `Snapdragon ${label}\u2014 ${suffix}`, compatibleBackends: ['qnn', 'mnn'] };
   }
   async getImageModelRecommendation(): Promise<ImageModelRecommendation> {

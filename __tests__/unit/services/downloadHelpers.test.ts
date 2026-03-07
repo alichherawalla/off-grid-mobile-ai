@@ -111,19 +111,20 @@ describe('getOrphanedTextFiles', () => {
     expect(result).toHaveLength(0);
   });
 
+  const makeModelWithMmProj = () => Promise.resolve([
+    makeDownloadedModel({
+      filePath: `${MODELS_DIR}/model.gguf`,
+      mmProjPath: `${MODELS_DIR}/mmproj.gguf`,
+    }),
+  ]);
+
   it('does not flag files tracked as model mmProjPath', async () => {
     mockedRNFS.exists.mockResolvedValue(true);
     mockedRNFS.readDir.mockResolvedValue([
       makeRNFSFile('mmproj.gguf', `${MODELS_DIR}/mmproj.gguf`),
     ]);
-    const modelsGetter = () => Promise.resolve([
-      makeDownloadedModel({
-        filePath: `${MODELS_DIR}/model.gguf`,
-        mmProjPath: `${MODELS_DIR}/mmproj.gguf`,
-      }),
-    ]);
 
-    const result = await getOrphanedTextFiles(MODELS_DIR, modelsGetter);
+    const result = await getOrphanedTextFiles(MODELS_DIR, makeModelWithMmProj);
 
     expect(result).toHaveLength(0);
   });
@@ -135,14 +136,8 @@ describe('getOrphanedTextFiles', () => {
       makeRNFSFile('mmproj.gguf', `${MODELS_DIR}/mmproj.gguf`, 500),
       makeRNFSFile('stray.gguf', `${MODELS_DIR}/stray.gguf`, 1000),
     ]);
-    const modelsGetter = () => Promise.resolve([
-      makeDownloadedModel({
-        filePath: `${MODELS_DIR}/model.gguf`,
-        mmProjPath: `${MODELS_DIR}/mmproj.gguf`,
-      }),
-    ]);
 
-    const result = await getOrphanedTextFiles(MODELS_DIR, modelsGetter);
+    const result = await getOrphanedTextFiles(MODELS_DIR, makeModelWithMmProj);
 
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe('stray.gguf');

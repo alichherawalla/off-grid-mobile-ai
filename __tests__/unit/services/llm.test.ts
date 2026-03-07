@@ -17,6 +17,44 @@ import { createUserMessage, createAssistantMessage, createSystemMessage } from '
 const mockedInitLlama = initLlama as jest.MockedFunction<typeof initLlama>;
 const mockedRNFS = RNFS as jest.Mocked<typeof RNFS>;
 
+/**
+ * Helper: sets up mocks for auto context scaling tests.
+ */
+function setupScalingTest({
+  modelContextLength,
+  userContextLength,
+  contextCount = 1,
+}: {
+  modelContextLength: string;
+  userContextLength: number;
+  contextCount?: number;
+}) {
+  mockedRNFS.exists.mockResolvedValue(true);
+
+  const contexts = Array.from({ length: contextCount }, () =>
+    createMockLlamaContext({
+      model: { metadata: { 'llama.context_length': modelContextLength } },
+    }),
+  );
+
+  if (contextCount === 1) {
+    mockedInitLlama.mockResolvedValue(contexts[0] as any);
+  } else {
+    contexts.forEach((ctx) =>
+      mockedInitLlama.mockResolvedValueOnce(ctx as any),
+    );
+  }
+
+  useAppStore.setState({
+    settings: {
+      ...useAppStore.getState().settings,
+      contextLength: userContextLength,
+    },
+  });
+
+  return contexts;
+}
+
 describe('LLMService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -2052,47 +2090,6 @@ describe('LLMService', () => {
   // Auto context scaling
   // ========================================================================
   describe('auto context scaling', () => {
-    /**
-     * Helper: sets up mocks for auto context scaling tests.
-     * Creates mock contexts with the given model context length,
-     * wires up initLlama to return them, and sets the user's contextLength setting.
-     * Returns the created mock contexts for assertions.
-     */
-    function setupScalingTest({
-      modelContextLength,
-      userContextLength,
-      contextCount = 1,
-    }: {
-      modelContextLength: string;
-      userContextLength: number;
-      contextCount?: number;
-    }) {
-      mockedRNFS.exists.mockResolvedValue(true);
-
-      const contexts = Array.from({ length: contextCount }, () =>
-        createMockLlamaContext({
-          model: { metadata: { 'llama.context_length': modelContextLength } },
-        }),
-      );
-
-      if (contextCount === 1) {
-        mockedInitLlama.mockResolvedValue(contexts[0] as any);
-      } else {
-        contexts.forEach((ctx) =>
-          mockedInitLlama.mockResolvedValueOnce(ctx as any),
-        );
-      }
-
-      useAppStore.setState({
-        settings: {
-          ...useAppStore.getState().settings,
-          contextLength: userContextLength,
-        },
-      });
-
-      return contexts;
-    }
-
     it('scales context to model max when user is on default setting', async () => {
       const [ctx1] = setupScalingTest({
         modelContextLength: '4096',

@@ -116,8 +116,8 @@ async function fetchModelFromRepo(
   const topLevel = await fetchRepoTree(repo);
   const isOriginal = variant === 'original';
   const id = isOriginal
-    ? `coreml_${repo.replace(/\//g, '_')}_original`
-    : `coreml_${repo.replace(/\//g, '_')}`;
+    ? `coreml_${repo.replaceAll('/', '_')}_original`
+    : `coreml_${repo.replaceAll('/', '_')}`;
   const attentionVariant = isOriginal ? 'original' : 'split_einsum' as const;
 
   // Strategy 1: Look for a zip archive (palettized + SDXL iOS repos)

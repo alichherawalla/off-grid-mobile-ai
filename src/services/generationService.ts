@@ -178,12 +178,13 @@ class GenerationService {
     messages: Message[],
     options: {
       enabledToolIds: string[];
+      projectId?: string;
       onToolCallStart?: (name: string, args: Record<string, any>) => void;
       onToolCallComplete?: (name: string, result: ToolResult) => void;
       onFirstToken?: () => void;
     },
   ): Promise<void> {
-    const { enabledToolIds, ...callbacks } = options;
+    const { enabledToolIds, projectId, ...callbacks } = options;
     if (!(await this.prepareGeneration(conversationId))) return;
     const chatStore = useChatStore.getState();
 
@@ -192,6 +193,7 @@ class GenerationService {
         conversationId,
         messages,
         enabledToolIds,
+        projectId,
         callbacks,
         isAborted: () => this.abortRequested,
         onThinkingDone: () => this.updateState({ isThinking: false }),

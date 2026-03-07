@@ -5,6 +5,28 @@ import { Message, Conversation, GenerationMeta } from '../types';
 import { stripControlTokens } from '../utils/messageContent';
 import { generateId } from '../utils/generateId';
 
+/** Update a single message inside a conversation's messages array. */
+function updateMessageInConv(
+  conv: Conversation,
+  messageId: string,
+  updater: (msg: Message) => Message,
+): Conversation {
+  return {
+    ...conv,
+    messages: conv.messages.map((msg) => (msg.id === messageId ? updater(msg) : msg)),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/** Map over conversations, applying `updater` only to the one matching `conversationId`. */
+function mapConversation(
+  conversations: Conversation[],
+  conversationId: string,
+  updater: (conv: Conversation) => Conversation,
+): Conversation[] {
+  return conversations.map((conv) => (conv.id === conversationId ? updater(conv) : conv));
+}
+
 interface ChatState {
   // Conversations
   conversations: Conversation[];
@@ -126,9 +148,13 @@ export const useChatStore = create<ChatState>()(
                   messages: [...conv.messages, message],
                   updatedAt: new Date().toISOString(),
                   // Update title from first user message if still default
-                  title: conv.title === 'New Conversation' && messageData.role === 'user'
-                    ? messageData.content.slice(0, 50) + (messageData.content.length > 50 ? '...' : '')
-                    : conv.title,
+                  title: (() => {
+                    if (conv.title === 'New Conversation' && messageData.role === 'user') {
+                      const truncated = messageData.content.slice(0, 50);
+                      return messageData.content.length > 50 ? `${truncated}...` : truncated;
+                    }
+                    return conv.title;
+                  })(),
                 }
               : conv
           ),
@@ -139,54 +165,33 @@ export const useChatStore = create<ChatState>()(
 
       updateMessageContent: (conversationId, messageId, content) => {
         set((state) => ({
-          conversations: state.conversations.map((conv) =>
-            conv.id === conversationId
-              ? {
-                  ...conv,
-                  messages: conv.messages.map((msg) =>
-                    msg.id === messageId ? { ...msg, content } : msg
-                  ),
-                  updatedAt: new Date().toISOString(),
-                }
-              : conv
+          conversations: mapConversation(state.conversations, conversationId, (conv) =>
+            updateMessageInConv(conv, messageId, (msg) => ({ ...msg, content }))
           ),
         }));
       },
 
       updateMessageThinking: (conversationId, messageId, isThinking) => {
         set((state) => ({
-          conversations: state.conversations.map((conv) =>
-            conv.id === conversationId
-              ? {
-                  ...conv,
-                  messages: conv.messages.map((msg) =>
-                    msg.id === messageId ? { ...msg, isThinking } : msg
-                  ),
-                  updatedAt: new Date().toISOString(),
-                }
-              : conv
+          conversations: mapConversation(state.conversations, conversationId, (conv) =>
+            updateMessageInConv(conv, messageId, (msg) => ({ ...msg, isThinking }))
           ),
         }));
       },
 
       deleteMessage: (conversationId, messageId) => {
         set((state) => ({
-          conversations: state.conversations.map((conv) =>
-            conv.id === conversationId
-              ? {
-                  ...conv,
-                  messages: conv.messages.filter((msg) => msg.id !== messageId),
-                  updatedAt: new Date().toISOString(),
-                }
-              : conv
-          ),
+          conversations: mapConversation(state.conversations, conversationId, (conv) => ({
+            ...conv,
+            messages: conv.messages.filter((msg) => msg.id !== messageId),
+            updatedAt: new Date().toISOString(),
+          })),
         }));
       },
 
       deleteMessagesAfter: (conversationId, messageId) => {
         set((state) => ({
-          conversations: state.conversations.map((conv) => {
-            if (conv.id !== conversationId) return conv;
+          conversations: mapConversation(state.conversations, conversationId, (conv) => {
             const messageIndex = conv.messages.findIndex((msg) => msg.id === messageId);
             if (messageIndex === -1) return conv;
             return {

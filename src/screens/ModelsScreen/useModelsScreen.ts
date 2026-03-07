@@ -20,7 +20,7 @@ import { useNotifRationale } from './useNotifRationale';
 export function useModelsScreen() {
   const navigation = useNavigation<NavigationProp>();
   const focusTrigger = useFocusTrigger();
-  const [activeTab, setActiveTabRaw] = useState<ModelTab>('text');
+  const [activeTab, setActiveTabState] = useState<ModelTab>('text');
   const [alertState, setAlertState] = useState<AlertState>(initialAlertState);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<{ fraction: number; fileName: string } | null>(null);
@@ -47,7 +47,7 @@ export function useModelsScreen() {
   }, [activeTab]);
 
   const setActiveTab = (tab: ModelTab) => {
-    setActiveTabRaw(tab);
+    setActiveTabState(tab);
     text.setFilterState(initialFilterState);
     text.setTextFiltersVisible(false);
     image.setImageFiltersVisible(false);
@@ -64,7 +64,7 @@ export function useModelsScreen() {
 
   const handleImportImageModelZip = async (sourceUri: string, fileName: string) => {
     const imageModelsDir = modelManager.getImageModelsDirectory();
-    const modelId = `local_${fileName.replace(/\.zip$/i, '').replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}`;
+    const modelId = `local_${fileName.replaceAll(/\.zip$/gi, '').replaceAll(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}`;
     const modelDir = `${imageModelsDir}/${modelId}`;
     const zipPath = `${imageModelsDir}/${modelId}.zip`;
     if (!(await RNFS.exists(imageModelsDir))) await RNFS.mkdir(imageModelsDir);
@@ -93,7 +93,7 @@ export function useModelsScreen() {
     await RNFS.unlink(zipPath).catch(() => {});
     const totalSize = await getDirectorySize(resolvedModelDir);
     setImportProgress({ fraction: 0.95, fileName });
-    const modelName = fileName.replace(/\.zip$/i, '').replace(/[_-]/g, ' ');
+    const modelName = fileName.replaceAll(/\.zip$/gi, '').replaceAll(/[_-]/g, ' ');
     const imageModel: ONNXImageModel = {
       id: modelId, name: modelName, description: 'Locally imported image model',
       modelPath: resolvedModelDir, downloadedAt: new Date().toISOString(), size: totalSize, backend,

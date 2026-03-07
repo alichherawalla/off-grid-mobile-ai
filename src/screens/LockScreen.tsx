@@ -20,6 +20,7 @@ import type { ThemeColors, ThemeShadows } from '../theme';
 import { TYPOGRAPHY, SPACING } from '../constants';
 import { authService } from '../services/authService';
 import { useAuthStore } from '../stores/authStore';
+import logger from '../utils/logger';
 
 interface LockScreenProps {
   onUnlock: () => void;
@@ -88,17 +89,14 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
           );
         } else {
           const remaining = 5 - (failedAttempts + 1);
-          setAlertState(
-            showAlert(
-              'Incorrect Passphrase',
-              remaining > 0
-                ? `${remaining} attempt${remaining === 1 ? '' : 's'} remaining before lockout.`
-                : 'Incorrect passphrase.'
-            )
-          );
+          const alertMessage = remaining > 0
+            ? `${remaining} attempt${remaining === 1 ? '' : 's'} remaining before lockout.`
+            : 'Incorrect passphrase.';
+          setAlertState(showAlert('Incorrect Passphrase', alertMessage));
         }
       }
-    } catch (_error) {
+    } catch (error) {
+      logger.warn('[LockScreen] Passphrase verification failed:', error);
       setAlertState(showAlert('Error', 'Failed to verify passphrase'));
     } finally {
       setIsVerifying(false);

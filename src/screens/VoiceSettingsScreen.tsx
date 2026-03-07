@@ -50,68 +50,76 @@ export const VoiceSettingsScreen: React.FC = () => {
             Download a Whisper model to enable on-device voice input. All transcription happens locally - no data is sent to any server.
           </Text>
 
-          {whisperModelId ? (
-            <View style={styles.modelInfo}>
-              <View style={styles.modelHeader}>
-                <Text style={styles.modelName}>
-                  {WHISPER_MODELS.find(m => m.id === whisperModelId)?.name || whisperModelId}
-                </Text>
-                <Text style={styles.modelStatus}>Downloaded</Text>
-              </View>
-              <Button
-                title="Remove Model"
-                variant="outline"
-                size="small"
-                onPress={() => {
-                  setAlertState(showAlert(
-                    'Remove Whisper Model',
-                    'This will disable voice input until you download a model again.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Remove',
-                        style: 'destructive',
-                        onPress: () => {
-                          setAlertState(hideAlert());
-                          deleteWhisperModel();
-                        },
-                      },
-                    ]
-                  ));
-                }}
-                style={styles.removeButton}
-              />
-            </View>
-          ) : isWhisperDownloading ? (
-            <View style={styles.downloading}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.downloadingText}>
-                Downloading... {Math.round(whisperProgress * 100)}%
-              </Text>
-              <View style={styles.progressBar}>
-                <View
-                  style={[styles.progressFill, { width: `${whisperProgress * 100}%` }]}
-                />
-              </View>
-            </View>
-          ) : (
-            <View style={styles.modelList}>
-              <Text style={styles.selectLabel}>Select a model to download:</Text>
-              {WHISPER_MODELS.slice(0, 3).map((model) => (
-                <TouchableOpacity
-                  key={model.id}
-                  style={styles.modelOption}
-                  onPress={() => downloadWhisperModel(model.id)}
-                >
-                  <View style={styles.modelOptionInfo}>
-                    <Text style={styles.modelOptionName}>{model.name}</Text>
-                    <Text style={styles.modelOptionSize}>{model.size} MB</Text>
+          {(() => {
+            if (whisperModelId) {
+              return (
+                <View style={styles.modelInfo}>
+                  <View style={styles.modelHeader}>
+                    <Text style={styles.modelName}>
+                      {WHISPER_MODELS.find(m => m.id === whisperModelId)?.name || whisperModelId}
+                    </Text>
+                    <Text style={styles.modelStatus}>Downloaded</Text>
                   </View>
-                  <Text style={styles.modelOptionDesc}>{model.description}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
+                  <Button
+                    title="Remove Model"
+                    variant="outline"
+                    size="small"
+                    onPress={() => {
+                      setAlertState(showAlert(
+                        'Remove Whisper Model',
+                        'This will disable voice input until you download a model again.',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Remove',
+                            style: 'destructive',
+                            onPress: () => {
+                              setAlertState(hideAlert());
+                              deleteWhisperModel();
+                            },
+                          },
+                        ]
+                      ));
+                    }}
+                    style={styles.removeButton}
+                  />
+                </View>
+              );
+            }
+            if (isWhisperDownloading) {
+              return (
+                <View style={styles.downloading}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={styles.downloadingText}>
+                    Downloading... {Math.round(whisperProgress * 100)}%
+                  </Text>
+                  <View style={styles.progressBar}>
+                    <View
+                      style={[styles.progressFill, { width: `${whisperProgress * 100}%` }]}
+                    />
+                  </View>
+                </View>
+              );
+            }
+            return (
+              <View style={styles.modelList}>
+                <Text style={styles.selectLabel}>Select a model to download:</Text>
+                {WHISPER_MODELS.slice(0, 3).map((model) => (
+                  <TouchableOpacity
+                    key={model.id}
+                    style={styles.modelOption}
+                    onPress={() => downloadWhisperModel(model.id)}
+                  >
+                    <View style={styles.modelOptionInfo}>
+                      <Text style={styles.modelOptionName}>{model.name}</Text>
+                      <Text style={styles.modelOptionSize}>{model.size} MB</Text>
+                    </View>
+                    <Text style={styles.modelOptionDesc}>{model.description}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            );
+          })()}
 
           {whisperError && (
             <TouchableOpacity onPress={clearWhisperError}>

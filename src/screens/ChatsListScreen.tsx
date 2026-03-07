@@ -76,12 +76,11 @@ export const ChatsListScreen: React.FC = () => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: async () => {
+          onPress: () => {
             setAlertState(hideAlert());
-            // Delete associated images from disk and store
             const imageIds = removeImagesByConversationId(conversation.id);
             for (const imageId of imageIds) {
-              await onnxImageGeneratorService.deleteGeneratedImage(imageId);
+              onnxImageGeneratorService.deleteGeneratedImage(imageId).catch(() => {});
             }
             deleteConversation(conversation.id);
           },

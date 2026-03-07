@@ -4,8 +4,7 @@
  */
 
 import React from 'react';
-import { render, act } from '@testing-library/react-native';
-import { renderHook } from '@testing-library/react-native';
+import { render, act, renderHook } from '@testing-library/react-native';
 import { useAppStore } from '../../../src/stores/appStore';
 import { useChatStore } from '../../../src/stores/chatStore';
 import { useProjectStore } from '../../../src/stores/projectStore';
@@ -14,7 +13,7 @@ import { createDownloadedModel } from '../../utils/factories';
 
 // ─── ProgressBar ────────────────────────────────────────────────────
 describe('ProgressBar', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+
   const { ProgressBar } = require('../../../src/components/checklist/ProgressBar');
 
   const baseTheme = {
@@ -44,7 +43,7 @@ describe('ProgressBar', () => {
 
 // ─── Animations ─────────────────────────────────────────────────────
 describe('checklist animations', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+
   const { useStaggeredEntrance, useCheckmark, useStrikethrough, useProgressAnimation } =
     require('../../../src/components/checklist/animations');
 
@@ -90,7 +89,7 @@ describe('checklist animations', () => {
 
 // ─── useOnboardingSteps ─────────────────────────────────────────────
 describe('useOnboardingSteps', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+
   const { useOnboardingSteps } = require('../../../src/components/checklist/useOnboardingSteps');
 
   beforeEach(() => resetStores());
@@ -147,7 +146,7 @@ describe('useOnboardingSteps', () => {
 
 // ─── useChecklistTheme ──────────────────────────────────────────────
 describe('useChecklistTheme', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+
   const { useChecklistTheme } = require('../../../src/components/checklist/useOnboardingSteps');
 
   it('returns a theme object with all required properties', () => {
@@ -161,7 +160,7 @@ describe('useChecklistTheme', () => {
 
 // ─── useAutoDismiss ─────────────────────────────────────────────────
 describe('useAutoDismiss', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+
   const { useAutoDismiss } = require('../../../src/components/checklist/useOnboardingSteps');
 
   beforeEach(() => {

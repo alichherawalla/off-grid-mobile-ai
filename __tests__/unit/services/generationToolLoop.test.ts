@@ -955,7 +955,7 @@ describe('runToolLoop – token streaming', () => {
     expect(ctx.onStream).toHaveBeenNthCalledWith(1, 'Hello');
     expect(ctx.onStream).toHaveBeenNthCalledWith(2, ' world');
     expect(ctx.onThinkingDone).toHaveBeenCalledTimes(1);
-    expect(ctx.callbacks!.onFirstToken).toHaveBeenCalledTimes(1);
+    expect(ctx.callbacks?.onFirstToken).toHaveBeenCalledTimes(1);
   });
 
   it('skips onFinalResponse when content was already streamed', async () => {
@@ -1027,7 +1027,7 @@ describe('runToolLoop – token streaming', () => {
     const ctx = createStreamingContext();
     await runToolLoop(ctx);
 
-    expect(ctx.callbacks!.onFirstToken).toHaveBeenCalledTimes(1);
+    expect(ctx.callbacks?.onFirstToken).toHaveBeenCalledTimes(1);
     expect(ctx.onThinkingDone).toHaveBeenCalledTimes(1);
   });
 });

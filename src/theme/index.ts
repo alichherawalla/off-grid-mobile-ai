@@ -8,9 +8,9 @@ import {
   SHADOWS_DARK,
   createElevation,
 } from './palettes';
-import type { ThemeColors, ThemeShadows } from './palettes';
+import type { ThemeShadows } from './palettes';
 
-export type { ThemeColors, ThemeShadows };
+export type { ThemeColors, ThemeShadows } from './palettes';
 export { useThemedStyles } from './useThemedStyles';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
@@ -35,8 +35,11 @@ export function getTheme(mode: 'light' | 'dark'): Theme {
 export function useTheme(): Theme {
   const themeMode = useAppStore((s) => s.themeMode);
   const systemScheme = useColorScheme();
-  const resolvedMode = themeMode === 'system'
-    ? (systemScheme === 'dark' ? 'dark' : 'light')
-    : themeMode;
+  let resolvedMode: 'light' | 'dark';
+  if (themeMode === 'system') {
+    resolvedMode = systemScheme === 'dark' ? 'dark' : 'light';
+  } else {
+    resolvedMode = themeMode;
+  }
   return useMemo(() => getTheme(resolvedMode), [resolvedMode]);
 }

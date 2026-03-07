@@ -11,7 +11,7 @@ import { TYPOGRAPHY, SPACING, FONTS } from '../constants';
  * Lookahead handles chains like 5*5*5*5 in a single pass.
  */
 export function preprocessMarkdown(text: string): string {
-  return text.replace(/(\d)\*(?=\d)/g, String.raw`$1\*`);
+  return text.replaceAll(/(\d)\*(?=\d)/g, String.raw`$1\*`);
 }
 
 const linkWrapperStyles = StyleSheet.create({

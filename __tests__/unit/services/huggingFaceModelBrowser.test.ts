@@ -22,9 +22,9 @@ function treeEntry(
     type,
     path,
     size,
-    ...(lfsSize !== undefined
-      ? { lfs: { oid: 'abc', size: lfsSize, pointerSize: 100 } }
-      : {}),
+    ...(lfsSize === undefined
+      ? {}
+      : { lfs: { oid: 'abc', size: lfsSize, pointerSize: 100 } }),
   };
 }
 
@@ -337,7 +337,7 @@ describe('huggingFaceModelBrowser', () => {
     });
 
     it('returns undefined for undefined variant', () => {
-      expect(getVariantLabel(undefined)).toBeUndefined();
+      expect(getVariantLabel()).toBeUndefined();
     });
 
     it('returns undefined for unknown variant string', () => {

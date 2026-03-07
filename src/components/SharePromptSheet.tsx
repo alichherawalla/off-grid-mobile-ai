@@ -31,12 +31,12 @@ export const SharePromptSheet: React.FC<SharePromptSheetProps> = ({ visible, onC
         </Text>
 
         <TouchableOpacity style={styles.button} onPress={() => handleEngage(GITHUB_URL)}>
-          <Icon name="star" size={18} color={styles.buttonText.color as string} />
+          <Icon name="star" size={18} color={styles.buttonText.color} />
           <Text style={styles.buttonText}>Star on GitHub</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.button} onPress={() => handleEngage(SHARE_ON_X_URL)}>
-          <Icon name="share-2" size={18} color={styles.buttonText.color as string} />
+          <Icon name="share-2" size={18} color={styles.buttonText.color} />
           <Text style={styles.buttonText}>Share on X</Text>
         </TouchableOpacity>
 

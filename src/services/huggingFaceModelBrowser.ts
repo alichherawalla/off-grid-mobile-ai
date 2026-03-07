@@ -35,7 +35,7 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 function insertSpaces(name: string): string {
   // Insert space before uppercase letters that follow lowercase or digits
   // e.g. "AnythingV5" -> "Anything V5", "AbsoluteReality" -> "Absolute Reality"
-  return name.replace(/([a-z\d])([A-Z])/g, '$1 $2');
+  return name.replaceAll(/([a-z\d])([A-Z])/g, '$1 $2');
 }
 
 function parseFileName(fileName: string, backend: 'mnn' | 'qnn'): Omit<HFImageModel, 'downloadUrl' | 'size' | 'repo'> | null {

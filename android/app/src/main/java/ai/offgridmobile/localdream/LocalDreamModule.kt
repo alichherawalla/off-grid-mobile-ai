@@ -291,6 +291,56 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
     // Process Lifecycle
     // =====================================================================
 
+    private fun normalizeBackend(params: ReadableMap): String {
+        val requestedBackend = if (params.hasKey("backend")) params.getString("backend") else null
+        return when (requestedBackend?.lowercase()) {
+            "mnn", "cpu" -> "mnn"
+            "qnn", "npu" -> "qnn"
+            "auto", null, "" -> "auto"
+            else -> "auto"
+        }
+    }
+
+    private fun resolveBackendAndDir(
+        normalizedBackend: String, rawModelDir: File,
+    ): Pair<String, File>? {
+        val cpuModelDir = resolveModelDir(rawModelDir, true)
+        val qnnModelDir = resolveModelDir(rawModelDir, false)
+        val npuSupported = isNpuSupportedInternal()
+        return when (normalizedBackend) {
+            "mnn" -> cpuModelDir?.let { "mnn" to it }
+            "qnn" -> qnnModelDir?.let { "qnn" to it }
+            else -> resolveAutoBackend(cpuModelDir, qnnModelDir, npuSupported)
+        }
+    }
+
+    private fun resolveAutoBackend(
+        cpuModelDir: File?, qnnModelDir: File?, npuSupported: Boolean,
+    ): Pair<String, File>? = when {
+        qnnModelDir != null && npuSupported -> "qnn" to qnnModelDir
+        cpuModelDir != null -> "mnn" to cpuModelDir
+        qnnModelDir != null -> "qnn" to qnnModelDir
+        else -> null
+    }
+
+    private suspend fun startWithFallback(
+        modelPath: String, backend: String, modelDir: File, cpuModelDir: File?,
+    ): StartResult {
+        val result = tryStartServer(modelPath, modelDir, backend, backend == "mnn")
+        if (result.success) return result
+
+        if (backend != "qnn" || cpuModelDir == null) return result
+
+        Log.w(TAG, "QNN backend failed (${result.error}), falling back to MNN/CPU")
+        stopServer()
+        val fallbackResult = tryStartServer(modelPath, cpuModelDir, "mnn", true)
+        if (fallbackResult.success) {
+            Log.i(TAG, "Successfully fell back to MNN/CPU backend")
+            return fallbackResult
+        }
+        return StartResult(false, "QNN failed: ${result.error}. MNN fallback also failed: ${fallbackResult.error}")
+    }
+
     @ReactMethod
     fun loadModel(params: ReadableMap, promise: Promise) {
         coroutineScope.launch {
@@ -307,31 +357,8 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
                     return@launch
                 }
 
-                val requestedBackend = if (params.hasKey("backend")) params.getString("backend") else null
-                val normalizedBackend = when (requestedBackend?.lowercase()) {
-                    "mnn", "cpu" -> "mnn"
-                    "qnn", "npu" -> "qnn"
-                    "auto", null, "" -> "auto"
-                    else -> "auto"
-                }
-
-                // Resolve model directory for CPU and/or QNN
-                val cpuModelDir = resolveModelDir(rawModelDir, true)
-                val qnnModelDir = resolveModelDir(rawModelDir, false)
-                val npuSupported = isNpuSupportedInternal()
-
-                val (backend, modelDir) = when (normalizedBackend) {
-                    "mnn" -> if (cpuModelDir != null) "mnn" to cpuModelDir else null
-                    "qnn" -> if (qnnModelDir != null) "qnn" to qnnModelDir else null
-                    else -> {
-                        when {
-                            qnnModelDir != null && npuSupported -> "qnn" to qnnModelDir
-                            cpuModelDir != null -> "mnn" to cpuModelDir
-                            qnnModelDir != null -> "qnn" to qnnModelDir
-                            else -> null
-                        }
-                    }
-                } ?: run {
+                val normalizedBackend = normalizeBackend(params)
+                val (backend, modelDir) = resolveBackendAndDir(normalizedBackend, rawModelDir) ?: run {
                     val contents = rawModelDir.listFiles()?.map { it.name }?.joinToString(", ") ?: "empty"
                     promise.reject(
                         "MODEL_FILES_NOT_FOUND",
@@ -341,51 +368,26 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
                     return@launch
                 }
 
-                val isCpu = backend == "mnn"
-
                 Log.d(TAG, "Resolved model directory: ${modelDir.absolutePath}")
-                Log.d(TAG, "Backend selection: requested=$normalizedBackend, selected=$backend, npuSupported=$npuSupported")
+                Log.d(TAG, "Backend selection: requested=$normalizedBackend, selected=$backend")
 
-                // If same model already loaded and server is running, no-op
                 if (currentModelPath == modelPath && serverProcess?.isAlive == true && isServerReady) {
                     Log.d(TAG, "Model already loaded: $modelPath")
                     promise.resolve(true)
                     return@launch
                 }
 
-                // Stop existing server if running
                 stopServer()
-
                 Log.d(TAG, "Loading model from: $modelPath, backend: $backend")
 
-                // Try to start the server with selected backend
-                val result = tryStartServer(modelPath, modelDir, backend, isCpu)
+                val cpuModelDir = resolveModelDir(rawModelDir, true)
+                val result = startWithFallback(modelPath, backend, modelDir, cpuModelDir)
 
                 if (result.success) {
                     promise.resolve(true)
-                    return@launch
-                }
-
-                // If QNN failed and we have a CPU fallback, try MNN
-                if (backend == "qnn" && cpuModelDir != null) {
-                    Log.w(TAG, "QNN backend failed (${result.error}), falling back to MNN/CPU")
-                    stopServer()
-
-                    val fallbackResult = tryStartServer(modelPath, cpuModelDir, "mnn", true)
-                    if (fallbackResult.success) {
-                        Log.i(TAG, "Successfully fell back to MNN/CPU backend")
-                        promise.resolve(true)
-                        return@launch
-                    }
-
-                    // Both failed
-                    promise.reject("SERVER_FAILED",
-                        "QNN failed: ${result.error}. MNN fallback also failed: ${fallbackResult.error}")
                 } else {
-                    // No fallback available
                     promise.reject("SERVER_FAILED", result.error ?: "Server failed to start")
                 }
-
             } catch (e: Exception) {
                 Log.e(TAG, "Error loading model", e)
                 stopServer()
@@ -417,7 +419,9 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
             }
             runtimeDirFile.exists() -> {
                 Log.d(TAG, "Using executable from runtime_libs: ${runtimeDirFile.absolutePath}")
-                runtimeDirFile.setExecutable(true, true)
+                if (!runtimeDirFile.setExecutable(true, true)) {
+                    Log.w(TAG, "Failed to set executable permission on ${runtimeDirFile.absolutePath}")
+                }
                 runtimeDirFile
             }
             else -> {
@@ -463,23 +467,23 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
             isServerReady = true
             Log.i(TAG, "Server is ready on port $SERVER_PORT (backend: $backend)")
             return StartResult(true)
-        } else {
-            // Check if process died
-            val alive = serverProcess?.isAlive == true
-            val exitCode = if (!alive) try { serverProcess?.exitValue() } catch (_: Exception) { null } else null
-
-            return if (!alive) {
-                val socModel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Build.SOC_MODEL else "unknown"
-                StartResult(false,
-                    "Server process exited with code $exitCode. " +
-                    "Your device ($socModel) may not support this model's backend. " +
-                    "Try a GPU model instead.")
-            } else {
-                StartResult(false,
-                    "Server failed to start within ${timeoutMs/1000}s. " +
-                    "The model may be too large or the device is low on memory.")
-            }
         }
+        return buildStartFailure(timeoutMs)
+    }
+
+    private fun buildStartFailure(timeoutMs: Long): StartResult {
+        val alive = serverProcess?.isAlive == true
+        if (alive) {
+            return StartResult(false,
+                "Server failed to start within ${timeoutMs/1000}s. " +
+                "The model may be too large or the device is low on memory.")
+        }
+        val exitCode = try { serverProcess?.exitValue() } catch (_: Exception) { null }
+        val socModel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Build.SOC_MODEL else "unknown"
+        return StartResult(false,
+            "Server process exited with code $exitCode. " +
+            "Your device ($socModel) may not support this model's backend. " +
+            "Try a CPU model instead.")
     }
 
     /**
@@ -624,6 +628,156 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
         }
     }
 
+    private fun buildGenerationBody(params: ReadableMap): JSONObject = JSONObject().apply {
+        put("prompt", params.getString("prompt") ?: "")
+        put("negative_prompt", params.getString("negativePrompt") ?: "")
+        put("steps", if (params.hasKey("steps")) params.getInt("steps") else 20)
+        put("cfg", if (params.hasKey("guidanceScale")) params.getDouble("guidanceScale") else 7.5)
+        put("seed", if (params.hasKey("seed")) params.getInt("seed") else (Math.random() * 2147483647).toInt())
+        put("width", if (params.hasKey("width")) params.getInt("width") else 512)
+        put("height", if (params.hasKey("height")) params.getInt("height") else 512)
+        put("scheduler", "dpm")
+        put("show_diffusion_process", true)
+        put("show_diffusion_stride", if (params.hasKey("previewInterval")) params.getInt("previewInterval") else 2)
+    }
+
+    private fun openGenerationConnection(): HttpURLConnection {
+        val url = URL("http://127.0.0.1:$SERVER_PORT/generate")
+        return (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            doOutput = true
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Accept", "text/event-stream")
+            connectTimeout = 10000
+            readTimeout = 600000
+        }
+    }
+
+    private fun savePreviewImage(
+        previewBase64: String, step: Int, reqWidth: Int, reqHeight: Int,
+    ): String? = try {
+        val previewDir = File(reactApplicationContext.cacheDir, "preview").apply {
+            if (!exists()) mkdirs()
+        }
+        val previewPath = File(previewDir, "preview_step_$step.png").absolutePath
+        saveRgbToPng(previewBase64, reqWidth, reqHeight, previewPath)
+        previewPath
+    } catch (e: Exception) {
+        Log.w(TAG, "Failed to save preview: ${e.message}")
+        null
+    }
+
+    private suspend fun handleProgressEvent(data: JSONObject, body: JSONObject) {
+        val step = data.getInt("step")
+        val totalSteps = data.getInt("total_steps")
+        val progressMap = Arguments.createMap().apply {
+            putInt("step", step)
+            putInt("totalSteps", totalSteps)
+            putDouble("progress", step.toDouble() / totalSteps.toDouble())
+        }
+
+        val previewBase64 = data.optString("image", "")
+        if (previewBase64.isNotEmpty()) {
+            val previewPath = savePreviewImage(previewBase64, step, body.getInt("width"), body.getInt("height"))
+            if (previewPath != null) progressMap.putString("previewPath", previewPath)
+        }
+
+        withContext(Dispatchers.Main) { sendEvent(EVENT_PROGRESS, progressMap) }
+    }
+
+    private sealed class SseParseResult {
+        data class Complete(val data: JSONObject) : SseParseResult()
+        object Cancelled : SseParseResult()
+        object NoResult : SseParseResult()
+    }
+
+    private suspend fun parseSseStream(
+        connection: HttpURLConnection, body: JSONObject,
+    ): SseParseResult {
+        var completeData: JSONObject? = null
+        var currentEventType = ""
+
+        BufferedReader(InputStreamReader(connection.inputStream)).use { reader ->
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                if (generationCancelled.get()) return SseParseResult.Cancelled
+
+                val trimmed = line!!.trim()
+                if (trimmed.startsWith("event: ")) {
+                    currentEventType = trimmed.substring(7).trim()
+                    continue
+                }
+                if (!trimmed.startsWith("data: ")) continue
+
+                try {
+                    val data = JSONObject(trimmed.substring(6))
+                    when (data.optString("type", currentEventType)) {
+                        "progress" -> handleProgressEvent(data, body)
+                        "complete" -> completeData = data
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to parse SSE data: ${e.message}")
+                }
+                currentEventType = ""
+            }
+        }
+
+        if (generationCancelled.get()) return SseParseResult.Cancelled
+        return if (completeData != null) SseParseResult.Complete(completeData!!) else SseParseResult.NoResult
+    }
+
+    private fun buildFinalResult(completeData: JSONObject): WritableMap {
+        val imageBase64 = completeData.getString("image")
+        val width = completeData.getInt("width")
+        val height = completeData.getInt("height")
+        val seed = completeData.optInt("seed", 0)
+        val generationTimeMs = completeData.optLong("generation_time_ms", 0)
+
+        val imageId = UUID.randomUUID().toString()
+        val outputDir = File(reactApplicationContext.filesDir, "generated_images").apply {
+            if (!exists()) mkdirs()
+        }
+        val outputPath = File(outputDir, "$imageId.png").absolutePath
+        saveRgbToPng(imageBase64, width, height, outputPath)
+
+        return Arguments.createMap().apply {
+            putString("id", imageId)
+            putString("imagePath", outputPath)
+            putInt("width", width)
+            putInt("height", height)
+            putInt("seed", seed)
+            putDouble("generationTimeMs", generationTimeMs.toDouble())
+        }
+    }
+
+    private fun handleEofException(e: java.io.EOFException, promise: Promise) {
+        if (generationCancelled.get()) {
+            promise.reject("CANCELLED", "Generation cancelled")
+            return
+        }
+        val alive = serverProcess?.isAlive == true
+        Log.e(TAG, "EOFException during generation. Server alive: $alive", e)
+        if (!alive) {
+            isServerReady = false
+            promise.reject("SERVER_CRASHED",
+                "Server process died during generation. Reload the model and try again.")
+        } else {
+            promise.reject("CONNECTION_ERROR",
+                "Connection to server was closed unexpectedly. " +
+                "The server may have crashed during inference. Try again.")
+        }
+    }
+
+    private fun handleGeneralException(e: Exception, promise: Promise) {
+        if (generationCancelled.get()) {
+            promise.reject("CANCELLED", "Generation cancelled")
+        } else {
+            Log.e(TAG, "Generation error: ${e.javaClass.simpleName}", e)
+            promise.reject("GENERATION_ERROR",
+                "Failed to generate image: [${e.javaClass.simpleName}] ${e.message ?: "unknown error"}", e)
+        }
+    }
+
     @ReactMethod
     fun generateImage(params: ReadableMap, promise: Promise) {
         coroutineScope.launch(Dispatchers.IO) {
@@ -631,10 +785,7 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
                 promise.reject("SERVER_NOT_READY", "Server is not running. Load a model first.")
                 return@launch
             }
-
-            // Verify the server is actually responsive before starting generation
             if (!checkServerHealth()) {
-                Log.w(TAG, "Server health check failed before generation. Process alive: ${serverProcess?.isAlive}")
                 isServerReady = false
                 promise.reject("SERVER_NOT_READY",
                     "Server process is not responsive. Try unloading and reloading the model.")
@@ -645,49 +796,14 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
             var connection: HttpURLConnection? = null
 
             try {
-                val body = JSONObject().apply {
-                    put("prompt", params.getString("prompt") ?: "")
-                    put("negative_prompt", params.getString("negativePrompt") ?: "")
-                    put("steps", if (params.hasKey("steps")) params.getInt("steps") else 20)
-                    put("cfg", if (params.hasKey("guidanceScale")) params.getDouble("guidanceScale") else 7.5)
-                    put("seed", if (params.hasKey("seed")) params.getInt("seed") else (Math.random() * 2147483647).toInt())
-                    put("width", if (params.hasKey("width")) params.getInt("width") else 512)
-                    put("height", if (params.hasKey("height")) params.getInt("height") else 512)
-                    put("scheduler", "dpm")
-                    put("show_diffusion_process", true)
-                    put("show_diffusion_stride", if (params.hasKey("previewInterval")) params.getInt("previewInterval") else 2)
-                    // OpenCL GPU acceleration — controlled by user toggle
-                    val useOpenCL = if (params.hasKey("useOpenCL")) params.getBoolean("useOpenCL") else false
-                    if (useOpenCL && currentBackend == "mnn") {
-                        put("use_opencl", true)
-                        Log.i(TAG, "OpenCL GPU acceleration ENABLED for this generation (backend=$currentBackend)")
-                    } else {
-                        Log.i(TAG, "OpenCL GPU acceleration DISABLED (useOpenCL=$useOpenCL, backend=$currentBackend)")
-                    }
-                }
+                val body = buildGenerationBody(params)
+                Log.d(TAG, "Starting generation: ${body.toString().take(200)}...")
 
-                Log.d(TAG, "Starting generation (prompt length: ${params.getString("prompt")?.length ?: 0})...")
-
-                val url = URL("http://127.0.0.1:$SERVER_PORT/generate")
-                connection = (url.openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    doOutput = true
-                    setRequestProperty("Content-Type", "application/json")
-                    setRequestProperty("Accept", "text/event-stream")
-                    connectTimeout = 10000
-                    readTimeout = 600000 // 10 min for long generations
-                }
+                connection = openGenerationConnection()
                 activeGenerationConnection = connection
-
-                // Send request body
-                OutputStreamWriter(connection.outputStream).use { writer ->
-                    writer.write(body.toString())
-                    writer.flush()
-                }
+                OutputStreamWriter(connection.outputStream).use { it.write(body.toString()); it.flush() }
 
                 val responseCode = connection.responseCode
-                Log.d(TAG, "Server response code: $responseCode")
-
                 if (responseCode != 200) {
                     val errorBody = try {
                         connection.errorStream?.bufferedReader()?.readText() ?: "no error body"
@@ -697,138 +813,15 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
                     return@launch
                 }
 
-                // Parse SSE stream line by line
-                var completeData: JSONObject? = null
-                var currentEventType = ""
-
-                BufferedReader(InputStreamReader(connection.inputStream)).use { reader ->
-                    var line: String?
-                    while (reader.readLine().also { line = it } != null) {
-                        if (generationCancelled.get()) {
-                            Log.d(TAG, "Generation cancelled by user")
-                            promise.reject("CANCELLED", "Generation cancelled")
-                            return@launch
-                        }
-
-                        val trimmed = line!!.trim()
-
-                        if (trimmed.startsWith("event: ")) {
-                            currentEventType = trimmed.substring(7).trim()
-                            continue
-                        }
-
-                        if (!trimmed.startsWith("data: ")) continue
-
-                        try {
-                            val dataStr = trimmed.substring(6)
-                            Log.d(TAG, "SSE data (${dataStr.length} chars): ${dataStr.take(300)}")
-                            val data = JSONObject(dataStr)
-                            val type = data.optString("type", currentEventType)
-
-                            when (type) {
-                                "progress" -> {
-                                    val step = data.getInt("step")
-                                    val totalSteps = data.getInt("total_steps")
-                                    val progressMap = Arguments.createMap().apply {
-                                        putInt("step", step)
-                                        putInt("totalSteps", totalSteps)
-                                        putDouble("progress", step.toDouble() / totalSteps.toDouble())
-                                    }
-
-                                    // Save preview image if present
-                                    val previewBase64 = data.optString("image", "")
-                                    Log.d(TAG, "Progress step $step/$totalSteps, has image: ${previewBase64.isNotEmpty()}, image len: ${previewBase64.length}")
-                                    if (previewBase64.isNotEmpty()) {
-                                        try {
-                                            val previewDir = File(reactApplicationContext.cacheDir, "preview").apply {
-                                                if (!exists()) mkdirs()
-                                            }
-                                            val previewPath = File(previewDir, "preview_step_$step.png").absolutePath
-                                            val reqWidth = body.getInt("width")
-                                            val reqHeight = body.getInt("height")
-                                            saveRgbToPng(previewBase64, reqWidth, reqHeight, previewPath)
-                                            progressMap.putString("previewPath", previewPath)
-                                        } catch (e: Exception) {
-                                            Log.w(TAG, "Failed to save preview: ${e.message}")
-                                        }
-                                    }
-
-                                    withContext(Dispatchers.Main) {
-                                        sendEvent(EVENT_PROGRESS, progressMap)
-                                    }
-                                }
-                                "complete" -> {
-                                    completeData = data
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Failed to parse SSE data: ${e.message}")
-                        }
-
-                        currentEventType = ""
-                    }
+                when (val result = parseSseStream(connection, body)) {
+                    is SseParseResult.Complete -> promise.resolve(buildFinalResult(result.data))
+                    is SseParseResult.Cancelled -> promise.reject("CANCELLED", "Generation cancelled")
+                    is SseParseResult.NoResult -> promise.reject("NO_RESULT", "Server did not return a complete event")
                 }
-
-                if (generationCancelled.get()) {
-                    promise.reject("CANCELLED", "Generation cancelled")
-                    return@launch
-                }
-
-                if (completeData == null) {
-                    promise.reject("NO_RESULT", "Server did not return a complete event")
-                    return@launch
-                }
-
-                val imageBase64 = completeData!!.getString("image")
-                val width = completeData!!.getInt("width")
-                val height = completeData!!.getInt("height")
-                val seed = completeData!!.optInt("seed", 0)
-                val generationTimeMs = completeData!!.optLong("generation_time_ms", 0)
-
-                // Decode base64 RGB and save as PNG
-                val imageId = UUID.randomUUID().toString()
-                val outputDir = File(reactApplicationContext.filesDir, "generated_images").apply {
-                    if (!exists()) mkdirs()
-                }
-                val outputPath = File(outputDir, "$imageId.png").absolutePath
-
-                saveRgbToPng(imageBase64, width, height, outputPath)
-
-                val result = Arguments.createMap().apply {
-                    putString("id", imageId)
-                    putString("imagePath", outputPath)
-                    putInt("width", width)
-                    putInt("height", height)
-                    putInt("seed", seed)
-                    putDouble("generationTimeMs", generationTimeMs.toDouble())
-                }
-
-                promise.resolve(result)
-
             } catch (e: java.io.EOFException) {
-                if (generationCancelled.get()) {
-                    promise.reject("CANCELLED", "Generation cancelled")
-                } else {
-                    val alive = serverProcess?.isAlive == true
-                    Log.e(TAG, "EOFException during generation. Server alive: $alive", e)
-                    if (!alive) {
-                        isServerReady = false
-                        promise.reject("SERVER_CRASHED",
-                            "Server process died during generation. Reload the model and try again.")
-                    } else {
-                        promise.reject("CONNECTION_ERROR",
-                            "Connection to server was closed unexpectedly. " +
-                            "The server may have crashed during inference. Try again.")
-                    }
-                }
+                handleEofException(e, promise)
             } catch (e: Exception) {
-                if (generationCancelled.get()) {
-                    promise.reject("CANCELLED", "Generation cancelled")
-                } else {
-                    Log.e(TAG, "Generation error: ${e.javaClass.simpleName}", e)
-                    promise.reject("GENERATION_ERROR",
-                        "Failed to generate image: [${e.javaClass.simpleName}] ${e.message ?: "unknown error"}", e)
-                }
+                handleGeneralException(e, promise)
             } finally {
                 activeGenerationConnection = null
                 connection?.disconnect()

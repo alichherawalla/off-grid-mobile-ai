@@ -35,7 +35,7 @@ echo "================================"
 echo "Passed: ${#PASSED_TESTS[@]}"
 echo "Failed: ${#FAILED_TESTS[@]}"
 
-if [ ${#FAILED_TESTS[@]} -gt 0 ]; then
+if [[ ${#FAILED_TESTS[@]} -gt 0 ]]; then
     echo ""
     echo "Failed tests:"
     printf '%s\n' "${FAILED_TESTS[@]}"

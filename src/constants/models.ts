@@ -16,12 +16,12 @@ export const MODEL_RECOMMENDATIONS = {
 export const RECOMMENDED_MODELS = [
   // --- Text: Ultra-light (3 GB+) ---
   {
-    id: 'Qwen/Qwen3-0.6B-GGUF',
-    name: 'Qwen 3 0.6B',
-    params: 0.6,
-    description: 'Latest Qwen with thinking mode, ultra-light',
+    id: 'unsloth/Qwen3.5-0.8B-GGUF',
+    name: 'Qwen 3.5 0.8B',
+    params: 0.8,
+    description: 'Latest Qwen 3.5 with thinking mode, ultra-light',
     minRam: 3,
-    type: 'text' as const,
+    type: 'vision' as const,
     org: 'Qwen',
   },
   {
@@ -52,6 +52,15 @@ export const RECOMMENDED_MODELS = [
     type: 'text' as const,
     org: 'google',
   },
+  {
+    id: 'unsloth/Qwen3.5-2B-GGUF',
+    name: 'Qwen 3.5 2B',
+    params: 2,
+    description: 'Qwen 3.5 hybrid architecture, 262K context',
+    minRam: 4,
+    type: 'text' as const,
+    org: 'Qwen',
+  },
   // --- Text: Medium (6 GB+) ---
   {
     id: 'bartowski/Llama-3.2-3B-Instruct-GGUF',
@@ -79,16 +88,6 @@ export const RECOMMENDED_MODELS = [
     minRam: 6,
     type: 'text' as const,
     org: 'microsoft',
-  },
-  // --- Text: Large (8 GB+) ---
-  {
-    id: 'Qwen/Qwen3-8B-GGUF',
-    name: 'Qwen 3 8B',
-    params: 8,
-    description: 'Thinking + non-thinking modes, 100+ languages',
-    minRam: 8,
-    type: 'text' as const,
-    org: 'Qwen',
   },
   // --- Vision: Ultra-light (3 GB+) ---
   {
@@ -147,15 +146,6 @@ export const RECOMMENDED_MODELS = [
     org: 'HuggingFaceTB',
   },
   {
-    id: 'Qwen/Qwen3-VL-2B-Instruct-GGUF',
-    name: 'Qwen 3 VL 2B',
-    params: 2,
-    description: 'Compact vision-language model with thinking mode',
-    minRam: 4,
-    type: 'vision' as const,
-    org: 'Qwen',
-  },
-  {
     id: 'ggml-org/gemma-3n-E4B-it-GGUF',
     name: 'Gemma 3n E4B',
     params: 4,
@@ -164,13 +154,14 @@ export const RECOMMENDED_MODELS = [
     type: 'vision' as const,
     org: 'google',
   },
+  // --- Text: Large (8 GB+) ---
   {
-    id: 'Qwen/Qwen3-VL-8B-Instruct-GGUF',
-    name: 'Qwen 3 VL 8B',
-    params: 8,
-    description: 'Vision-language model with thinking mode',
+    id: 'unsloth/Qwen3.5-9B-GGUF',
+    name: 'Qwen 3.5 9B',
+    params: 9,
+    description: 'Qwen 3.5 thinking mode, 262K context',
     minRam: 8,
-    type: 'vision' as const,
+    type: 'text' as const,
     org: 'Qwen',
   }
 ];

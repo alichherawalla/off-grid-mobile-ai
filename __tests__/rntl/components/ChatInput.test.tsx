@@ -103,7 +103,10 @@ describe('ChatInput', () => {
       downloadedModelId: null,
     });
 
-    mockUseAppStore.mockReturnValue({});
+    mockUseAppStore.mockReturnValue({
+      settings: { thinkingEnabled: false },
+      updateSettings: jest.fn(),
+    });
 
     mockUseWhisperTranscription.mockReturnValue({
       isRecording: false,
@@ -118,6 +121,26 @@ describe('ChatInput', () => {
       clearResult: jest.fn(),
     });
   });
+
+  // Helpers for popover-based UI
+  const openAttachPicker = (fns: { getByTestId: any }) => {
+    fireEvent.press(fns.getByTestId('attach-button'));
+  };
+  const pressAttachDocument = (fns: { getByTestId: any }) => {
+    openAttachPicker(fns);
+    fireEvent.press(fns.getByTestId('attach-document'));
+  };
+  const pressAttachPhoto = (fns: { getByTestId: any }) => {
+    openAttachPicker(fns);
+    fireEvent.press(fns.getByTestId('attach-photo'));
+  };
+  const openQuickSettings = (fns: { getByTestId: any }) => {
+    fireEvent.press(fns.getByTestId('quick-settings-button'));
+  };
+  const pressImageModeToggle = (fns: { getByTestId: any }) => {
+    openQuickSettings(fns);
+    fireEvent.press(fns.getByTestId('quick-image-mode'));
+  };
 
   // ============================================================================
   // Basic Input
@@ -355,27 +378,25 @@ describe('ChatInput', () => {
   // Image Generation Mode
   // ============================================================================
   describe('image generation mode', () => {
-    it('shows image mode toggle when imageModelLoaded is true', () => {
+    it('shows quick settings button when imageModelLoaded is true', () => {
       const { getByTestId } = render(
         <ChatInput {...defaultProps} imageModelLoaded={true} />
       );
 
-      // Image toggle button should be visible (when settings.imageGenerationMode === 'manual')
-      expect(getByTestId('image-mode-toggle')).toBeTruthy();
+      expect(getByTestId('quick-settings-button')).toBeTruthy();
     });
 
-    it('shows image mode toggle even when imageModelLoaded is false', () => {
+    it('shows quick settings button even when imageModelLoaded is false', () => {
       const { getByTestId } = render(
         <ChatInput {...defaultProps} imageModelLoaded={false} />
       );
 
-      // Image toggle is always shown (shows alert if no model loaded)
-      expect(getByTestId('image-mode-toggle')).toBeTruthy();
+      expect(getByTestId('quick-settings-button')).toBeTruthy();
     });
 
-    it('toggles image mode when toggle is pressed', () => {
+    it('toggles image mode when toggle is pressed via quick settings', () => {
       const onImageModeChange = jest.fn();
-      const { getByTestId, queryByTestId } = render(
+      const result = render(
         <ChatInput
           {...defaultProps}
           imageModelLoaded={true}
@@ -383,31 +404,27 @@ describe('ChatInput', () => {
         />
       );
 
-      const toggle = getByTestId('image-mode-toggle');
-      fireEvent.press(toggle);
+      pressImageModeToggle(result);
 
       expect(onImageModeChange).toHaveBeenCalledWith('force');
-
-      // Force badge should appear
-      expect(queryByTestId('image-mode-force-badge')).toBeTruthy();
     });
 
     it('shows ON badge when image mode is forced', () => {
-      const { getByTestId, queryByTestId } = render(
+      const { getByTestId, getByText } = render(
         <ChatInput {...defaultProps} imageModelLoaded={true} />
       );
 
-      // Toggle to force mode
-      const toggle = getByTestId('image-mode-toggle');
-      fireEvent.press(toggle);
+      // Toggle to force mode via quick settings
+      openQuickSettings({ getByTestId });
+      fireEvent.press(getByTestId('quick-image-mode'));
 
-      // Should show force badge with "ON" text
-      expect(queryByTestId('image-mode-force-badge')).toBeTruthy();
+      // Should show ON badge text in popover
+      expect(getByText('ON')).toBeTruthy();
     });
 
     it('passes imageMode=force to onSend when in force mode', () => {
       const onSend = jest.fn();
-      const { getByTestId } = render(
+      const result = render(
         <ChatInput
           {...defaultProps}
           onSend={onSend}
@@ -416,17 +433,15 @@ describe('ChatInput', () => {
       );
 
       // Enable force mode
-      const toggle = getByTestId('image-mode-toggle');
-      fireEvent.press(toggle);
+      pressImageModeToggle(result);
 
       // Type and send
-      const input = getByTestId('chat-input');
+      const input = result.getByTestId('chat-input');
       fireEvent.changeText(input, 'Generate an image');
 
-      const sendButton = getByTestId('send-button');
+      const sendButton = result.getByTestId('send-button');
       fireEvent.press(sendButton);
 
-      // onSend should receive 'force' for imageMode
       expect(onSend).toHaveBeenCalledWith(
         'Generate an image',
         undefined,
@@ -436,7 +451,7 @@ describe('ChatInput', () => {
 
     it('resets to auto mode after sending with force mode', () => {
       const onImageModeChange = jest.fn();
-      const { getByTestId, queryByTestId } = render(
+      const result = render(
         <ChatInput
           {...defaultProps}
           imageModelLoaded={true}
@@ -445,21 +460,17 @@ describe('ChatInput', () => {
       );
 
       // Enable force mode
-      const toggle = getByTestId('image-mode-toggle');
-      fireEvent.press(toggle);
+      pressImageModeToggle(result);
       expect(onImageModeChange).toHaveBeenCalledWith('force');
 
       // Send message
-      const input = getByTestId('chat-input');
+      const input = result.getByTestId('chat-input');
       fireEvent.changeText(input, 'Test');
-      const sendButton = getByTestId('send-button');
+      const sendButton = result.getByTestId('send-button');
       fireEvent.press(sendButton);
 
       // Should have reset to auto
       expect(onImageModeChange).toHaveBeenCalledWith('auto');
-      // Force badge should be gone, auto badge should be present
-      expect(queryByTestId('image-mode-force-badge')).toBeNull();
-      expect(queryByTestId('image-mode-auto-badge')).toBeTruthy();
     });
 
     it('shows alert when toggling without image model loaded', () => {
@@ -467,44 +478,40 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} imageModelLoaded={false} />
       );
 
-      // Toggle is always visible but shows alert when no model loaded
-      const toggle = getByTestId('image-mode-toggle');
-      fireEvent.press(toggle);
+      openQuickSettings({ getByTestId });
+      fireEvent.press(getByTestId('quick-image-mode'));
 
       expect(getByText('No Image Model')).toBeTruthy();
     });
 
     it('cycles through auto -> force -> disabled -> auto', () => {
       const onImageModeChange = jest.fn();
-      const { getByTestId, queryByTestId } = render(
+      const { getByTestId } = render(
         <ChatInput {...defaultProps} imageModelLoaded={true} onImageModeChange={onImageModeChange} />
       );
 
-      const toggle = getByTestId('image-mode-toggle');
+      openQuickSettings({ getByTestId });
+      const toggle = getByTestId('quick-image-mode');
 
       // Start at auto, toggle to force
       fireEvent.press(toggle);
-      expect(queryByTestId('image-mode-force-badge')).toBeTruthy();
       expect(onImageModeChange).toHaveBeenCalledWith('force');
 
       // Toggle to disabled
       fireEvent.press(toggle);
-      expect(queryByTestId('image-mode-disabled-badge')).toBeTruthy();
       expect(onImageModeChange).toHaveBeenCalledWith('disabled');
 
       // Toggle back to auto
       fireEvent.press(toggle);
-      expect(queryByTestId('image-mode-auto-badge')).toBeTruthy();
       expect(onImageModeChange).toHaveBeenCalledWith('auto');
     });
 
-    it('image mode toggle is always visible regardless of props', () => {
+    it('quick settings button is always visible regardless of props', () => {
       const { getByTestId } = render(
         <ChatInput {...defaultProps} imageModelLoaded={true} />
       );
 
-      // Toggle is always shown - no settings dependency
-      expect(getByTestId('image-mode-toggle')).toBeTruthy();
+      expect(getByTestId('quick-settings-button')).toBeTruthy();
     });
   });
 
@@ -512,52 +519,49 @@ describe('ChatInput', () => {
   // Vision Capabilities
   // ============================================================================
   describe('vision capabilities', () => {
-    it('shows camera button when supportsVision is true', () => {
+    it('shows attach button when supportsVision is true', () => {
       const { getByTestId } = render(
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      // Camera button should be visible
-      expect(getByTestId('camera-button')).toBeTruthy();
+      expect(getByTestId('attach-button')).toBeTruthy();
     });
 
-    it('shows camera button even when supportsVision is false', () => {
+    it('shows attach button even when supportsVision is false', () => {
       const { getByTestId } = render(
         <ChatInput {...defaultProps} supportsVision={false} />
       );
 
-      // Camera button is always shown (shows alert if vision not supported)
-      expect(getByTestId('camera-button')).toBeTruthy();
+      expect(getByTestId('attach-button')).toBeTruthy();
     });
 
-    it('shows alert when pressing camera button without vision support', () => {
-      const { getByTestId, getByText } = render(
+    it('shows alert when pressing photo without vision support', () => {
+      const result = render(
         <ChatInput {...defaultProps} supportsVision={false} />
       );
 
-      fireEvent.press(getByTestId('camera-button'));
+      pressAttachPhoto(result);
 
-      expect(getByText('Vision Not Supported')).toBeTruthy();
+      expect(result.getByText('Vision Not Supported')).toBeTruthy();
     });
 
-    it('opens image picker when pressing camera button with vision support', () => {
-      const { getByTestId, getByText } = render(
+    it('opens image picker when pressing photo with vision support', () => {
+      const result = render(
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      fireEvent.press(getByTestId('camera-button'));
+      pressAttachPhoto(result);
 
       // Should show the Add Image alert with camera/library options
-      expect(getByText('Add Image')).toBeTruthy();
+      expect(result.getByText('Add Image')).toBeTruthy();
     });
 
-    it('camera button has active style when vision is supported', () => {
+    it('attach button is present when vision is supported', () => {
       const { getByTestId } = render(
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      // Camera button should be present with active styling
-      expect(getByTestId('camera-button')).toBeTruthy();
+      expect(getByTestId('attach-button')).toBeTruthy();
     });
   });
 
@@ -565,18 +569,17 @@ describe('ChatInput', () => {
   // Attachments
   // ============================================================================
   describe('attachments', () => {
-    it('shows custom alert when camera button is pressed', async () => {
-      const { getByTestId, getByText } = render(
+    it('shows custom alert when photo is pressed via attach picker', async () => {
+      const result = render(
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      const cameraButton = getByTestId('camera-button');
-      fireEvent.press(cameraButton);
+      pressAttachPhoto(result);
 
       // Should show CustomAlert with camera/library options
       await waitFor(() => {
-        expect(getByText('Add Image')).toBeTruthy();
-        expect(getByText('Choose image source')).toBeTruthy();
+        expect(result.getByText('Add Image')).toBeTruthy();
+        expect(result.getByText('Choose image source')).toBeTruthy();
       });
     });
 
@@ -591,23 +594,21 @@ describe('ChatInput', () => {
         }],
       });
 
-      const { getByTestId, getByText, queryByTestId } = render(
+      const result = render(
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      // Press camera button to show CustomAlert
-      const cameraButton = getByTestId('camera-button');
-      fireEvent.press(cameraButton);
+      pressAttachPhoto(result);
 
       // Wait for CustomAlert to appear and press Photo Library button
       await waitFor(() => {
-        expect(getByText('Photo Library')).toBeTruthy();
+        expect(result.getByText('Photo Library')).toBeTruthy();
       });
 
-      fireEvent.press(getByText('Photo Library'));
+      fireEvent.press(result.getByText('Photo Library'));
 
       await waitFor(() => {
-        expect(queryByTestId('attachments-container')).toBeTruthy();
+        expect(result.queryByTestId('attachments-container')).toBeTruthy();
       });
     });
 
@@ -624,27 +625,24 @@ describe('ChatInput', () => {
       });
 
       const onSend = jest.fn();
-      const { getByTestId, getByText } = render(
+      const result = render(
         <ChatInput {...defaultProps} onSend={onSend} supportsVision={true} />
       );
 
-      // Add attachment via library
-      const cameraButton = getByTestId('camera-button');
-      fireEvent.press(cameraButton);
-
-      // Wait for CustomAlert and press Photo Library
-      await waitFor(() => {
-        expect(getByText('Photo Library')).toBeTruthy();
-      });
-
-      fireEvent.press(getByText('Photo Library'));
+      // Add attachment via attach picker → photo
+      pressAttachPhoto(result);
 
       await waitFor(() => {
-        expect(getByTestId('attachments-container')).toBeTruthy();
+        expect(result.getByText('Photo Library')).toBeTruthy();
       });
 
-      // Send button should be visible (can send with just attachment)
-      const sendButton = getByTestId('send-button');
+      fireEvent.press(result.getByText('Photo Library'));
+
+      await waitFor(() => {
+        expect(result.getByTestId('attachments-container')).toBeTruthy();
+      });
+
+      const sendButton = result.getByTestId('send-button');
       fireEvent.press(sendButton);
 
       expect(onSend).toHaveBeenCalledWith(
@@ -659,16 +657,15 @@ describe('ChatInput', () => {
       );
     });
 
-    it('renders document picker button always', () => {
+    it('renders attach button always', () => {
       const { getByTestId } = render(
         <ChatInput {...defaultProps} supportsVision={false} />
       );
 
-      // Document picker button should always be visible
-      expect(getByTestId('document-picker-button')).toBeTruthy();
+      expect(getByTestId('attach-button')).toBeTruthy();
     });
 
-    it('opens document picker when paperclip is pressed', async () => {
+    it('opens document picker when document is pressed via attach picker', async () => {
       mockPick.mockResolvedValue([{
         uri: 'file:///mock/document.txt',
         name: 'document.txt',
@@ -676,15 +673,15 @@ describe('ChatInput', () => {
         size: 1234,
       }]);
 
-      const { getByTestId, queryByTestId } = render(
+      const result = render(
         <ChatInput {...defaultProps} />
       );
 
-      fireEvent.press(getByTestId('document-picker-button'));
+      pressAttachDocument(result);
 
       await waitFor(() => {
         expect(mockPick).toHaveBeenCalled();
-        expect(queryByTestId('attachments-container')).toBeTruthy();
+        expect(result.queryByTestId('attachments-container')).toBeTruthy();
       });
     });
 
@@ -697,17 +694,16 @@ describe('ChatInput', () => {
         size: 5000,
       }]);
 
-      const { getByTestId, getByText } = render(
+      const result = render(
         <ChatInput {...defaultProps} />
       );
 
-      fireEvent.press(getByTestId('document-picker-button'));
+      pressAttachDocument(result);
 
       await waitFor(() => {
-        expect(getByText('Unsupported File')).toBeTruthy();
+        expect(result.getByText('Unsupported File')).toBeTruthy();
       });
 
-      // Reset mock
       mockIsSupported.mockReturnValue(true);
     });
 
@@ -717,20 +713,18 @@ describe('ChatInput', () => {
       mockPick.mockRejectedValue(cancelError);
       mockIsErrorWithCode.mockReturnValue(true);
 
-      const { getByTestId, queryByTestId } = render(
+      const result = render(
         <ChatInput {...defaultProps} />
       );
 
-      fireEvent.press(getByTestId('document-picker-button'));
+      pressAttachDocument(result);
 
       await waitFor(() => {
         expect(mockPick).toHaveBeenCalled();
       });
 
-      // No attachments should be added
-      expect(queryByTestId('attachments-container')).toBeNull();
+      expect(result.queryByTestId('attachments-container')).toBeNull();
 
-      // Reset mock
       mockIsErrorWithCode.mockReturnValue(false);
     });
 
@@ -750,15 +744,14 @@ describe('ChatInput', () => {
         fileSize: 2048,
       });
 
-      const { getByTestId, getByText } = render(
+      const result = render(
         <ChatInput {...defaultProps} />
       );
 
-      fireEvent.press(getByTestId('document-picker-button'));
+      pressAttachDocument(result);
 
       await waitFor(() => {
-        // Document preview should show filename
-        expect(getByText('data.csv')).toBeTruthy();
+        expect(result.getByText('data.csv')).toBeTruthy();
       });
     });
 
@@ -779,19 +772,17 @@ describe('ChatInput', () => {
       });
 
       const onSend = jest.fn();
-      const { getByTestId } = render(
+      const result = render(
         <ChatInput {...defaultProps} onSend={onSend} />
       );
 
-      // Pick document
-      fireEvent.press(getByTestId('document-picker-button'));
+      pressAttachDocument(result);
 
       await waitFor(() => {
-        expect(getByTestId('attachments-container')).toBeTruthy();
+        expect(result.getByTestId('attachments-container')).toBeTruthy();
       });
 
-      // Send without text — just the attachment
-      const sendButton = getByTestId('send-button');
+      const sendButton = result.getByTestId('send-button');
       fireEvent.press(sendButton);
 
       expect(onSend).toHaveBeenCalledWith(
@@ -815,18 +806,17 @@ describe('ChatInput', () => {
       }]);
       mockProcessDocument.mockRejectedValue(new Error('File is too large. Maximum size is 5MB'));
 
-      const { getByTestId, getByText } = render(
+      const result = render(
         <ChatInput {...defaultProps} />
       );
 
-      fireEvent.press(getByTestId('document-picker-button'));
+      pressAttachDocument(result);
 
       await waitFor(() => {
-        expect(getByText('Error')).toBeTruthy();
-        expect(getByText('File is too large. Maximum size is 5MB')).toBeTruthy();
+        expect(result.getByText('Error')).toBeTruthy();
+        expect(result.getByText('File is too large. Maximum size is 5MB')).toBeTruthy();
       });
 
-      // Reset mock
       mockProcessDocument.mockResolvedValue({
         id: 'doc-1',
         type: 'document' as const,
@@ -846,21 +836,18 @@ describe('ChatInput', () => {
       }]);
       mockProcessDocument.mockResolvedValue(null as any);
 
-      const { getByTestId, queryByTestId } = render(
+      const result = render(
         <ChatInput {...defaultProps} />
       );
 
-      fireEvent.press(getByTestId('document-picker-button'));
+      pressAttachDocument(result);
 
-      // Wait for picker to resolve
       await waitFor(() => {
         expect(mockPick).toHaveBeenCalled();
       });
 
-      // No attachment should be added
-      expect(queryByTestId('attachments-container')).toBeNull();
+      expect(result.queryByTestId('attachments-container')).toBeNull();
 
-      // Reset mock
       mockProcessDocument.mockResolvedValue({
         id: 'doc-1',
         type: 'document' as const,
@@ -871,13 +858,12 @@ describe('ChatInput', () => {
       });
     });
 
-    it('keeps document picker enabled during generation', () => {
+    it('keeps attach button enabled during generation', () => {
       const { getByTestId } = render(
         <ChatInput {...defaultProps} isGenerating={true} />
       );
 
-      const button = getByTestId('document-picker-button');
-      // Document picker should remain enabled during generation (user can queue messages)
+      const button = getByTestId('attach-button');
       expect(button.props.accessibilityState?.disabled).toBeFalsy();
     });
 
@@ -897,40 +883,37 @@ describe('ChatInput', () => {
         fileSize: 100,
       });
 
-      const { getByTestId, queryByTestId } = render(
+      const result = render(
         <ChatInput {...defaultProps} />
       );
 
-      fireEvent.press(getByTestId('document-picker-button'));
+      pressAttachDocument(result);
 
       await waitFor(() => {
-        expect(getByTestId('attachments-container')).toBeTruthy();
+        expect(result.getByTestId('attachments-container')).toBeTruthy();
       });
 
-      // Press remove button
-      const removeButton = getByTestId('remove-attachment-doc-remove');
+      const removeButton = result.getByTestId('remove-attachment-doc-remove');
       fireEvent.press(removeButton);
 
-      // Attachment should be removed
-      expect(queryByTestId('attachments-container')).toBeNull();
+      expect(result.queryByTestId('attachments-container')).toBeNull();
     });
 
     it('handles empty name from document picker', async () => {
       mockPick.mockResolvedValue([{
         uri: 'file:///mock/unnamed',
-        name: null, // null name from picker
+        name: null,
         type: 'application/octet-stream',
         size: 100,
       }]);
 
-      const { getByTestId } = render(
+      const result = render(
         <ChatInput {...defaultProps} />
       );
 
-      fireEvent.press(getByTestId('document-picker-button'));
+      pressAttachDocument(result);
 
       await waitFor(() => {
-        // Should use 'document' as fallback fileName
         expect(mockIsSupported).toHaveBeenCalledWith('document');
       });
     });
@@ -949,9 +932,8 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} onSend={onSend} supportsVision={true} />
       );
 
-      // Add attachment
-      const cameraButton = getByTestId('camera-button');
-      fireEvent.press(cameraButton);
+      // Add attachment via attach picker
+      pressAttachPhoto({ getByTestId });
 
       // Wait for CustomAlert and press Photo Library
       await waitFor(() => {
@@ -1092,18 +1074,16 @@ describe('ChatInput', () => {
   // Additional branch coverage tests
   // ============================================================================
   describe('camera flow', () => {
-    it('shows Camera option in alert when camera button pressed', async () => {
-      const { getByTestId, getByText } = render(
+    it('shows Camera option in alert when photo is pressed via attach picker', async () => {
+      const result = render(
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      // Press camera button to show alert
-      fireEvent.press(getByTestId('camera-button'));
+      pressAttachPhoto(result);
 
       await waitFor(() => {
-        expect(getByText('Camera')).toBeTruthy();
-        expect(getByText('Photo Library')).toBeTruthy();
-        expect(getByText('Cancel')).toBeTruthy();
+        expect(result.getByText('Camera')).toBeTruthy();
+        expect(result.getByText('Photo Library')).toBeTruthy();
       });
     });
   });
@@ -1133,17 +1113,14 @@ describe('ChatInput', () => {
   });
 
   describe('image mode toggle without loaded model', () => {
-    it('shows toggle but displays alert when imageModelLoaded is false', () => {
-      const { getByTestId, getByText } = render(
+    it('shows alert when toggling image mode via quick settings without model', () => {
+      const result = render(
         <ChatInput {...defaultProps} imageModelLoaded={false} />
       );
 
-      // Toggle is always visible
-      const toggle = getByTestId('image-mode-toggle');
-      fireEvent.press(toggle);
+      pressImageModeToggle(result);
 
-      // Shows alert instead of cycling
-      expect(getByText('No Image Model')).toBeTruthy();
+      expect(result.getByText('No Image Model')).toBeTruthy();
     });
   });
 
@@ -1247,8 +1224,8 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} onSend={onSend} supportsVision={true} />
       );
 
-      // Add attachment
-      fireEvent.press(getByTestId('camera-button'));
+      // Add attachment via attach picker
+      pressAttachPhoto({ getByTestId });
       await waitFor(() => expect(getByText('Photo Library')).toBeTruthy());
       fireEvent.press(getByText('Photo Library'));
 
@@ -1490,7 +1467,7 @@ describe('ChatInput', () => {
       // Let me use rerender to change the prop after the toggle is visible.
 
       const onImageModeChange = jest.fn();
-      const { getByTestId } = render(
+      const result = render(
         <ChatInput
           {...defaultProps}
           imageModelLoaded={true}
@@ -1498,20 +1475,7 @@ describe('ChatInput', () => {
         />
       );
 
-      // The toggle is visible
-      const toggle = getByTestId('image-mode-toggle');
-
-      // Now change imageModelLoaded to false but keep the toggle visible via rerender
-      // Actually, rerender will hide the toggle. The !imageModelLoaded branch is
-      // a defensive guard. Let me just not test it if it's unreachable.
-      // Actually wait - we can call the handler directly through the onPress.
-      // But the toggle won't render when imageModelLoaded=false.
-      // The only way to reach lines 136-141 is if imageModelLoaded prop changes
-      // between render and press. But that removes the button.
-      // This is truly dead code / defensive code.
-
-      // Let's just verify the toggle works normally
-      fireEvent.press(toggle);
+      pressImageModeToggle(result);
       expect(onImageModeChange).toHaveBeenCalledWith('force');
     });
   });
@@ -1533,30 +1497,29 @@ describe('ChatInput', () => {
         }],
       });
 
-      const { getByTestId, getByText, queryByTestId } = render(
+      const result = render(
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      // Press camera button to show alert
-      fireEvent.press(getByTestId('camera-button'));
+      // Open attach picker, press photo
+      pressAttachPhoto(result);
 
       // Wait for alert
       await waitFor(() => {
-        expect(getByText('Camera')).toBeTruthy();
+        expect(result.getByText('Camera')).toBeTruthy();
       });
 
-      // Press Camera option (covers lines 165-167: setAlertState + setTimeout)
-      fireEvent.press(getByText('Camera'));
+      // Press Camera option
+      fireEvent.press(result.getByText('Camera'));
 
       // Advance timer for the 300ms delay before pickFromCamera
       await act(async () => {
         jest.advanceTimersByTime(350);
       });
 
-      // Camera should have been launched (covers lines 204-216)
       await waitFor(() => {
         expect(launchCamera).toHaveBeenCalled();
-        expect(queryByTestId('attachments-container')).toBeTruthy();
+        expect(result.queryByTestId('attachments-container')).toBeTruthy();
       });
 
       jest.useRealTimers();
@@ -1567,23 +1530,22 @@ describe('ChatInput', () => {
       const { launchCamera } = require('react-native-image-picker');
       launchCamera.mockRejectedValue(new Error('Camera permission denied'));
 
-      const { getByTestId, getByText } = render(
+      const result = render(
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      fireEvent.press(getByTestId('camera-button'));
+      pressAttachPhoto(result);
 
       await waitFor(() => {
-        expect(getByText('Camera')).toBeTruthy();
+        expect(result.getByText('Camera')).toBeTruthy();
       });
 
-      fireEvent.press(getByText('Camera'));
+      fireEvent.press(result.getByText('Camera'));
 
       await act(async () => {
         jest.advanceTimersByTime(350);
       });
 
-      // Should not crash despite the error (covers line 216)
       await waitFor(() => {
         expect(launchCamera).toHaveBeenCalled();
       });
@@ -1596,17 +1558,17 @@ describe('ChatInput', () => {
       const { launchCamera } = require('react-native-image-picker');
       launchCamera.mockResolvedValue({ assets: [] });
 
-      const { getByTestId, getByText, queryByTestId } = render(
+      const result = render(
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      fireEvent.press(getByTestId('camera-button'));
+      pressAttachPhoto(result);
 
       await waitFor(() => {
-        expect(getByText('Camera')).toBeTruthy();
+        expect(result.getByText('Camera')).toBeTruthy();
       });
 
-      fireEvent.press(getByText('Camera'));
+      fireEvent.press(result.getByText('Camera'));
 
       await act(async () => {
         jest.advanceTimersByTime(350);
@@ -1616,8 +1578,7 @@ describe('ChatInput', () => {
         expect(launchCamera).toHaveBeenCalled();
       });
 
-      // No attachment should be added
-      expect(queryByTestId('attachments-container')).toBeNull();
+      expect(result.queryByTestId('attachments-container')).toBeNull();
 
       jest.useRealTimers();
     });
@@ -1632,23 +1593,22 @@ describe('ChatInput', () => {
       const { launchImageLibrary } = require('react-native-image-picker');
       launchImageLibrary.mockRejectedValue(new Error('Library access denied'));
 
-      const { getByTestId, getByText } = render(
+      const result = render(
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      fireEvent.press(getByTestId('camera-button'));
+      pressAttachPhoto(result);
 
       await waitFor(() => {
-        expect(getByText('Photo Library')).toBeTruthy();
+        expect(result.getByText('Photo Library')).toBeTruthy();
       });
 
-      fireEvent.press(getByText('Photo Library'));
+      fireEvent.press(result.getByText('Photo Library'));
 
       await act(async () => {
         jest.advanceTimersByTime(350);
       });
 
-      // Should not crash (covers line 199: catch block in pickFromLibrary)
       await waitFor(() => {
         expect(launchImageLibrary).toHaveBeenCalled();
       });
@@ -1670,7 +1630,7 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} />
       );
 
-      fireEvent.press(getByTestId('document-picker-button'));
+      pressAttachDocument({ getByTestId });
 
       await waitFor(() => {
         expect(getByText('Error')).toBeTruthy();
@@ -1723,7 +1683,7 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} />
       );
 
-      fireEvent.press(getByTestId('document-picker-button'));
+      pressAttachDocument({ getByTestId });
 
       await waitFor(() => {
         expect(mockPick).toHaveBeenCalled();
@@ -1758,7 +1718,7 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} />
       );
 
-      fireEvent.press(getByTestId('document-picker-button'));
+      pressAttachDocument({ getByTestId });
 
       await waitFor(() => {
         expect(getByText('Document')).toBeTruthy();
@@ -1775,17 +1735,17 @@ describe('ChatInput', () => {
       const { launchImageLibrary } = require('react-native-image-picker');
       launchImageLibrary.mockResolvedValue({ assets: [] });
 
-      const { getByTestId, getByText, queryByTestId } = render(
+      const result = render(
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      fireEvent.press(getByTestId('camera-button'));
+      pressAttachPhoto(result);
 
       await waitFor(() => {
-        expect(getByText('Photo Library')).toBeTruthy();
+        expect(result.getByText('Photo Library')).toBeTruthy();
       });
 
-      fireEvent.press(getByText('Photo Library'));
+      fireEvent.press(result.getByText('Photo Library'));
 
       await act(async () => {
         jest.advanceTimersByTime(350);
@@ -1795,7 +1755,7 @@ describe('ChatInput', () => {
         expect(launchImageLibrary).toHaveBeenCalled();
       });
 
-      expect(queryByTestId('attachments-container')).toBeNull();
+      expect(result.queryByTestId('attachments-container')).toBeNull();
 
       jest.useRealTimers();
     });
@@ -1805,17 +1765,17 @@ describe('ChatInput', () => {
       const { launchImageLibrary } = require('react-native-image-picker');
       launchImageLibrary.mockResolvedValue({ assets: null });
 
-      const { getByTestId, getByText, queryByTestId } = render(
+      const result = render(
         <ChatInput {...defaultProps} supportsVision={true} />
       );
 
-      fireEvent.press(getByTestId('camera-button'));
+      pressAttachPhoto(result);
 
       await waitFor(() => {
-        expect(getByText('Photo Library')).toBeTruthy();
+        expect(result.getByText('Photo Library')).toBeTruthy();
       });
 
-      fireEvent.press(getByText('Photo Library'));
+      fireEvent.press(result.getByText('Photo Library'));
 
       await act(async () => {
         jest.advanceTimersByTime(350);
@@ -1825,7 +1785,7 @@ describe('ChatInput', () => {
         expect(launchImageLibrary).toHaveBeenCalled();
       });
 
-      expect(queryByTestId('attachments-container')).toBeNull();
+      expect(result.queryByTestId('attachments-container')).toBeNull();
 
       jest.useRealTimers();
     });
@@ -1869,7 +1829,7 @@ describe('ChatInput', () => {
       );
 
       // Before typing, icons should be interactive
-      expect(getByTestId('document-picker-button')).toBeTruthy();
+      expect(getByTestId('attach-button')).toBeTruthy();
 
       fireEvent.changeText(getByTestId('chat-input'), 'hello');
 
@@ -1895,10 +1855,9 @@ describe('ChatInput', () => {
         <ChatInput {...defaultProps} supportsVision={true} imageModelLoaded={true} />
       );
 
-      // All three icons should be pressable when no text
-      expect(getByTestId('document-picker-button')).toBeTruthy();
-      expect(getByTestId('camera-button')).toBeTruthy();
-      expect(getByTestId('image-mode-toggle')).toBeTruthy();
+      // Both icons should be pressable when no text
+      expect(getByTestId('attach-button')).toBeTruthy();
+      expect(getByTestId('quick-settings-button')).toBeTruthy();
     });
 
     it('send button remains visible when text is entered', () => {

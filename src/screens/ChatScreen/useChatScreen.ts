@@ -45,6 +45,7 @@ export const useChatScreen = () => {
   const [imageGenState, setImageGenState] = useState<ImageGenerationState>(imageGenerationService.getState());
   const [showToolPicker, setShowToolPicker] = useState(false);
   const [supportsToolCalling, setSupportsToolCalling] = useState(false);
+  const [supportsThinking, setSupportsThinking] = useState(false);
   const [isCompacting, setIsCompacting] = useState(false);
   const lastMessageCountRef = useRef(0);
   const generatingForConversationRef = useRef<string | null>(null);
@@ -176,7 +177,9 @@ export const useChatScreen = () => {
   }, [activeModel?.mmProjPath]);
 
   useEffect(() => {
-    setSupportsToolCalling(llmService.isModelLoaded() ? llmService.supportsToolCalling() : false);
+    const loaded = llmService.isModelLoaded();
+    setSupportsToolCalling(loaded ? llmService.supportsToolCalling() : false);
+    setSupportsThinking(loaded ? llmService.supportsThinking() : false);
   }, [activeModelId, isModelLoading]);
 
   const displayMessages = getDisplayMessages(activeConversation?.messages || [], { isThinking, streamingMessage, isStreamingForThisConversation });
@@ -203,7 +206,7 @@ export const useChatScreen = () => {
     showDebugPanel, setShowDebugPanel,
     showModelSelector, setShowModelSelector,
     showSettingsPanel, setShowSettingsPanel,
-    showToolPicker, setShowToolPicker, supportsToolCalling,
+    showToolPicker, setShowToolPicker, supportsToolCalling, supportsThinking,
     debugInfo, alertState, setAlertState,
     showScrollToBottom, setShowScrollToBottom,
     isClassifying, animateLastN, queueCount, queuedTexts,

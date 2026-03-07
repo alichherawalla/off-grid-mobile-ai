@@ -336,6 +336,7 @@ const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
         onToolsPress={() => chat.setShowToolPicker(true)}
         enabledToolCount={chat.enabledTools.length}
         supportsToolCalling={chat.supportsToolCalling}
+        supportsThinking={chat.supportsThinking}
         activeSpotlight={chatSpotlight === 12 ? chatSpotlight : null}
       />
     </AttachStep>

@@ -21,6 +21,7 @@ type AppSettings = {
   imageUseOpenCL: boolean; enhanceImagePrompts: boolean; modelLoadingStrategy: ModelLoadingStrategy;
   enableGpu: boolean; gpuLayers: number; flashAttn: boolean;
   cacheType: CacheType; showGenerationDetails: boolean; enabledTools: string[];
+  thinkingEnabled: boolean;
 };
 
 interface AppState {
@@ -124,8 +125,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   cacheType: 'q8_0' as CacheType,
   showGenerationDetails: false,
   enabledTools: ['web_search', 'calculator', 'get_current_datetime', 'get_device_info', 'read_url'],
+  thinkingEnabled: true,
 };
-
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({

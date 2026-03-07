@@ -147,6 +147,7 @@ jest.mock('../../../src/services/llm', () => ({
     isModelLoaded: jest.fn(() => true),
     supportsVision: jest.fn(() => false),
     supportsToolCalling: jest.fn(() => false),
+    supportsThinking: jest.fn(() => false),
     clearKVCache: jest.fn(() => Promise.resolve()),
     getMultimodalSupport: jest.fn(() => null),
     getLoadedModelPath: jest.fn(() => null),
@@ -233,7 +234,7 @@ jest.mock('../../../src/components', () => ({
       </View>
     );
   },
-  ChatInput: ({ onSend, onStop, disabled, placeholder, isGenerating, imageModelLoaded, queueCount, onClearQueue, onOpenSettings }: any) => {
+  ChatInput: ({ onSend, onStop, disabled, placeholder, isGenerating, queueCount, onClearQueue, onOpenSettings }: any) => {
     const { useState } = require('react');
     const { View, TextInput, TouchableOpacity, Text } = require('react-native');
     const [text, setText] = useState('');
@@ -272,7 +273,7 @@ jest.mock('../../../src/components', () => ({
             }
           }}
         />
-        {imageModelLoaded && <View testID="image-mode-toggle" />}
+        <View testID="quick-settings-button" />
         {queueCount > 0 && <Text testID="queue-count">{queueCount}</Text>}
         {queueCount > 0 && onClearQueue && (
           <TouchableOpacity testID="clear-queue-button" onPress={onClearQueue}>
@@ -930,13 +931,13 @@ describe('ChatScreen', () => {
       });
 
       const { getByTestId } = renderChatScreen();
-      expect(getByTestId('image-mode-toggle')).toBeTruthy();
+      expect(getByTestId('quick-settings-button')).toBeTruthy();
     });
 
-    it('does not show image mode toggle when no image model', () => {
+    it('shows quick settings button even when no image model', () => {
       setupFullChat();
-      const { queryByTestId } = renderChatScreen();
-      expect(queryByTestId('image-mode-toggle')).toBeNull();
+      const { getByTestId } = renderChatScreen();
+      expect(getByTestId('quick-settings-button')).toBeTruthy();
     });
 
     it('sends a message and adds it to the conversation', async () => {

@@ -166,9 +166,10 @@ class HuggingFaceService {
     }
 
     // Fallback: prefer f16 mmproj if available, otherwise use the first one
+    // Match F16/FP16 but exclude BF16 — BF16 mmproj can be incompatible with some runtimes
     const f16MMProj = mmProjFiles.find(f => {
       const lower = f.path.toLowerCase();
-      return lower.includes('f16') || lower.includes('fp16');
+      return (lower.includes('f16') || lower.includes('fp16')) && !lower.includes('bf16');
     });
 
     const selectedMMProj = f16MMProj || mmProjFiles[0];

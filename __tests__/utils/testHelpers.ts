@@ -70,6 +70,7 @@ export const resetStores = (): void => {
       showGenerationDetails: false,
       enhanceImagePrompts: false,
       enabledTools: ['calculator', 'get_current_datetime'],
+      thinkingEnabled: true,
     },
     downloadedImageModels: [],
     activeImageModelId: null,

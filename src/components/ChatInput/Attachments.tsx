@@ -74,7 +74,6 @@ export function useAttachments(setAlertState: (state: AlertState) => void) {
             setTimeout(pickFromLibrary, 300);
           },
         },
-        { text: 'Cancel', style: 'cancel' },
       ],
     ));
   };

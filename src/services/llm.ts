@@ -134,6 +134,7 @@ class LLMService {
   supportsVision(): boolean { return this.multimodalSupport?.vision || false; }
   supportsToolCalling(): boolean { return this.toolCallingSupported; }
   supportsThinking(): boolean { return this.thinkingSupported; }
+  isThinkingEnabled(): boolean { return this.thinkingSupported && useAppStore.getState().settings.thinkingEnabled; }
   private detectToolCallingSupport(): void {
     if (!this.context) { this.toolCallingSupported = false; return; }
     try {
@@ -293,7 +294,7 @@ class LLMService {
   }
   isCurrentlyGenerating(): boolean { return this.isGenerating; }
   private formatMessages(messages: Message[]): string { return formatLlamaMessages(messages, this.supportsVision()); }
-  private convertToOAIMessages(messages: Message[]): RNLlamaOAICompatibleMessage[] { return buildOAIMessages(messages); }
+  private convertToOAIMessages(messages: Message[]): RNLlamaOAICompatibleMessage[] { return buildOAIMessages(messages, { disableThinking: this.thinkingSupported && !this.isThinkingEnabled() }); }
   async getModelInfo() { return this.context ? { contextLength: APP_CONFIG.maxContextLength, vocabSize: 0 } : null; }
   async tokenize(text: string) {
     if (!this.context) throw new Error('No model loaded');
@@ -346,5 +347,4 @@ class LLMService {
     }
   }
 }
-
 export const llmService = new LLMService();

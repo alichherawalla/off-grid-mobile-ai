@@ -3,7 +3,7 @@ import { FONTS } from '../../constants';
 import { Platform } from 'react-native';
 
 export const PILL_ICON_SIZE = 32;
-const NUM_PILL_ICONS = 4;
+const NUM_PILL_ICONS = 2;
 export const PILL_ICONS_WIDTH = PILL_ICON_SIZE * NUM_PILL_ICONS;
 export const ANIM_DURATION_IN = 180;
 export const ANIM_DURATION_OUT = 200;

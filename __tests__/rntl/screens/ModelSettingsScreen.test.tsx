@@ -826,6 +826,7 @@ describe('ModelSettingsScreen', () => {
           showGenerationDetails: undefined as any,
           enhanceImagePrompts: undefined as any,
           enabledTools: undefined as any,
+          thinkingEnabled: undefined as any,
         },
       });
 

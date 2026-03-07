@@ -63,11 +63,12 @@ class LocalDreamGeneratorService {
     }
   }
 
-  async loadModel(modelPath: string, threads?: number, backend: 'mnn' | 'qnn' | 'auto' = 'auto', cpuOnly?: boolean): Promise<boolean> {
+  async loadModel(modelPath: string, threads?: number, opts: { backend?: 'mnn' | 'qnn' | 'auto'; cpuOnly?: boolean } = {}): Promise<boolean> {
     if (!this.isAvailable()) {
       throw new Error('LocalDream image generation is not available on this platform');
     }
 
+    const backend = opts.backend ?? 'auto';
     const params: { modelPath: string; threads?: number; backend: string; cpuOnly?: boolean } = {
       modelPath,
       backend,
@@ -75,7 +76,7 @@ class LocalDreamGeneratorService {
     if (typeof threads === 'number') {
       params.threads = threads;
     }
-    if (cpuOnly) {
+    if (opts.cpuOnly) {
       params.cpuOnly = true;
     }
 

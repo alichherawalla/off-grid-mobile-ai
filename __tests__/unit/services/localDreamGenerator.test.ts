@@ -139,7 +139,7 @@ describe('LocalDreamGeneratorService', () => {
     it('loadModel delegates to native module', async () => {
       mockLocalDreamModule.loadModel.mockResolvedValue(true);
 
-      const result = await service.loadModel('/path/to/model', 4, 'mnn');
+      const result = await service.loadModel('/path/to/model', 4, { backend: 'mnn' });
 
       expect(mockLocalDreamModule.loadModel).toHaveBeenCalledWith({
         modelPath: '/path/to/model',

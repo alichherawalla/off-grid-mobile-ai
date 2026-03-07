@@ -90,7 +90,10 @@ class CoreMLDiffusionModule: RCTEventEmitter {
 
         let cpuOnly = params["cpuOnly"] as? Bool ?? false
         let config = MLModelConfiguration()
-        config.computeUnits = cpuOnly ? .cpuOnly : .cpuAndNeuralEngine
+        // Low-memory devices use CPU+GPU (Metal) instead of CPU-only because
+        // ANE-optimized models (SPLIT_EINSUM attention) produce gray images on CPU.
+        // GPU handles SPLIT_EINSUM correctly with less memory overhead than ANE.
+        config.computeUnits = cpuOnly ? .cpuAndGPU : .cpuAndNeuralEngine
 
         let pipe: StableDiffusionPipelineProtocol
 

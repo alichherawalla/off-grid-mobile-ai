@@ -209,8 +209,7 @@ describe('ActiveModelService Integration', () => {
       expect(mockLocalDreamService.loadModel).toHaveBeenCalledWith(
         imageModel.modelPath,
         4,
-        imageModel.backend ?? 'auto',
-        false,
+        { backend: imageModel.backend ?? 'auto', cpuOnly: false },
       );
 
       expect(getAppState().activeImageModelId).toBe('img-model-1');
@@ -236,8 +235,7 @@ describe('ActiveModelService Integration', () => {
       expect(mockLocalDreamService.loadModel).toHaveBeenLastCalledWith(
         imgModel2.modelPath,
         4,
-        imgModel2.backend ?? 'auto',
-        false,
+        { backend: imgModel2.backend ?? 'auto', cpuOnly: false },
       );
     });
   });
@@ -1353,8 +1351,7 @@ describe('ActiveModelService Integration', () => {
       expect(mockLocalDreamService.loadModel).toHaveBeenCalledWith(
         coremlModel.modelPath,
         4,
-        'auto', // coreml backend should map to 'auto'
-        false,
+        { backend: 'auto', cpuOnly: false }, // coreml backend should map to 'auto'
       );
     });
   });
@@ -1567,8 +1564,7 @@ describe('ActiveModelService Integration', () => {
       expect(mockLocalDreamService.loadModel).toHaveBeenCalledWith(
         imageModel.modelPath,
         4,
-        imageModel.backend ?? 'auto',
-        true, // cpuOnly
+        { backend: imageModel.backend ?? 'auto', cpuOnly: true },
       );
     });
 
@@ -1591,10 +1587,10 @@ describe('ActiveModelService Integration', () => {
       expect(getAppState().activeImageModelId).toBe('img-no-txt');
     });
 
-    it('blocks loading when model exceeds budget even after unloading text', async () => {
+    it('allows loading on low-memory iOS even when model exceeds budget (reduceMemory handles it)', async () => {
       setupLowMemDevice();
 
-      // Image model too large: 2GB * 1.8x overhead = 3.6GB > 4GB * 0.4 = 1.6GB budget
+      // Image model over budget but iOS reduceMemory mode lazily loads submodels
       const imageModel = createONNXImageModel({ id: 'img-huge', size: 2 * 1024 * 1024 * 1024 });
       useAppStore.setState({
         downloadedImageModels: [imageModel],
@@ -1602,10 +1598,10 @@ describe('ActiveModelService Integration', () => {
       });
 
       mockLocalDreamService.isModelLoaded.mockResolvedValue(false);
+      mockLocalDreamService.loadModel.mockResolvedValue(true);
 
-      await expect(
-        activeModelService.loadImageModel('img-huge'),
-      ).rejects.toThrow();
+      await activeModelService.loadImageModel('img-huge');
+      expect(getAppState().activeImageModelId).toBe('img-huge');
     });
   });
 
@@ -1638,7 +1634,7 @@ describe('ActiveModelService Integration', () => {
 
       // Text model should NOT be unloaded on high-mem device
       // unloadModel is called once during loadTextModel (to unload previous), but not during loadImageModel
-      const unloadCallsBeforeImage = mockLlmService.unloadModel.mock.calls.length;
+      const _unloadCallsBeforeImage = mockLlmService.unloadModel.mock.calls.length;
       expect(getAppState().activeModelId).toBe('txt-hi');
       expect(getAppState().activeImageModelId).toBe('img-hi');
     });
@@ -1659,8 +1655,7 @@ describe('ActiveModelService Integration', () => {
       expect(mockLocalDreamService.loadModel).toHaveBeenCalledWith(
         imageModel.modelPath,
         4,
-        imageModel.backend ?? 'auto',
-        false, // cpuOnly = false on high-mem devices
+        { backend: imageModel.backend ?? 'auto', cpuOnly: false },
       );
     });
 

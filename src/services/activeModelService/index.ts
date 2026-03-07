@@ -1,8 +1,5 @@
-/**
- * ActiveModelService — singleton for managing active models throughout the app.
- * THIS IS THE ONLY PLACE MODELS SHOULD BE LOADED/UNLOADED FROM.
- * All other code should use this service, never call llmService/onnxImageGeneratorService directly.
- */
+// ActiveModelService — THE ONLY PLACE models should be loaded/unloaded from.
+import { Platform } from 'react-native';
 import { llmService } from '../llm';
 import { localDreamGeneratorService as onnxImageGeneratorService } from '../localDreamGenerator';
 import { hardwareService } from '../hardware';
@@ -169,7 +166,11 @@ class ActiveModelService {
       await this.unloadTextModel();
     }
     const memCheck = await this.checkMemoryForModel(modelId, 'image');
-    const canProceed = memCheck.severity !== 'critical';
+    // On low-memory iOS devices, allow image model loading even if over budget:
+    // the text model is already unloaded above, reduceMemory mode lazily loads
+    // submodels, and cpuAndGPU uses less memory than ANE.
+    const canProceed =
+      memCheck.severity !== 'critical' || (isLowMem && Platform.OS === 'ios');
     if (!canProceed) {
       return { canLoad: false, isLowMem, error: memCheck.message };
     }

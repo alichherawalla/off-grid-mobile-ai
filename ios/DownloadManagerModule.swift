@@ -289,6 +289,40 @@ class DownloadManagerModule: RCTEventEmitter {
     }
   }
 
+  private func restoreMultiFileTask(
+    _ downloadTask: URLSessionDownloadTask,
+    desc: TaskDescription,
+    relativePath: String,
+    destinationDir: String,
+    info: inout DownloadInfo
+  ) {
+    let totalBytes = downloadTask.countOfBytesExpectedToReceive > 0
+      ? downloadTask.countOfBytesExpectedToReceive
+      : (desc.fileSize ?? 0)
+    // swiftlint:disable:next force_unwrapping
+    let fallbackURL = URL(string: "about:blank")!
+    let fileTask = FileTask(
+      url: downloadTask.originalRequest?.url ?? fallbackURL,
+      relativePath: relativePath,
+      destinationDir: destinationDir,
+      task: downloadTask,
+      taskIdentifier: downloadTask.taskIdentifier,
+      bytesDownloaded: downloadTask.countOfBytesReceived,
+      totalBytes: totalBytes,
+      completed: false
+    )
+    info.fileTasks[downloadTask.taskIdentifier] = fileTask
+    info.multiFileDestDir = destinationDir
+    var aggregateBytes: Int64 = 0
+    for (_, file) in info.fileTasks { aggregateBytes += file.bytesDownloaded }
+    info.bytesDownloaded = aggregateBytes
+    if info.totalBytes <= 0 {
+      var aggregateTotal: Int64 = 0
+      for (_, file) in info.fileTasks { aggregateTotal += file.totalBytes }
+      info.totalBytes = aggregateTotal
+    }
+  }
+
   private func restoreTasksFromSession() {
     session.getAllTasks { [weak self] tasks in
       guard let self else { return }
@@ -324,29 +358,7 @@ class DownloadManagerModule: RCTEventEmitter {
             guard let relativePath = desc.relativePath, let destinationDir = desc.destinationDir else {
               continue
             }
-            let totalBytes = downloadTask.countOfBytesExpectedToReceive > 0
-              ? downloadTask.countOfBytesExpectedToReceive
-              : (desc.fileSize ?? 0)
-            let fileTask = FileTask(
-              url: downloadTask.originalRequest?.url ?? URL(string: "about:blank")!,
-              relativePath: relativePath,
-              destinationDir: destinationDir,
-              task: downloadTask,
-              taskIdentifier: downloadTask.taskIdentifier,
-              bytesDownloaded: downloadTask.countOfBytesReceived,
-              totalBytes: totalBytes,
-              completed: false
-            )
-            info.fileTasks[downloadTask.taskIdentifier] = fileTask
-            info.multiFileDestDir = destinationDir
-            var aggregateBytes: Int64 = 0
-            for (_, ft) in info.fileTasks { aggregateBytes += ft.bytesDownloaded }
-            info.bytesDownloaded = aggregateBytes
-            if info.totalBytes <= 0 {
-              var aggregateTotal: Int64 = 0
-              for (_, ft) in info.fileTasks { aggregateTotal += ft.totalBytes }
-              info.totalBytes = aggregateTotal
-            }
+            self.restoreMultiFileTask(downloadTask, desc: desc, relativePath: relativePath, destinationDir: destinationDir, info: &info)
           } else {
             info.task = downloadTask
             info.taskIdentifier = downloadTask.taskIdentifier

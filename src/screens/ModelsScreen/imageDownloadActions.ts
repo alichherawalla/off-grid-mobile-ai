@@ -227,6 +227,7 @@ export async function proceedWithDownload(
       const imageModel: ONNXImageModel = {
         id: modelInfo.id, name: modelInfo.name, description: modelInfo.description,
         modelPath: resolvedModelDir, downloadedAt: new Date().toISOString(), size: modelInfo.size, style: modelInfo.style,
+        backend: modelInfo.backend, attentionVariant: modelInfo.attentionVariant,
       };
       await registerAndNotify(deps, { imageModel, modelName: modelInfo.name, downloadId: downloadInfo.downloadId });
     });

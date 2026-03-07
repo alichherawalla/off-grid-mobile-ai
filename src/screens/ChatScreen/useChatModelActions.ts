@@ -26,11 +26,12 @@ type ModelActionDeps = {
   modelLoadStartTimeRef: React.MutableRefObject<number | null>;
 };
 
+import { InteractionManager } from 'react-native';
+
+/** Wait for loading UI to render before blocking the JS bridge with native calls. */
 function waitForRenderFrame(): Promise<void> {
   return new Promise<void>(resolve => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => { setTimeout(resolve, 200); });
-    });
+    InteractionManager.runAfterInteractions(() => setTimeout(resolve, 350));
   });
 }
 

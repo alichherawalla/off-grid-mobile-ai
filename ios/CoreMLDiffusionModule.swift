@@ -22,6 +22,33 @@ class CoreMLDiffusionModule: RCTEventEmitter {
   // Serial queue for all pipeline operations
   private let pipelineQueue = DispatchQueue(label: "ai.offgridmobile.coreml.diffusion", qos: .userInitiated)
 
+  override init() {
+    super.init()
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleMemoryWarning),
+      name: UIApplication.didReceiveMemoryWarningNotification,
+      object: nil
+    )
+  }
+
+  deinit {
+    NotificationCenter.default.removeObserver(self)
+  }
+
+  @objc private func handleMemoryWarning() {
+    // If we're not actively generating, release the pipeline to free memory
+    guard !generating else { return }
+    if pipeline != nil {
+      NSLog("[CoreMLDiffusion] Memory warning received — unloading pipeline to prevent crash")
+      pipeline = nil
+      loadedModelPath = nil
+      sendEvent(withName: "LocalDreamError", body: [
+        "error": "Model unloaded due to low memory. Please try a smaller model."
+      ])
+    }
+  }
+
   // MARK: - RCTEventEmitter
 
   override static func requiresMainQueueSetup() -> Bool { false }
@@ -61,8 +88,12 @@ class CoreMLDiffusionModule: RCTEventEmitter {
       do {
         let url = URL(fileURLWithPath: modelPath)
 
+        let cpuOnly = params["cpuOnly"] as? Bool ?? false
         let config = MLModelConfiguration()
-        config.computeUnits = .cpuAndNeuralEngine
+        let attentionVariant = params["attentionVariant"] as? String ?? "split_einsum"
+        // ANE is required — palettized weights produce gray images on pure CPU.
+        // cpuAndGPU fallback lets low-memory devices avoid ANE compilation overhead.
+        config.computeUnits = cpuOnly ? .cpuAndGPU : .cpuAndNeuralEngine
 
         let pipe: StableDiffusionPipelineProtocol
 
@@ -83,7 +114,13 @@ class CoreMLDiffusionModule: RCTEventEmitter {
           )
         }
 
-        try pipe.loadResources()
+        // Skip prewarm for 'original' variant (low-memory devices): prewarm
+        // loads the full Unet into memory just to unload it, causing an OOM spike.
+        // With reduceMemory=true the pipeline lazily loads each submodel during
+        // generateImages(), so prewarming is unnecessary.
+        if attentionVariant != "original" {
+          try pipe.loadResources()
+        }
 
         self.pipeline = pipe
         self.loadedModelPath = modelPath

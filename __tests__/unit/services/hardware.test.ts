@@ -44,7 +44,9 @@ describe('HardwareService', () => {
     });
 
     it('calculates availableMemory as total - used', async () => {
-      mockedDeviceInfo.getTotalMemory.mockResolvedValue(12 * 1024 * 1024 * 1024);
+      mockedDeviceInfo.getTotalMemory.mockResolvedValue(
+        12 * 1024 * 1024 * 1024,
+      );
       mockedDeviceInfo.getUsedMemory.mockResolvedValue(5 * 1024 * 1024 * 1024);
       mockedDeviceInfo.getModel.mockReturnValue('Test');
       mockedDeviceInfo.getSystemName.mockReturnValue('Android');
@@ -165,7 +167,9 @@ describe('HardwareService', () => {
     });
 
     it('handles 16GB device correctly', async () => {
-      mockedDeviceInfo.getTotalMemory.mockResolvedValue(16 * 1024 * 1024 * 1024);
+      mockedDeviceInfo.getTotalMemory.mockResolvedValue(
+        16 * 1024 * 1024 * 1024,
+      );
       mockedDeviceInfo.getUsedMemory.mockResolvedValue(4 * 1024 * 1024 * 1024);
       mockedDeviceInfo.getModel.mockReturnValue('Test');
       mockedDeviceInfo.getSystemName.mockReturnValue('Android');
@@ -203,7 +207,9 @@ describe('HardwareService', () => {
   // ========================================================================
   describe('getModelRecommendation', () => {
     const setupWithMemory = async (totalGB: number, isEmulator = false) => {
-      mockedDeviceInfo.getTotalMemory.mockResolvedValue(totalGB * 1024 * 1024 * 1024);
+      mockedDeviceInfo.getTotalMemory.mockResolvedValue(
+        totalGB * 1024 * 1024 * 1024,
+      );
       mockedDeviceInfo.getUsedMemory.mockResolvedValue(2 * 1024 * 1024 * 1024);
       mockedDeviceInfo.getModel.mockReturnValue('Test');
       mockedDeviceInfo.getSystemName.mockReturnValue('Android');
@@ -269,9 +275,16 @@ describe('HardwareService', () => {
   // canRunModel
   // ========================================================================
   describe('canRunModel', () => {
-    const setupWithAvailableMemory = async (totalGB: number, usedGB: number) => {
-      mockedDeviceInfo.getTotalMemory.mockResolvedValue(totalGB * 1024 * 1024 * 1024);
-      mockedDeviceInfo.getUsedMemory.mockResolvedValue(usedGB * 1024 * 1024 * 1024);
+    const setupWithAvailableMemory = async (
+      totalGB: number,
+      usedGB: number,
+    ) => {
+      mockedDeviceInfo.getTotalMemory.mockResolvedValue(
+        totalGB * 1024 * 1024 * 1024,
+      );
+      mockedDeviceInfo.getUsedMemory.mockResolvedValue(
+        usedGB * 1024 * 1024 * 1024,
+      );
       mockedDeviceInfo.getModel.mockReturnValue('Test');
       mockedDeviceInfo.getSystemName.mockReturnValue('Android');
       mockedDeviceInfo.getSystemVersion.mockReturnValue('13');
@@ -322,7 +335,9 @@ describe('HardwareService', () => {
   describe('estimateModelMemoryGB', () => {
     it('estimates 7B Q4_K_M correctly', () => {
       // 7 * 4.5 / 8 = 3.9375
-      expect(hardwareService.estimateModelMemoryGB(7, 'Q4_K_M')).toBeCloseTo(3.9375);
+      expect(hardwareService.estimateModelMemoryGB(7, 'Q4_K_M')).toBeCloseTo(
+        3.9375,
+      );
     });
 
     it('estimates 13B Q8_0 correctly', () => {
@@ -337,32 +352,44 @@ describe('HardwareService', () => {
 
     it('uses 2.625 bits for Q2_K', () => {
       // 7 * 2.625 / 8 = 2.296875
-      expect(hardwareService.estimateModelMemoryGB(7, 'Q2_K')).toBeCloseTo(2.296875);
+      expect(hardwareService.estimateModelMemoryGB(7, 'Q2_K')).toBeCloseTo(
+        2.296875,
+      );
     });
 
     it('returns default 4.5 bits for unknown quantization', () => {
       // 7 * 4.5 / 8 = 3.9375
-      expect(hardwareService.estimateModelMemoryGB(7, 'UNKNOWN')).toBeCloseTo(3.9375);
+      expect(hardwareService.estimateModelMemoryGB(7, 'UNKNOWN')).toBeCloseTo(
+        3.9375,
+      );
     });
 
     it('handles case-insensitive quantization strings', () => {
       // q4_k_m should match Q4_K_M
-      expect(hardwareService.estimateModelMemoryGB(7, 'q4_k_m')).toBeCloseTo(3.9375);
+      expect(hardwareService.estimateModelMemoryGB(7, 'q4_k_m')).toBeCloseTo(
+        3.9375,
+      );
     });
 
     it('estimates Q3_K_S correctly', () => {
       // 7 * 3.4375 / 8 = 3.0078125
-      expect(hardwareService.estimateModelMemoryGB(7, 'Q3_K_S')).toBeCloseTo(3.0078125);
+      expect(hardwareService.estimateModelMemoryGB(7, 'Q3_K_S')).toBeCloseTo(
+        3.0078125,
+      );
     });
 
     it('estimates Q5_K_S correctly', () => {
       // 7 * 5.5 / 8 = 4.8125
-      expect(hardwareService.estimateModelMemoryGB(7, 'Q5_K_S')).toBeCloseTo(4.8125);
+      expect(hardwareService.estimateModelMemoryGB(7, 'Q5_K_S')).toBeCloseTo(
+        4.8125,
+      );
     });
 
     it('estimates Q6_K correctly', () => {
       // 7 * 6.5 / 8 = 5.6875
-      expect(hardwareService.estimateModelMemoryGB(7, 'Q6_K')).toBeCloseTo(5.6875);
+      expect(hardwareService.estimateModelMemoryGB(7, 'Q6_K')).toBeCloseTo(
+        5.6875,
+      );
     });
 
     it('estimates Q4_0 correctly', () => {
@@ -392,11 +419,15 @@ describe('HardwareService', () => {
     });
 
     it('formats gigabytes correctly', () => {
-      expect(hardwareService.formatBytes(4 * 1024 * 1024 * 1024)).toBe('4.00 GB');
+      expect(hardwareService.formatBytes(4 * 1024 * 1024 * 1024)).toBe(
+        '4.00 GB',
+      );
     });
 
     it('formats terabytes correctly', () => {
-      expect(hardwareService.formatBytes(2 * 1024 * 1024 * 1024 * 1024)).toBe('2.00 TB');
+      expect(hardwareService.formatBytes(2 * 1024 * 1024 * 1024 * 1024)).toBe(
+        '2.00 TB',
+      );
     });
   });
 
@@ -405,14 +436,18 @@ describe('HardwareService', () => {
   // ========================================================================
   describe('getModelTotalSize', () => {
     it('returns fileSize for text-only model', () => {
-      expect(hardwareService.getModelTotalSize({ fileSize: 4000000000 })).toBe(4000000000);
+      expect(hardwareService.getModelTotalSize({ fileSize: 4000000000 })).toBe(
+        4000000000,
+      );
     });
 
     it('combines fileSize and mmProjFileSize for vision model', () => {
-      expect(hardwareService.getModelTotalSize({
-        fileSize: 4000000000,
-        mmProjFileSize: 500000000,
-      })).toBe(4500000000);
+      expect(
+        hardwareService.getModelTotalSize({
+          fileSize: 4000000000,
+          mmProjFileSize: 500000000,
+        }),
+      ).toBe(4500000000);
     });
 
     it('returns 0 when no size fields are present', () => {
@@ -420,11 +455,18 @@ describe('HardwareService', () => {
     });
 
     it('uses size field as fallback for fileSize', () => {
-      expect(hardwareService.getModelTotalSize({ size: 3000000000 })).toBe(3000000000);
+      expect(hardwareService.getModelTotalSize({ size: 3000000000 })).toBe(
+        3000000000,
+      );
     });
 
     it('prefers fileSize over size', () => {
-      expect(hardwareService.getModelTotalSize({ fileSize: 4000000000, size: 3000000000 })).toBe(4000000000);
+      expect(
+        hardwareService.getModelTotalSize({
+          fileSize: 4000000000,
+          size: 3000000000,
+        }),
+      ).toBe(4000000000);
     });
   });
 
@@ -463,7 +505,10 @@ describe('HardwareService', () => {
     });
 
     it('accepts custom multiplier', () => {
-      const ram = hardwareService.estimateModelRam({ fileSize: 4000000000 }, 2.0);
+      const ram = hardwareService.estimateModelRam(
+        { fileSize: 4000000000 },
+        2.0,
+      );
       expect(ram).toBe(8000000000);
     });
 
@@ -489,9 +534,12 @@ describe('HardwareService', () => {
     });
 
     it('formats with custom multiplier', () => {
-      const result = hardwareService.formatModelRam({
-        fileSize: 4 * 1024 * 1024 * 1024,
-      }, 2.0);
+      const result = hardwareService.formatModelRam(
+        {
+          fileSize: 4 * 1024 * 1024 * 1024,
+        },
+        2.0,
+      );
       // 4GB * 2.0 = 8GB
       expect(result).toBe('~8.0 GB');
     });
@@ -502,7 +550,9 @@ describe('HardwareService', () => {
   // ========================================================================
   describe('getDeviceTier', () => {
     const setupWithTotalMemory = async (totalGB: number) => {
-      mockedDeviceInfo.getTotalMemory.mockResolvedValue(totalGB * 1024 * 1024 * 1024);
+      mockedDeviceInfo.getTotalMemory.mockResolvedValue(
+        totalGB * 1024 * 1024 * 1024,
+      );
       mockedDeviceInfo.getUsedMemory.mockResolvedValue(2 * 1024 * 1024 * 1024);
       mockedDeviceInfo.getModel.mockReturnValue('Test');
       mockedDeviceInfo.getSystemName.mockReturnValue('Android');
@@ -531,7 +581,7 @@ describe('HardwareService', () => {
       expect(hardwareService.getDeviceTier()).toBe('flagship');
     });
 
-    it('returns "low" for default (no cached info)', () => {
+    it('returns "medium" for default (no cached info)', () => {
       // Default getTotalMemoryGB returns 4, which is "medium"
       expect(hardwareService.getDeviceTier()).toBe('medium');
     });
@@ -564,10 +614,14 @@ describe('HardwareService', () => {
       deviceId?: string;
     }) => {
       if (opts.platform) Platform.OS = opts.platform;
-      mockedDeviceInfo.getTotalMemory.mockResolvedValue(opts.totalGB * 1024 * 1024 * 1024);
+      mockedDeviceInfo.getTotalMemory.mockResolvedValue(
+        opts.totalGB * 1024 * 1024 * 1024,
+      );
       mockedDeviceInfo.getUsedMemory.mockResolvedValue(2 * 1024 * 1024 * 1024);
       mockedDeviceInfo.getModel.mockReturnValue(opts.model ?? 'Test');
-      mockedDeviceInfo.getSystemName.mockReturnValue(opts.platform === 'ios' ? 'iOS' : 'Android');
+      mockedDeviceInfo.getSystemName.mockReturnValue(
+        opts.platform === 'ios' ? 'iOS' : 'Android',
+      );
       mockedDeviceInfo.getSystemVersion.mockReturnValue('14');
       mockedDeviceInfo.isEmulator.mockResolvedValue(false);
       if (opts.deviceId) {
@@ -586,7 +640,11 @@ describe('HardwareService', () => {
 
     describe('iOS', () => {
       it('detects A18 chip for iPhone17,x', async () => {
-        await setupDevice({ totalGB: 8, platform: 'ios', deviceId: 'iPhone17,3' });
+        await setupDevice({
+          totalGB: 8,
+          platform: 'ios',
+          deviceId: 'iPhone17,3',
+        });
         const soc = await hardwareService.getSoCInfo();
         expect(soc.vendor).toBe('apple');
         expect(soc.hasNPU).toBe(true);
@@ -594,38 +652,62 @@ describe('HardwareService', () => {
       });
 
       it('detects A17Pro chip for iPhone16,x', async () => {
-        await setupDevice({ totalGB: 8, platform: 'ios', deviceId: 'iPhone16,2' });
+        await setupDevice({
+          totalGB: 8,
+          platform: 'ios',
+          deviceId: 'iPhone16,2',
+        });
         const soc = await hardwareService.getSoCInfo();
         expect(soc.appleChip).toBe('A17Pro');
       });
 
       it('detects A16 chip for iPhone15,x', async () => {
-        await setupDevice({ totalGB: 6, platform: 'ios', deviceId: 'iPhone15,3' });
+        await setupDevice({
+          totalGB: 6,
+          platform: 'ios',
+          deviceId: 'iPhone15,3',
+        });
         const soc = await hardwareService.getSoCInfo();
         expect(soc.appleChip).toBe('A16');
       });
 
       it('detects A15 chip for iPhone14,x', async () => {
-        await setupDevice({ totalGB: 6, platform: 'ios', deviceId: 'iPhone14,5' });
+        await setupDevice({
+          totalGB: 6,
+          platform: 'ios',
+          deviceId: 'iPhone14,5',
+        });
         const soc = await hardwareService.getSoCInfo();
         expect(soc.appleChip).toBe('A15');
       });
 
       it('detects A14 chip for iPhone13,x', async () => {
-        await setupDevice({ totalGB: 4, platform: 'ios', deviceId: 'iPhone13,1' });
+        await setupDevice({
+          totalGB: 4,
+          platform: 'ios',
+          deviceId: 'iPhone13,1',
+        });
         const soc = await hardwareService.getSoCInfo();
         expect(soc.appleChip).toBe('A14');
       });
 
       it('falls back to RAM-based chip estimate for unknown device ID', async () => {
-        await setupDevice({ totalGB: 8, platform: 'ios', deviceId: 'iPad14,1' });
+        await setupDevice({
+          totalGB: 8,
+          platform: 'ios',
+          deviceId: 'iPad14,1',
+        });
         const soc = await hardwareService.getSoCInfo();
         expect(soc.vendor).toBe('apple');
         expect(soc.appleChip).toBe('A15'); // 8GB >= 6 → A15 fallback
       });
 
       it('falls back to A14 for low-RAM unknown device', async () => {
-        await setupDevice({ totalGB: 3, platform: 'ios', deviceId: 'iPad10,1' });
+        await setupDevice({
+          totalGB: 3,
+          platform: 'ios',
+          deviceId: 'iPad10,1',
+        });
         const soc = await hardwareService.getSoCInfo();
         expect(soc.appleChip).toBe('A14'); // 3GB < 6 → A14 fallback
       });
@@ -633,47 +715,82 @@ describe('HardwareService', () => {
 
     describe('Android', () => {
       it('detects Qualcomm from hardware string', async () => {
-        await setupDevice({ totalGB: 8, platform: 'android', hardware: 'qcom', model: 'Samsung Galaxy S24' });
+        await setupDevice({
+          totalGB: 8,
+          platform: 'android',
+          hardware: 'qcom',
+          model: 'Samsung Galaxy S24',
+        });
         const soc = await hardwareService.getSoCInfo();
         expect(soc.vendor).toBe('qualcomm');
         // hasNPU depends on RAM heuristic (no native module) — 8GB → min variant → true
       });
 
       it('returns undefined qnnVariant when native module unavailable (no RAM heuristic)', async () => {
-        await setupDevice({ totalGB: 12, platform: 'android', hardware: 'qcom', model: 'Test' });
+        await setupDevice({
+          totalGB: 12,
+          platform: 'android',
+          hardware: 'qcom',
+          model: 'Test',
+        });
         const soc = await hardwareService.getSoCInfo();
         expect(soc.qnnVariant).toBeUndefined();
         expect(soc.hasNPU).toBe(false);
       });
 
       it('returns hasNPU false for Qualcomm without native module (any RAM)', async () => {
-        await setupDevice({ totalGB: 8, platform: 'android', hardware: 'qcom', model: 'Test' });
+        await setupDevice({
+          totalGB: 8,
+          platform: 'android',
+          hardware: 'qcom',
+          model: 'Test',
+        });
         const soc = await hardwareService.getSoCInfo();
         expect(soc.qnnVariant).toBeUndefined();
         expect(soc.hasNPU).toBe(false);
       });
 
       it('detects Tensor for Pixel devices', async () => {
-        await setupDevice({ totalGB: 8, platform: 'android', hardware: 'unknown-hw', model: 'Pixel 8 Pro' });
+        await setupDevice({
+          totalGB: 8,
+          platform: 'android',
+          hardware: 'unknown-hw',
+          model: 'Pixel 8 Pro',
+        });
         const soc = await hardwareService.getSoCInfo();
         expect(soc.vendor).toBe('tensor');
         expect(soc.hasNPU).toBe(false);
       });
 
       it('detects MediaTek from hardware string', async () => {
-        await setupDevice({ totalGB: 6, platform: 'android', hardware: 'mt6789', model: 'Test' });
+        await setupDevice({
+          totalGB: 6,
+          platform: 'android',
+          hardware: 'mt6789',
+          model: 'Test',
+        });
         const soc = await hardwareService.getSoCInfo();
         expect(soc.vendor).toBe('mediatek');
       });
 
       it('detects Exynos from hardware string', async () => {
-        await setupDevice({ totalGB: 8, platform: 'android', hardware: 'samsungexynos2200', model: 'Test' });
+        await setupDevice({
+          totalGB: 8,
+          platform: 'android',
+          hardware: 'samsungexynos2200',
+          model: 'Test',
+        });
         const soc = await hardwareService.getSoCInfo();
         expect(soc.vendor).toBe('exynos');
       });
 
       it('returns unknown vendor for unrecognized hardware', async () => {
-        await setupDevice({ totalGB: 6, platform: 'android', hardware: 'something-else', model: 'Generic Phone' });
+        await setupDevice({
+          totalGB: 6,
+          platform: 'android',
+          hardware: 'something-else',
+          model: 'Generic Phone',
+        });
         const soc = await hardwareService.getSoCInfo();
         expect(soc.vendor).toBe('unknown');
         expect(soc.hasNPU).toBe(false);
@@ -683,9 +800,15 @@ describe('HardwareService', () => {
     describe('getQnnVariantFromSoC range-based detection', () => {
       const setupQualcommWithSoC = async (socModel: string) => {
         Platform.OS = 'android' as typeof Platform.OS;
-        NativeModules.LocalDreamModule = { getSoCModel: jest.fn().mockResolvedValue(socModel) };
-        mockedDeviceInfo.getTotalMemory.mockResolvedValue(8 * 1024 * 1024 * 1024);
-        mockedDeviceInfo.getUsedMemory.mockResolvedValue(2 * 1024 * 1024 * 1024);
+        NativeModules.LocalDreamModule = {
+          getSoCModel: jest.fn().mockResolvedValue(socModel),
+        };
+        mockedDeviceInfo.getTotalMemory.mockResolvedValue(
+          8 * 1024 * 1024 * 1024,
+        );
+        mockedDeviceInfo.getUsedMemory.mockResolvedValue(
+          2 * 1024 * 1024 * 1024,
+        );
         mockedDeviceInfo.getModel.mockReturnValue('Test');
         mockedDeviceInfo.getSystemName.mockReturnValue('Android');
         mockedDeviceInfo.getSystemVersion.mockReturnValue('14');
@@ -718,16 +841,24 @@ describe('HardwareService', () => {
         ['SM7675-AB', 'min', 'Snapdragon 7+ Gen 3'],
         ['SM7225-AB', 'min', 'Snapdragon 750G'],
         ['SM6375-AB', 'min', 'Snapdragon 695'],
-      ] as const)('returns %s variant for %s (%s)', async (socModel, expected, _desc) => {
-        await setupQualcommWithSoC(socModel);
-        const soc = await hardwareService.getSoCInfo();
-        expect(soc.qnnVariant).toBe(expected);
-        expect(soc.hasNPU).toBe(true);
-      });
+      ] as const)(
+        'returns %s variant for %s (%s)',
+        async (socModel, expected, _desc) => {
+          await setupQualcommWithSoC(socModel);
+          const soc = await hardwareService.getSoCInfo();
+          expect(soc.qnnVariant).toBe(expected);
+          expect(soc.hasNPU).toBe(true);
+        },
+      );
     });
 
     it('caches SoC info after first call', async () => {
-      await setupDevice({ totalGB: 8, platform: 'android', hardware: 'qcom', model: 'Test' });
+      await setupDevice({
+        totalGB: 8,
+        platform: 'android',
+        hardware: 'qcom',
+        model: 'Test',
+      });
       const first = await hardwareService.getSoCInfo();
       const second = await hardwareService.getSoCInfo();
       expect(first).toBe(second); // same reference
@@ -747,14 +878,20 @@ describe('HardwareService', () => {
       deviceId?: string;
     }) => {
       Platform.OS = opts.platform;
-      mockedDeviceInfo.getTotalMemory.mockResolvedValue(opts.totalGB * 1024 * 1024 * 1024);
+      mockedDeviceInfo.getTotalMemory.mockResolvedValue(
+        opts.totalGB * 1024 * 1024 * 1024,
+      );
       mockedDeviceInfo.getUsedMemory.mockResolvedValue(2 * 1024 * 1024 * 1024);
       mockedDeviceInfo.getModel.mockReturnValue(opts.model ?? 'Test');
-      mockedDeviceInfo.getSystemName.mockReturnValue(opts.platform === 'ios' ? 'iOS' : 'Android');
+      mockedDeviceInfo.getSystemName.mockReturnValue(
+        opts.platform === 'ios' ? 'iOS' : 'Android',
+      );
       mockedDeviceInfo.getSystemVersion.mockReturnValue('14');
       mockedDeviceInfo.isEmulator.mockResolvedValue(false);
-      if (opts.deviceId) mockedDeviceInfo.getDeviceId.mockReturnValue(opts.deviceId);
-      if (opts.hardware) mockedDeviceInfo.getHardware.mockResolvedValue(opts.hardware);
+      if (opts.deviceId)
+        mockedDeviceInfo.getDeviceId.mockReturnValue(opts.deviceId);
+      if (opts.hardware)
+        mockedDeviceInfo.getHardware.mockResolvedValue(opts.hardware);
       await hardwareService.getDeviceInfo();
     };
 
@@ -766,30 +903,62 @@ describe('HardwareService', () => {
 
     describe('iOS recommendations', () => {
       it('recommends SDXL for high-end devices (A17Pro+, 6GB+)', async () => {
-        await setupDevice({ totalGB: 8, platform: 'ios', deviceId: 'iPhone16,2' });
+        await setupDevice({
+          totalGB: 8,
+          platform: 'ios',
+          deviceId: 'iPhone16,2',
+        });
         const rec = await hardwareService.getImageModelRecommendation();
         expect(rec.recommendedBackend).toBe('coreml');
-        expect(rec.recommendedModels).toEqual(expect.arrayContaining(['sdxl', 'xl-base']));
+        expect(rec.recommendedModels).toEqual(
+          expect.arrayContaining(['sdxl', 'xl-base']),
+        );
         expect(rec.bannerText).toContain('SDXL');
       });
 
       it('recommends SD 1.5/2.1 palettized for mid-range (A15/A16, 6GB+)', async () => {
-        await setupDevice({ totalGB: 6, platform: 'ios', deviceId: 'iPhone15,2' });
+        await setupDevice({
+          totalGB: 6,
+          platform: 'ios',
+          deviceId: 'iPhone15,2',
+        });
         const rec = await hardwareService.getImageModelRecommendation();
         expect(rec.recommendedBackend).toBe('coreml');
-        expect(rec.recommendedModels).toEqual(expect.arrayContaining(['v1-5-palettized', '2-1-base-palettized']));
+        expect(rec.recommendedModels).toEqual(
+          expect.arrayContaining(['v1-5-palettized', '2-1-base-palettized']),
+        );
         expect(rec.bannerText).toContain('Palettized');
       });
 
-      it('recommends SD 1.5 palettized only for low-end', async () => {
-        await setupDevice({ totalGB: 4, platform: 'ios', deviceId: 'iPhone13,1' });
+      it('recommends SD 1.5 palettized for mid-range (4GB+)', async () => {
+        await setupDevice({
+          totalGB: 4,
+          platform: 'ios',
+          deviceId: 'iPhone13,1',
+        });
         const rec = await hardwareService.getImageModelRecommendation();
         expect(rec.recommendedBackend).toBe('coreml');
-        expect(rec.recommendedModels).toEqual(['v1-5-palettized']);
+        expect(rec.recommendedModels).toEqual(['v1-5-palettized', '2-1-base-palettized']);
+      });
+
+      it('recommends Low RAM models for <4GB devices', async () => {
+        await setupDevice({
+          totalGB: 3.7,
+          platform: 'ios',
+          deviceId: 'iPhone11,2',
+        });
+        const rec = await hardwareService.getImageModelRecommendation();
+        expect(rec.recommendedBackend).toBe('coreml');
+        expect(rec.recommendedModels).toEqual(['low ram']);
+        expect(rec.bannerText).toContain('Low RAM');
       });
 
       it('always includes coreml in compatible backends on iOS', async () => {
-        await setupDevice({ totalGB: 6, platform: 'ios', deviceId: 'iPhone15,2' });
+        await setupDevice({
+          totalGB: 6,
+          platform: 'ios',
+          deviceId: 'iPhone15,2',
+        });
         const rec = await hardwareService.getImageModelRecommendation();
         expect(rec.compatibleBackends).toContain('coreml');
       });
@@ -798,9 +967,15 @@ describe('HardwareService', () => {
     describe('Android Qualcomm recommendations', () => {
       it('recommends QNN for Qualcomm devices with known SoC', async () => {
         Platform.OS = 'android' as typeof Platform.OS;
-        NativeModules.LocalDreamModule = { getSoCModel: jest.fn().mockResolvedValue('SM8550-AB') };
-        mockedDeviceInfo.getTotalMemory.mockResolvedValue(12 * 1024 * 1024 * 1024);
-        mockedDeviceInfo.getUsedMemory.mockResolvedValue(2 * 1024 * 1024 * 1024);
+        NativeModules.LocalDreamModule = {
+          getSoCModel: jest.fn().mockResolvedValue('SM8550-AB'),
+        };
+        mockedDeviceInfo.getTotalMemory.mockResolvedValue(
+          12 * 1024 * 1024 * 1024,
+        );
+        mockedDeviceInfo.getUsedMemory.mockResolvedValue(
+          2 * 1024 * 1024 * 1024,
+        );
         mockedDeviceInfo.getModel.mockReturnValue('Test');
         mockedDeviceInfo.getSystemName.mockReturnValue('Android');
         mockedDeviceInfo.getSystemVersion.mockReturnValue('14');
@@ -810,11 +985,18 @@ describe('HardwareService', () => {
         const rec = await hardwareService.getImageModelRecommendation();
         expect(rec.recommendedBackend).toBe('qnn');
         expect(rec.qnnVariant).toBe('8gen2');
-        expect(rec.compatibleBackends).toEqual(expect.arrayContaining(['qnn', 'mnn']));
+        expect(rec.compatibleBackends).toEqual(
+          expect.arrayContaining(['qnn', 'mnn']),
+        );
       });
 
       it('recommends MNN for Qualcomm without native module (cannot determine SoC)', async () => {
-        await setupDevice({ totalGB: 12, platform: 'android', hardware: 'qcom', model: 'Test' });
+        await setupDevice({
+          totalGB: 12,
+          platform: 'android',
+          hardware: 'qcom',
+          model: 'Test',
+        });
         const rec = await hardwareService.getImageModelRecommendation();
         expect(rec.recommendedBackend).toBe('mnn');
         expect(rec.bannerText).toContain('Snapdragon');
@@ -823,7 +1005,12 @@ describe('HardwareService', () => {
 
     describe('Android non-Qualcomm recommendations', () => {
       it('recommends MNN for non-Qualcomm Android', async () => {
-        await setupDevice({ totalGB: 8, platform: 'android', hardware: 'mt6789', model: 'Test' });
+        await setupDevice({
+          totalGB: 8,
+          platform: 'android',
+          hardware: 'mt6789',
+          model: 'Test',
+        });
         const rec = await hardwareService.getImageModelRecommendation();
         expect(rec.recommendedBackend).toBe('mnn');
         expect(rec.bannerText).toContain('GPU');
@@ -832,7 +1019,12 @@ describe('HardwareService', () => {
       });
 
       it('recommends MNN for Tensor (Pixel) devices', async () => {
-        await setupDevice({ totalGB: 8, platform: 'android', hardware: 'unknown-hw', model: 'Pixel 8 Pro' });
+        await setupDevice({
+          totalGB: 8,
+          platform: 'android',
+          hardware: 'unknown-hw',
+          model: 'Pixel 8 Pro',
+        });
         const rec = await hardwareService.getImageModelRecommendation();
         expect(rec.recommendedBackend).toBe('mnn');
       });
@@ -841,9 +1033,15 @@ describe('HardwareService', () => {
     describe('Android Qualcomm without SM prefix', () => {
       it('recommends MNN for Qualcomm with non-SM SoC (e.g. native module unavailable)', async () => {
         Platform.OS = 'android' as typeof Platform.OS;
-        NativeModules.LocalDreamModule = { getSoCModel: jest.fn().mockResolvedValue('') };
-        mockedDeviceInfo.getTotalMemory.mockResolvedValue(8 * 1024 * 1024 * 1024);
-        mockedDeviceInfo.getUsedMemory.mockResolvedValue(2 * 1024 * 1024 * 1024);
+        NativeModules.LocalDreamModule = {
+          getSoCModel: jest.fn().mockResolvedValue(''),
+        };
+        mockedDeviceInfo.getTotalMemory.mockResolvedValue(
+          8 * 1024 * 1024 * 1024,
+        );
+        mockedDeviceInfo.getUsedMemory.mockResolvedValue(
+          2 * 1024 * 1024 * 1024,
+        );
         mockedDeviceInfo.getModel.mockReturnValue('POCO F3');
         mockedDeviceInfo.getSystemName.mockReturnValue('Android');
         mockedDeviceInfo.getSystemVersion.mockReturnValue('14');
@@ -860,20 +1058,34 @@ describe('HardwareService', () => {
 
     describe('low RAM warning', () => {
       it('adds warning for devices under 4GB', async () => {
-        await setupDevice({ totalGB: 3, platform: 'android', hardware: 'qcom', model: 'Test' });
+        await setupDevice({
+          totalGB: 3,
+          platform: 'android',
+          hardware: 'qcom',
+          model: 'Test',
+        });
         const rec = await hardwareService.getImageModelRecommendation();
         expect(rec.warning).toContain('Low RAM');
       });
 
       it('has no warning for devices with 4GB+', async () => {
-        await setupDevice({ totalGB: 8, platform: 'android', hardware: 'qcom', model: 'Test' });
+        await setupDevice({
+          totalGB: 8,
+          platform: 'android',
+          hardware: 'qcom',
+          model: 'Test',
+        });
         const rec = await hardwareService.getImageModelRecommendation();
         expect(rec.warning).toBeUndefined();
       });
     });
 
     it('caches recommendation after first call', async () => {
-      await setupDevice({ totalGB: 8, platform: 'ios', deviceId: 'iPhone16,2' });
+      await setupDevice({
+        totalGB: 8,
+        platform: 'ios',
+        deviceId: 'iPhone16,2',
+      });
       const first = await hardwareService.getImageModelRecommendation();
       const second = await hardwareService.getImageModelRecommendation();
       expect(first).toBe(second);

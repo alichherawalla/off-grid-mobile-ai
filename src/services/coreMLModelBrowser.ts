@@ -17,6 +17,8 @@ export interface CoreMLImageModel {
   repo: string;
   /** For multi-file models (no zip), individual files to download */
   files?: CoreMLModelFile[];
+  /** Attention variant: 'split_einsum' (ANE) or 'original' (CPU/GPU) */
+  attentionVariant?: 'split_einsum' | 'original';
 }
 
 interface HFTreeEntry {
@@ -30,7 +32,15 @@ interface HFTreeEntry {
 // Palettized = 6-bit quantized, ~50% smaller, have ZIP downloads.
 // Full precision = larger but higher quality, multi-file download required.
 // SDXL iOS = 4-bit mixed-bit palettized, 768×768, ANE-optimized.
-const REPOS: { repo: string; name: string; description: string }[] = [
+interface RepoEntry {
+  repo: string;
+  name: string;
+  description: string;
+  /** 'split_einsum' (default, ANE) or 'original' (CPU/GPU, lower peak memory) */
+  variant?: 'original';
+}
+
+const REPOS: RepoEntry[] = [
   {
     repo: 'apple/coreml-stable-diffusion-v1-5-palettized',
     name: 'SD 1.5 Palettized',
@@ -40,6 +50,18 @@ const REPOS: { repo: string; name: string; description: string }[] = [
     repo: 'apple/coreml-stable-diffusion-2-1-base-palettized',
     name: 'SD 2.1 Palettized',
     description: '6-bit quantized, 512×512',
+  },
+  {
+    repo: 'apple/coreml-stable-diffusion-v1-5-palettized',
+    name: 'SD 1.5 Palettized (Low RAM)',
+    description: '6-bit quantized, 512×512, CPU/GPU — fits ≤4 GB devices',
+    variant: 'original',
+  },
+  {
+    repo: 'apple/coreml-stable-diffusion-2-1-base-palettized',
+    name: 'SD 2.1 Palettized (Low RAM)',
+    description: '6-bit quantized, 512×512, CPU/GPU — fits ≤4 GB devices',
+    variant: 'original',
   },
   {
     repo: 'apple/coreml-stable-diffusion-xl-base-ios',
@@ -74,32 +96,32 @@ async function fetchRepoTree(repo: string, path = ''): Promise<HFTreeEntry[]> {
 }
 
 /**
- * Finds a zip archive in the repo that contains compiled split_einsum models.
- * Palettized repos have: *_split_einsum_v2_compiled.zip
- * SDXL iOS has: *_split_einsum_compiled.zip
- * Returns the zip entry or null.
+ * Finds a zip archive in the repo that contains compiled models.
+ * @param variant 'split_einsum' (ANE-optimized, default) or 'original' (CPU/GPU)
  */
-function findCompiledZip(entries: HFTreeEntry[]): HFTreeEntry | null {
-  // Prefer split_einsum_v2 (palettized), then split_einsum (SDXL iOS)
-  const v2Zip = entries.find(
+function findCompiledZip(entries: HFTreeEntry[], variant: 'split_einsum' | 'original' = 'split_einsum'): HFTreeEntry | null {
+  return entries.find(
     (e) =>
       e.type === 'file' &&
       e.path.endsWith('.zip') &&
-      e.path.includes('split_einsum') &&
+      e.path.includes(variant) &&
       e.path.includes('compiled'),
-  );
-  return v2Zip || null;
+  ) || null;
 }
 
 async function fetchModelFromRepo(
-  repoInfo: (typeof REPOS)[number],
+  repoInfo: RepoEntry,
 ): Promise<CoreMLImageModel | null> {
-  const { repo, name } = repoInfo;
+  const { repo, name, variant } = repoInfo;
   const topLevel = await fetchRepoTree(repo);
-  const id = `coreml_${repo.replace(/\//g, '_')}`;
+  const isOriginal = variant === 'original';
+  const id = isOriginal
+    ? `coreml_${repo.replace(/\//g, '_')}_original`
+    : `coreml_${repo.replace(/\//g, '_')}`;
+  const attentionVariant = isOriginal ? 'original' : 'split_einsum' as const;
 
   // Strategy 1: Look for a zip archive (palettized + SDXL iOS repos)
-  const zipEntry = findCompiledZip(topLevel);
+  const zipEntry = findCompiledZip(topLevel, isOriginal ? 'original' : 'split_einsum');
   if (zipEntry) {
     const size = zipEntry.lfs?.size ?? zipEntry.size ?? 0;
     return {
@@ -111,6 +133,7 @@ async function fetchModelFromRepo(
       fileName: zipEntry.path,
       size,
       repo,
+      attentionVariant,
     };
   }
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   ScrollView,
@@ -254,6 +255,7 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
       onSelectImageModel?.(model);
     } catch (error) {
       logger.error('Failed to load image model:', error);
+      Alert.alert('Failed to Load', (error as Error).message);
     } finally {
       setIsLoadingImage(false);
     }

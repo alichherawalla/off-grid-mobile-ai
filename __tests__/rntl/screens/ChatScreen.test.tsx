@@ -2897,7 +2897,7 @@ describe('ChatScreen', () => {
       mockLoadModel.mockImplementation(() => new Promise(() => {}));
 
       const { getByText } = renderChatScreen();
-      await act(async () => { await new Promise<void>(r => setTimeout(() => r(), 300)); });
+      await act(async () => { await new Promise<void>(r => setTimeout(() => r(), 500)); });
 
       // Should show model name in loading state
       expect(getByText(model.name)).toBeTruthy();

@@ -1,12 +1,16 @@
 import { shouldShowSharePrompt, subscribeSharePrompt, emitSharePrompt } from '../../../src/utils/sharePrompt';
 
 describe('shouldShowSharePrompt', () => {
-  it('returns true for count 1 (first generation)', () => {
-    expect(shouldShowSharePrompt(1)).toBe(true);
+  it('returns false for count 1 (first generation is skipped)', () => {
+    expect(shouldShowSharePrompt(1)).toBe(false);
   });
 
-  it('returns false for counts 2-9', () => {
-    for (let i = 2; i <= 9; i++) {
+  it('returns true for count 2 (second generation)', () => {
+    expect(shouldShowSharePrompt(2)).toBe(true);
+  });
+
+  it('returns false for counts 3-9', () => {
+    for (let i = 3; i <= 9; i++) {
       expect(shouldShowSharePrompt(i)).toBe(false);
     }
   });

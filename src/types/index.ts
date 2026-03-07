@@ -254,16 +254,16 @@ export interface ImageGenerationModel {
   variant?: string; // e.g., 'gpu', 'npu', 'cpu'
 }
 
-// ONNX Image Model types (for Stable Diffusion via ONNX Runtime)
 export interface ONNXImageModel {
   id: string;
   name: string;
   description: string;
   modelPath: string;
   downloadedAt: string;
-  size: number; // Total size of all model files in bytes
-  style?: string; // e.g., 'creative', 'photorealistic', 'anime'
-  backend?: 'mnn' | 'qnn' | 'coreml'; // 'mnn' for GPU (OpenCL), 'qnn' for Qualcomm NPU, 'coreml' for Apple Core ML
+  size: number;
+  style?: string;
+  backend?: 'mnn' | 'qnn' | 'coreml';
+  attentionVariant?: 'split_einsum' | 'original';
 }
 
 // Image generation state for UI

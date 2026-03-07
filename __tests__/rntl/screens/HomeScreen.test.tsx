@@ -69,6 +69,7 @@ jest.mock('../../../src/services/activeModelService', () => ({
     unloadAllModels: mockUnloadAllModels,
     getActiveModels: jest.fn(() => ({ text: null, image: null })),
     checkMemoryForModel: mockCheckMemoryForModel,
+    checkMemoryForDualModel: jest.fn(() => Promise.resolve({ canLoad: true, severity: 'safe', message: '' })),
     subscribe: jest.fn(() => jest.fn()),
     getResourceUsage: jest.fn(() => Promise.resolve({
       textModelMemory: 0,
@@ -77,6 +78,7 @@ jest.mock('../../../src/services/activeModelService', () => ({
       memoryAvailable: 4 * 1024 * 1024 * 1024,
     })),
     syncWithNativeState: jest.fn(),
+    getLoadedModelIds: jest.fn(() => ({ textModelId: null, imageModelId: null })),
   },
 }));
 
@@ -93,6 +95,7 @@ jest.mock('../../../src/services/hardware', () => ({
       totalMemory: 8 * 1024 * 1024 * 1024,
       availableMemory: 4 * 1024 * 1024 * 1024,
     })),
+    getTotalMemoryGB: jest.fn(() => 8),
     formatBytes: jest.fn((bytes: number) => `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`),
     formatModelSize: jest.fn(() => '4.0 GB'),
   },
@@ -238,6 +241,7 @@ describe('HomeScreen', () => {
       totalMemory: 0,
       memoryAvailable: 4 * 1024 * 1024 * 1024,
     });
+    (activeModelService.getLoadedModelIds as jest.Mock).mockReturnValue({ textModelId: null, imageModelId: null });
     mockLoadTextModel.mockResolvedValue(undefined);
     mockLoadImageModel.mockResolvedValue(undefined);
     mockUnloadTextModel.mockResolvedValue(undefined);
@@ -1074,6 +1078,9 @@ describe('HomeScreen', () => {
         fireEvent.press(getByTestId('model-item'));
       });
 
+      // Wait for sheet-close delay before alert appears
+      await act(async () => { await new Promise<void>(r => setTimeout(r, 400)); });
+
       await act(async () => {
         fireEvent.press(getByText('Load Anyway'));
       });
@@ -1089,6 +1096,7 @@ describe('HomeScreen', () => {
         downloadedModels: [model],
         activeModelId: model.id,
       });
+      (activeModelService.getLoadedModelIds as jest.Mock).mockReturnValue({ textModelId: model.id, imageModelId: null });
 
       const { getByText, getByTestId } = renderHomeScreen();
       fireEvent.press(getByText('Already Active'));
@@ -1521,7 +1529,7 @@ describe('HomeScreen', () => {
       });
 
       await waitFor(() => {
-        expect(queryByText('Low Memory Warning')).toBeTruthy();
+        expect(queryByText('Low Memory')).toBeTruthy();
         expect(queryByText('Load Anyway')).toBeTruthy();
       });
     });
@@ -1543,6 +1551,9 @@ describe('HomeScreen', () => {
         fireEvent.press(getByTestId('model-item'));
       });
 
+      // Wait for sheet-close delay before alert appears
+      await act(async () => { await new Promise<void>(r => setTimeout(r, 400)); });
+
       await act(async () => {
         fireEvent.press(getByText('Load Anyway'));
       });
@@ -1558,6 +1569,7 @@ describe('HomeScreen', () => {
         downloadedImageModels: [imageModel],
         activeImageModelId: imageModel.id,
       });
+      (activeModelService.getLoadedModelIds as jest.Mock).mockReturnValue({ textModelId: null, imageModelId: imageModel.id });
 
       const { getByTestId } = renderHomeScreen();
       fireEvent.press(getByTestId('image-model-card'));

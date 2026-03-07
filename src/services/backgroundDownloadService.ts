@@ -307,7 +307,7 @@ class BackgroundDownloadService {
   unmarkSilent(downloadId: number): void { this.silentDownloadIds.delete(downloadId); }
 
   async excludeFromBackup(path: string): Promise<boolean> {
-    if (!this.isAvailable()) return false;
+    if (!this.isAvailable() || typeof DownloadManagerModule.excludePathFromBackup !== 'function') return false;
     return DownloadManagerModule.excludePathFromBackup(path).catch(() => false);
   }
 

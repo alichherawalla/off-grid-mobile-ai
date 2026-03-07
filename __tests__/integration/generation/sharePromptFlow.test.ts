@@ -105,22 +105,33 @@ describe('Share Prompt Flow Integration', () => {
       expect(getAppState().textGenerationCount).toBe(1);
     });
 
-    it('emits share prompt on first text generation (after delay)', async () => {
+    it('does not emit share prompt on first text generation (delayed to 2nd)', async () => {
       await runTextGeneration();
 
+      // First generation is skipped to avoid stacking with other sheets
+      expect(shareListener).not.toHaveBeenCalled();
+      await wait(1600);
+      expect(shareListener).not.toHaveBeenCalled();
+    });
+
+    it('emits share prompt on 2nd text generation (after delay)', async () => {
+      useAppStore.setState({ textGenerationCount: 1 });
+
+      await runTextGeneration();
       // Share prompt is scheduled via setTimeout(1500ms)
       expect(shareListener).not.toHaveBeenCalled();
       await wait(1600);
       expect(shareListener).toHaveBeenCalledWith('text');
+      expect(getAppState().textGenerationCount).toBe(2);
     });
 
-    it('does not emit share prompt on 2nd through 9th generation', async () => {
-      useAppStore.setState({ textGenerationCount: 1 });
+    it('does not emit share prompt on 3rd through 9th generation', async () => {
+      useAppStore.setState({ textGenerationCount: 2 });
 
       await runTextGeneration();
       await wait(1600);
       expect(shareListener).not.toHaveBeenCalled();
-      expect(getAppState().textGenerationCount).toBe(2);
+      expect(getAppState().textGenerationCount).toBe(3);
     });
 
     it('emits share prompt on 10th generation', async () => {
@@ -158,7 +169,7 @@ describe('Share Prompt Flow Integration', () => {
   // Stop Generation → Share Prompt (when content exists)
   // ============================================================================
   describe('stopped generation with content triggers share prompt', () => {
-    it('increments count and emits when stopped with partial content', async () => {
+    it('increments count when stopped with partial content', async () => {
       const modelId = setupWithActiveModel();
       const conversationId = setupWithConversation({ modelId });
 
@@ -185,8 +196,9 @@ describe('Share Prompt Flow Integration', () => {
       await generationService.stopGeneration();
 
       expect(getAppState().textGenerationCount).toBe(1);
+      // First generation doesn't trigger share prompt (skipped until 2nd)
       await wait(1600);
-      expect(shareListener).toHaveBeenCalledWith('text');
+      expect(shareListener).not.toHaveBeenCalled();
     });
   });
 
@@ -225,23 +237,34 @@ describe('Share Prompt Flow Integration', () => {
       expect(getAppState().imageGenerationCount).toBe(1);
     });
 
-    it('emits share prompt on first image generation (after delay)', async () => {
+    it('does not emit share prompt on first image generation (delayed to 2nd)', async () => {
       setupImageModel();
       await imageGenerationService.generateImage({ prompt: 'sunset' });
 
       expect(shareListener).not.toHaveBeenCalled();
       await wait(2100);
-      expect(shareListener).toHaveBeenCalledWith('image');
+      expect(shareListener).not.toHaveBeenCalled();
     });
 
-    it('does not emit share prompt on 2nd through 9th image generation', async () => {
+    it('emits share prompt on 2nd image generation (after delay)', async () => {
       setupImageModel();
       useAppStore.setState({ imageGenerationCount: 1 });
 
       await imageGenerationService.generateImage({ prompt: 'sunset' });
+      expect(shareListener).not.toHaveBeenCalled();
+      await wait(2100);
+      expect(shareListener).toHaveBeenCalledWith('image');
+      expect(getAppState().imageGenerationCount).toBe(2);
+    });
+
+    it('does not emit share prompt on 3rd through 9th image generation', async () => {
+      setupImageModel();
+      useAppStore.setState({ imageGenerationCount: 2 });
+
+      await imageGenerationService.generateImage({ prompt: 'sunset' });
       await wait(2100);
       expect(shareListener).not.toHaveBeenCalled();
-      expect(getAppState().imageGenerationCount).toBe(2);
+      expect(getAppState().imageGenerationCount).toBe(3);
     });
 
     it('emits share prompt on 20th image generation', async () => {

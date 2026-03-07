@@ -120,8 +120,8 @@ export const useChatScreen = () => {
     const { conversationId, projectId } = route.params || {};
     if (conversationId) { setActiveConversation(conversationId); }
     else if (activeModelId) { createConversation(activeModelId, undefined, projectId); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route.params?.conversationId, route.params?.projectId]);
+    else if (activeImageModelId) { createConversation(activeImageModelId, undefined, projectId); }
+  }, [route.params?.conversationId, route.params?.projectId, activeModelId, activeImageModelId, createConversation, setActiveConversation]);
 
   useEffect(() => {
     if (generatingForConversationRef.current && generatingForConversationRef.current !== activeConversationId) {
@@ -129,7 +129,7 @@ export const useChatScreen = () => {
     }
     let cancelled = false;
     const timer = setTimeout(() => {
-      if (!cancelled && llmService.isModelLoaded()) { llmService.clearKVCache(false).catch(() => {}); }
+      if (!cancelled && llmService.isModelLoaded()) { llmService.clearKVCache(false).catch(() => { }); }
     }, 0);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [activeConversationId]);
@@ -228,11 +228,11 @@ export const useChatScreen = () => {
         'Are you sure you want to delete this conversation? This will also delete all images generated in this chat.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete', style: 'destructive', onPress: () => { executeDeleteConversationFn(genDeps).catch(() => {}); } },
+          { text: 'Delete', style: 'destructive', onPress: () => { executeDeleteConversationFn(genDeps).catch(() => { }); } },
         ],
       ));
     },
-    handleCopyMessage: (_content: string) => {},
+    handleCopyMessage: (_content: string) => { },
     handleRetryMessage: async (message: Message) => {
       if (!activeConversationId || !activeModel) return;
       if (message.role === 'user') {

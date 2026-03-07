@@ -166,7 +166,7 @@ async function prepareContext(setDebugInfo: SetState<any>, systemPrompt: string,
     setDebugInfo({ systemPrompt, ...contextDebug });
     logger.log(`[ChatGen] Context prepared: ${contextDebug.contextUsagePercent}% used, ${contextDebug.truncatedCount} truncated`);
     if (contextDebug.truncatedCount > 0 || contextDebug.contextUsagePercent > 70) {
-      await llmService.clearKVCache(false).catch(() => {});
+      await llmService.clearKVCache(false).catch(() => { });
     }
   } catch (e) { logger.log('Debug info error:', e); }
 }
@@ -182,12 +182,12 @@ async function generateWithCompactionRetry(
   try { await gen(opts.messages); } catch (error: any) {
     if (!contextCompactionService.isContextFullError(error)) throw error;
     logger.log('[ChatGen] Context full — compacting');
-    await llmService.stopGeneration().catch(() => {});
+    await llmService.stopGeneration().catch(() => { });
     const conversation = useChatStore.getState().conversations.find(c => c.id === opts.id);
     const previousSummary = conversation?.compactionSummary;
     const compacted = await contextCompactionService.compact({ conversationId: opts.id, systemPrompt: opts.prompt, allMessages: opts.messages, previousSummary }).catch(async () => {
       logger.log(`[ChatGen] Compaction failed — falling back to last ${FALLBACK_RECENT_MESSAGE_COUNT} messages`);
-      await llmService.clearKVCache(true).catch(() => {});
+      await llmService.clearKVCache(true).catch(() => { });
       const recent = opts.messages.filter(m => m.role !== 'system').slice(-FALLBACK_RECENT_MESSAGE_COUNT);
       return [{ id: 'system', role: 'system', content: opts.prompt, timestamp: 0 } as Message, ...recent];
     });
@@ -250,10 +250,17 @@ export type SendCall = {
 export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promise<void> {
   const { text, attachments, imageMode, startGeneration } = call;
   const forceImageMode = imageMode === 'force';
-  if (!deps.activeConversationId || !deps.activeModel) {
-    deps.setAlertState(showAlert('No Model Selected', 'Please select a model first.'));
+
+  if (!deps.activeConversationId) {
+    deps.setAlertState(showAlert('Error', 'No active conversation.'));
     return;
   }
+
+  if (!deps.activeModel && !deps.activeImageModel) {
+    deps.setAlertState(showAlert('No Model Selected', 'Please load a model first.'));
+    return;
+  }
+
   const targetConversationId = deps.activeConversationId;
   let messageText = text;
   if (attachments) {
@@ -263,11 +270,18 @@ export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promis
       messageText += `\n\n---\n📄 **Attached Document: ${fileName}**\n\`\`\`\n${doc.textContent}\n\`\`\`\n---`;
     }
   }
-  const shouldGenerateImage = imageMode !== 'disabled' && await shouldRouteToImageGenerationFn(deps, messageText, forceImageMode);
+  const isOnlyImageModelLoaded = !deps.activeModel && !!deps.activeImageModel;
+  const shouldGenerateImage = imageMode !== 'disabled' && (isOnlyImageModelLoaded || await shouldRouteToImageGenerationFn(deps, messageText, forceImageMode));
   if (shouldGenerateImage && deps.activeImageModel) {
     await handleImageGenerationFn(deps, { prompt: text, conversationId: targetConversationId });
     return;
   }
+
+  if (!deps.activeModel) {
+    deps.setAlertState(showAlert('No Text Model Selected', 'Please load a text model to chat.'));
+    return;
+  }
+
   if (shouldGenerateImage && !deps.activeImageModel) {
     messageText = `[User wanted an image but no image model is loaded] ${messageText}`;
   }
@@ -287,9 +301,9 @@ export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promis
 
 export async function handleStopFn(deps: Pick<GenerationDeps, 'isGeneratingImage' | 'generatingForConversationRef'>): Promise<void> {
   deps.generatingForConversationRef.current = null;
-  try { await generationService.stopGeneration().catch(() => {}); }
+  try { await Promise.all([generationService.stopGeneration().catch(() => { }), llmService.stopGeneration().catch(() => { })]); }
   catch (e) { logger.error('Error stopping generation:', e); }
-  if (deps.isGeneratingImage) imageGenerationService.cancelGeneration().catch(() => {});
+  if (deps.isGeneratingImage) imageGenerationService.cancelGeneration().catch(() => { });
 }
 
 export async function executeDeleteConversationFn(

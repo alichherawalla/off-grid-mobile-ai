@@ -135,7 +135,10 @@ export const ChatScreen: React.FC = () => {
     />
   );
 
-  if (!chat.activeModelId || !chat.activeModel) {
+  const hasTextModel = !!(chat.activeModelId && chat.activeModel);
+  const hasImageModel = !!chat.activeImageModel;
+
+  if (!hasTextModel && !hasImageModel) {
     return (
       <>
         <NoModelScreen
@@ -160,9 +163,9 @@ export const ChatScreen: React.FC = () => {
         <LoadingScreen
           styles={styles} colors={colors}
           navigation={chat.navigation}
-          loadingModelName={chat.loadingModel?.name || chat.activeModel.name}
+          loadingModelName={chat.loadingModel?.name || chat.activeModel?.name || ''}
           modelSize={sizeSource ? chat.hardwareService.formatModelSize(sizeSource) : ''}
-          hasVision={!!(chat.loadingModel?.mmProjPath || chat.activeModel.mmProjPath)}
+          hasVision={!!(chat.loadingModel?.mmProjPath || chat.activeModel?.mmProjPath)}
         />
         {alertEl}
       </>
@@ -282,7 +285,7 @@ const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
         contentContainerStyle={styles.messageList}
         onScroll={handleScroll}
         onContentSizeChange={(_w, _h) => { if (isNearBottomRef.current) flatListRef.current?.scrollToEnd({ animated: false }); }}
-        onLayout={() => {}}
+        onLayout={() => { }}
         scrollEventThrottle={16}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
@@ -323,7 +326,7 @@ const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
       <ChatInput
         onSend={chat.handleSend}
         onStop={chat.handleStop}
-        disabled={!llmService.isModelLoaded()}
+        disabled={!llmService.isModelLoaded() && !chat.imageModelLoaded}
         isGenerating={chat.isStreaming || chat.isThinking}
         supportsVision={chat.supportsVision}
         conversationId={chat.activeConversationId}
@@ -332,7 +335,7 @@ const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
         queueCount={chat.queueCount}
         queuedTexts={chat.queuedTexts}
         onClearQueue={() => generationService.clearQueue()}
-        placeholder={getPlaceholderText(llmService.isModelLoaded(), chat.supportsVision)}
+        placeholder={getPlaceholderText(llmService.isModelLoaded() || chat.imageModelLoaded, chat.supportsVision)}
         onToolsPress={() => chat.setShowToolPicker(true)}
         enabledToolCount={chat.enabledTools.length}
         supportsToolCalling={chat.supportsToolCalling}

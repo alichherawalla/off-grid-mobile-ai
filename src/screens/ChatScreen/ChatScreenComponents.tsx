@@ -122,7 +122,7 @@ export const ChatHeader: React.FC<{
         </Text>
         <TouchableOpacity style={styles.modelSelector} onPress={() => setShowModelSelector(true)} testID="model-selector">
           <Text style={styles.headerSubtitle} numberOfLines={1} testID="model-loaded-indicator">
-            {activeModel.name}
+            {activeModel?.name || activeImageModel?.name || 'No Model'}
           </Text>
           {activeImageModel && (
             <View style={styles.headerImageBadge}>
@@ -161,7 +161,7 @@ export const EmptyChat: React.FC<{
     </AnimatedEntry>
     <AnimatedEntry index={2} staggerMs={60}>
       <Text style={styles.emptyChatText}>
-        Type a message below to begin chatting with {activeModel.name}.
+        Type a message below to begin chatting with {activeModel?.name || 'the model'}.
       </Text>
     </AnimatedEntry>
     <AnimatedEntry index={3} staggerMs={60}>

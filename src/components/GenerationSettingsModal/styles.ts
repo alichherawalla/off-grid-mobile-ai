@@ -123,6 +123,12 @@ const createSliderStyles = (colors: ThemeColors) => ({
     ...TYPOGRAPHY.label,
     color: colors.textMuted,
   },
+  clearCacheButton: {
+    marginTop: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
 });
 
 const createActionStyles = (colors: ThemeColors) => ({
@@ -273,6 +279,22 @@ const createToggleStyles = (colors: ThemeColors) => ({
     paddingTop: SPACING.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  advancedToggle: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: SPACING.xs,
+  },
+  advancedToggleText: {
+    ...TYPOGRAPHY.bodySmall,
+    color: colors.textMuted,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
   },
 });
 

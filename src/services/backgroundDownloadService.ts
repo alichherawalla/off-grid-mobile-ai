@@ -306,6 +306,11 @@ class BackgroundDownloadService {
   markSilent(downloadId: number): void { this.silentDownloadIds.add(downloadId); }
   unmarkSilent(downloadId: number): void { this.silentDownloadIds.delete(downloadId); }
 
+  async excludeFromBackup(path: string): Promise<boolean> {
+    if (!this.isAvailable() || typeof DownloadManagerModule.excludePathFromBackup !== 'function') return false;
+    return DownloadManagerModule.excludePathFromBackup(path).catch(() => false);
+  }
+
   cleanup(): void {
     this.stopProgressPolling();
     this.subscriptions.forEach(sub => sub.remove());

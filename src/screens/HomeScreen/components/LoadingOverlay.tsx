@@ -41,6 +41,12 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
   },
 });
 
+function getLoadingTitle(state: LoadingState): string {
+  if (!state.modelName) return 'Unloading Model';
+  if (state.modelName === 'Ejecting models...') return 'Ejecting Models';
+  return state.type === 'text' ? 'Loading Text Model' : 'Loading Image Model';
+}
+
 type Props = {
   loadingState: LoadingState;
 };
@@ -60,14 +66,14 @@ export const LoadingOverlay: React.FC<Props> = ({ loadingState }) => {
         <View style={styles.loadingCard}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingTitle}>
-            {loadingState.type === 'text' ? 'Loading Text Model' : 'Loading Image Model'}
+            {getLoadingTitle(loadingState)}
           </Text>
           <Text style={styles.loadingModelName} numberOfLines={2}>
             {loadingState.modelName || 'Please wait...'}
           </Text>
           <Text style={styles.loadingHint}>
-            This may take a moment for larger models.{'\n'}
-            The app will be unresponsive during loading.
+            This may take a moment.{'\n'}
+            Please wait...
           </Text>
         </View>
       </View>

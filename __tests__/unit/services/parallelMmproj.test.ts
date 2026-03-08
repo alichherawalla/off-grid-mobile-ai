@@ -45,6 +45,7 @@ jest.mock('../../../src/services/backgroundDownloadService', () => ({
     onError: jest.fn(() => jest.fn()),
     markSilent: jest.fn(),
     unmarkSilent: jest.fn(),
+    excludeFromBackup: jest.fn(() => Promise.resolve(true)),
   },
 }));
 

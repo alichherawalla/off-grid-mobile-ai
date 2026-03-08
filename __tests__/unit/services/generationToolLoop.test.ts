@@ -34,6 +34,7 @@ jest.mock('../../../src/services/llm', () => ({
   llmService: {
     generateResponseWithTools: jest.fn(),
     supportsThinking: jest.fn(() => false),
+    isThinkingEnabled: jest.fn(() => false),
     stopGeneration: jest.fn(),
   },
 }));

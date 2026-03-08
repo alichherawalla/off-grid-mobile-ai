@@ -45,12 +45,12 @@ describe('BackgroundDownloadService', () => {
     NativeModules.DownloadManagerModule = mockDownloadManagerModule;
 
     // Mock NativeEventEmitter to capture event listeners
-    jest.spyOn(NativeEventEmitter.prototype, 'addListener').mockImplementation(
-      (eventType: string, handler: any) => {
+    jest
+      .spyOn(NativeEventEmitter.prototype, 'addListener')
+      .mockImplementation((eventType: string, handler: any) => {
         eventHandlers[eventType] = handler;
         return { remove: jest.fn() } as any;
-      }
-    );
+      });
 
     // Reset Platform.OS to android for most tests
     Object.defineProperty(Platform, 'OS', { get: () => 'android' });
@@ -59,7 +59,8 @@ describe('BackgroundDownloadService', () => {
     jest.isolateModules(() => {
       const mod = require('../../../src/services/backgroundDownloadService');
       // The module exports a singleton; we access its constructor to create fresh instances
-      BackgroundDownloadServiceClass = (mod.backgroundDownloadService as any).constructor;
+      BackgroundDownloadServiceClass = (mod.backgroundDownloadService as any)
+        .constructor;
     });
 
     service = new BackgroundDownloadServiceClass();
@@ -91,7 +92,9 @@ describe('BackgroundDownloadService', () => {
       // Create fresh instance without module
       jest.isolateModules(() => {
         const mod = require('../../../src/services/backgroundDownloadService');
-        const freshService = new (mod.backgroundDownloadService as any).constructor();
+        const freshService = new (
+          mod.backgroundDownloadService as any
+        ).constructor();
         expect(freshService.isAvailable()).toBe(false);
       });
 
@@ -173,7 +176,9 @@ describe('BackgroundDownloadService', () => {
       let unavailableService: any;
       jest.isolateModules(() => {
         const mod = require('../../../src/services/backgroundDownloadService');
-        unavailableService = new (mod.backgroundDownloadService as any).constructor();
+        unavailableService = new (
+          mod.backgroundDownloadService as any
+        ).constructor();
       });
 
       await expect(
@@ -181,7 +186,7 @@ describe('BackgroundDownloadService', () => {
           url: 'https://example.com/model.gguf',
           fileName: 'model.gguf',
           modelId: 'test/model',
-        })
+        }),
       ).rejects.toThrow('Background downloads not available');
       NativeModules.DownloadManagerModule = savedModule;
     });
@@ -206,10 +211,14 @@ describe('BackgroundDownloadService', () => {
       let unavailableService: any;
       jest.isolateModules(() => {
         const mod = require('../../../src/services/backgroundDownloadService');
-        unavailableService = new (mod.backgroundDownloadService as any).constructor();
+        unavailableService = new (
+          mod.backgroundDownloadService as any
+        ).constructor();
       });
 
-      await expect(unavailableService.cancelDownload(42)).rejects.toThrow('not available');
+      await expect(unavailableService.cancelDownload(42)).rejects.toThrow(
+        'not available',
+      );
       NativeModules.DownloadManagerModule = savedModule;
     });
   });
@@ -225,7 +234,9 @@ describe('BackgroundDownloadService', () => {
       let unavailableService: any;
       jest.isolateModules(() => {
         const mod = require('../../../src/services/backgroundDownloadService');
-        unavailableService = new (mod.backgroundDownloadService as any).constructor();
+        unavailableService = new (
+          mod.backgroundDownloadService as any
+        ).constructor();
       });
 
       const result = await unavailableService.getActiveDownloads();
@@ -260,11 +271,18 @@ describe('BackgroundDownloadService', () => {
   // ========================================================================
   describe('moveCompletedDownload', () => {
     it('delegates to native module', async () => {
-      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue('/final/path/model.gguf');
+      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue(
+        '/final/path/model.gguf',
+      );
 
-      const result = await service.moveCompletedDownload(42, '/final/path/model.gguf');
+      const result = await service.moveCompletedDownload(
+        42,
+        '/final/path/model.gguf',
+      );
 
-      expect(mockDownloadManagerModule.moveCompletedDownload).toHaveBeenCalledWith(42, '/final/path/model.gguf');
+      expect(
+        mockDownloadManagerModule.moveCompletedDownload,
+      ).toHaveBeenCalledWith(42, '/final/path/model.gguf');
       expect(result).toBe('/final/path/model.gguf');
     });
 
@@ -275,11 +293,13 @@ describe('BackgroundDownloadService', () => {
       let unavailableService: any;
       jest.isolateModules(() => {
         const mod = require('../../../src/services/backgroundDownloadService');
-        unavailableService = new (mod.backgroundDownloadService as any).constructor();
+        unavailableService = new (
+          mod.backgroundDownloadService as any
+        ).constructor();
       });
 
       await expect(
-        unavailableService.moveCompletedDownload(42, '/path')
+        unavailableService.moveCompletedDownload(42, '/path'),
       ).rejects.toThrow('not available');
       NativeModules.DownloadManagerModule = savedModule;
     });
@@ -352,7 +372,14 @@ describe('BackgroundDownloadService', () => {
       service.onProgress(42, specificCb);
       service.onAnyProgress(globalCb);
 
-      const event = { downloadId: 42, bytesDownloaded: 1000, totalBytes: 5000, status: 'running', fileName: 'model.gguf', modelId: 'test' };
+      const event = {
+        downloadId: 42,
+        bytesDownloaded: 1000,
+        totalBytes: 5000,
+        status: 'running',
+        fileName: 'model.gguf',
+        modelId: 'test',
+      };
 
       // Simulate event from NativeEventEmitter
       if (eventHandlers.DownloadProgress) {
@@ -368,7 +395,14 @@ describe('BackgroundDownloadService', () => {
       const globalCb = jest.fn();
       service.onAnyProgress(globalCb);
 
-      const event = { downloadId: 99, bytesDownloaded: 1000, totalBytes: 5000, status: 'running', fileName: 'model.gguf', modelId: 'test' };
+      const event = {
+        downloadId: 99,
+        bytesDownloaded: 1000,
+        totalBytes: 5000,
+        status: 'running',
+        fileName: 'model.gguf',
+        modelId: 'test',
+      };
 
       if (eventHandlers.DownloadProgress) {
         eventHandlers.DownloadProgress(event);
@@ -383,7 +417,15 @@ describe('BackgroundDownloadService', () => {
       service.onComplete(42, specificCb);
       service.onAnyComplete(globalCb);
 
-      const event = { downloadId: 42, fileName: 'model.gguf', modelId: 'test', bytesDownloaded: 5000, totalBytes: 5000, status: 'completed', localUri: '/path/model.gguf' };
+      const event = {
+        downloadId: 42,
+        fileName: 'model.gguf',
+        modelId: 'test',
+        bytesDownloaded: 5000,
+        totalBytes: 5000,
+        status: 'completed',
+        localUri: '/path/model.gguf',
+      };
 
       if (eventHandlers.DownloadComplete) {
         eventHandlers.DownloadComplete(event);
@@ -399,7 +441,13 @@ describe('BackgroundDownloadService', () => {
       service.onError(42, specificCb);
       service.onAnyError(globalCb);
 
-      const event = { downloadId: 42, fileName: 'model.gguf', modelId: 'test', status: 'failed', reason: 'Network error' };
+      const event = {
+        downloadId: 42,
+        fileName: 'model.gguf',
+        modelId: 'test',
+        status: 'failed',
+        reason: 'Network error',
+      };
 
       if (eventHandlers.DownloadError) {
         eventHandlers.DownloadError(event);
@@ -411,7 +459,14 @@ describe('BackgroundDownloadService', () => {
 
     it('does not throw when no listener registered for downloadId', () => {
       // No listeners registered for download 99
-      const event = { downloadId: 99, bytesDownloaded: 1000, totalBytes: 5000, status: 'running', fileName: 'model.gguf', modelId: 'test' };
+      const event = {
+        downloadId: 99,
+        bytesDownloaded: 1000,
+        totalBytes: 5000,
+        status: 'running',
+        fileName: 'model.gguf',
+        modelId: 'test',
+      };
 
       expect(() => {
         if (eventHandlers.DownloadProgress) {
@@ -436,7 +491,9 @@ describe('BackgroundDownloadService', () => {
       service.startProgressPolling();
       service.startProgressPolling();
 
-      expect(mockDownloadManagerModule.startProgressPolling).toHaveBeenCalledTimes(1);
+      expect(
+        mockDownloadManagerModule.startProgressPolling,
+      ).toHaveBeenCalledTimes(1);
     });
 
     it('stopProgressPolling stops polling', () => {
@@ -454,11 +511,15 @@ describe('BackgroundDownloadService', () => {
       let unavailableService: any;
       jest.isolateModules(() => {
         const mod = require('../../../src/services/backgroundDownloadService');
-        unavailableService = new (mod.backgroundDownloadService as any).constructor();
+        unavailableService = new (
+          mod.backgroundDownloadService as any
+        ).constructor();
       });
 
       unavailableService.startProgressPolling();
-      expect(mockDownloadManagerModule.startProgressPolling).not.toHaveBeenCalled();
+      expect(
+        mockDownloadManagerModule.startProgressPolling,
+      ).not.toHaveBeenCalled();
       NativeModules.DownloadManagerModule = savedModule;
     });
   });
@@ -488,16 +549,26 @@ describe('BackgroundDownloadService', () => {
   // ========================================================================
   describe('startMultiFileDownload', () => {
     it('calls native module with correct params', async () => {
-      (mockDownloadManagerModule as any).startMultiFileDownload = jest.fn().mockResolvedValue({
-        downloadId: 55,
-        fileName: 'sd-model.zip',
-        modelId: 'image:sd-model',
-      });
+      (mockDownloadManagerModule as any).startMultiFileDownload = jest
+        .fn()
+        .mockResolvedValue({
+          downloadId: 55,
+          fileName: 'sd-model.zip',
+          modelId: 'image:sd-model',
+        });
 
       const result = await service.startMultiFileDownload({
         files: [
-          { url: 'https://example.com/unet.onnx', relativePath: 'unet/model.onnx', size: 1000 },
-          { url: 'https://example.com/vae.onnx', relativePath: 'vae/model.onnx', size: 500 },
+          {
+            url: 'https://example.com/unet.onnx',
+            relativePath: 'unet/model.onnx',
+            size: 1000,
+          },
+          {
+            url: 'https://example.com/vae.onnx',
+            relativePath: 'vae/model.onnx',
+            size: 500,
+          },
         ],
         fileName: 'sd-model.zip',
         modelId: 'image:sd-model',
@@ -505,10 +576,20 @@ describe('BackgroundDownloadService', () => {
         totalBytes: 1500,
       });
 
-      expect((mockDownloadManagerModule as any).startMultiFileDownload).toHaveBeenCalledWith({
+      expect(
+        (mockDownloadManagerModule as any).startMultiFileDownload,
+      ).toHaveBeenCalledWith({
         files: [
-          { url: 'https://example.com/unet.onnx', relativePath: 'unet/model.onnx', size: 1000 },
-          { url: 'https://example.com/vae.onnx', relativePath: 'vae/model.onnx', size: 500 },
+          {
+            url: 'https://example.com/unet.onnx',
+            relativePath: 'unet/model.onnx',
+            size: 1000,
+          },
+          {
+            url: 'https://example.com/vae.onnx',
+            relativePath: 'vae/model.onnx',
+            size: 500,
+          },
         ],
         fileName: 'sd-model.zip',
         modelId: 'image:sd-model',
@@ -522,20 +603,29 @@ describe('BackgroundDownloadService', () => {
     });
 
     it('uses 0 for totalBytes when not provided', async () => {
-      (mockDownloadManagerModule as any).startMultiFileDownload = jest.fn().mockResolvedValue({
-        downloadId: 56,
-        fileName: 'sd-model.zip',
-        modelId: 'image:sd-model',
-      });
+      (mockDownloadManagerModule as any).startMultiFileDownload = jest
+        .fn()
+        .mockResolvedValue({
+          downloadId: 56,
+          fileName: 'sd-model.zip',
+          modelId: 'image:sd-model',
+        });
 
       const result = await service.startMultiFileDownload({
-        files: [{ url: 'https://example.com/model.onnx', relativePath: 'model.onnx', size: 100 }],
+        files: [
+          {
+            url: 'https://example.com/model.onnx',
+            relativePath: 'model.onnx',
+            size: 100,
+          },
+        ],
         fileName: 'sd-model.zip',
         modelId: 'image:sd-model',
         destinationDir: '/models/image/sd-model',
       });
 
-      const callArgs = (mockDownloadManagerModule as any).startMultiFileDownload.mock.calls[0][0];
+      const callArgs = (mockDownloadManagerModule as any).startMultiFileDownload
+        .mock.calls[0][0];
       expect(callArgs.totalBytes).toBe(0);
       expect(result.totalBytes).toBe(0);
     });
@@ -547,7 +637,9 @@ describe('BackgroundDownloadService', () => {
       let unavailableService: any;
       jest.isolateModules(() => {
         const mod = require('../../../src/services/backgroundDownloadService');
-        unavailableService = new (mod.backgroundDownloadService as any).constructor();
+        unavailableService = new (
+          mod.backgroundDownloadService as any
+        ).constructor();
       });
 
       await expect(
@@ -556,7 +648,7 @@ describe('BackgroundDownloadService', () => {
           fileName: 'test.zip',
           modelId: 'test',
           destinationDir: '/test',
-        })
+        }),
       ).rejects.toThrow('Background downloads not available');
       NativeModules.DownloadManagerModule = savedModule;
     });
@@ -577,7 +669,9 @@ describe('BackgroundDownloadService', () => {
 
       const result = await service.getDownloadProgress(42);
 
-      expect(mockDownloadManagerModule.getDownloadProgress).toHaveBeenCalledWith(42);
+      expect(
+        mockDownloadManagerModule.getDownloadProgress,
+      ).toHaveBeenCalledWith(42);
       expect(result.bytesDownloaded).toBe(2500);
       expect(result.totalBytes).toBe(5000);
       expect(result.status).toBe('running');
@@ -621,10 +715,14 @@ describe('BackgroundDownloadService', () => {
       let unavailableService: any;
       jest.isolateModules(() => {
         const mod = require('../../../src/services/backgroundDownloadService');
-        unavailableService = new (mod.backgroundDownloadService as any).constructor();
+        unavailableService = new (
+          mod.backgroundDownloadService as any
+        ).constructor();
       });
 
-      await expect(unavailableService.getDownloadProgress(42)).rejects.toThrow('not available');
+      await expect(unavailableService.getDownloadProgress(42)).rejects.toThrow(
+        'not available',
+      );
       NativeModules.DownloadManagerModule = savedModule;
     });
   });
@@ -637,7 +735,9 @@ describe('BackgroundDownloadService', () => {
       // service.isPolling is false by default
       service.stopProgressPolling();
 
-      expect(mockDownloadManagerModule.stopProgressPolling).not.toHaveBeenCalled();
+      expect(
+        mockDownloadManagerModule.stopProgressPolling,
+      ).not.toHaveBeenCalled();
     });
 
     it('stopProgressPolling does nothing when not available', () => {
@@ -647,11 +747,15 @@ describe('BackgroundDownloadService', () => {
       let unavailableService: any;
       jest.isolateModules(() => {
         const mod = require('../../../src/services/backgroundDownloadService');
-        unavailableService = new (mod.backgroundDownloadService as any).constructor();
+        unavailableService = new (
+          mod.backgroundDownloadService as any
+        ).constructor();
       });
 
       unavailableService.stopProgressPolling();
-      expect(mockDownloadManagerModule.stopProgressPolling).not.toHaveBeenCalled();
+      expect(
+        mockDownloadManagerModule.stopProgressPolling,
+      ).not.toHaveBeenCalled();
       NativeModules.DownloadManagerModule = savedModule;
     });
   });
@@ -664,7 +768,14 @@ describe('BackgroundDownloadService', () => {
       const globalCb = jest.fn();
       service.onAnyProgress(globalCb);
 
-      const event = { downloadId: 99, bytesDownloaded: 500, totalBytes: 1000, status: 'running', fileName: 'model.gguf', modelId: 'test' };
+      const event = {
+        downloadId: 99,
+        bytesDownloaded: 500,
+        totalBytes: 1000,
+        status: 'running',
+        fileName: 'model.gguf',
+        modelId: 'test',
+      };
       if (eventHandlers.DownloadProgress) {
         eventHandlers.DownloadProgress(event);
       }
@@ -676,7 +787,14 @@ describe('BackgroundDownloadService', () => {
       const specificCb = jest.fn();
       service.onProgress(42, specificCb);
 
-      const event = { downloadId: 42, bytesDownloaded: 500, totalBytes: 1000, status: 'running', fileName: 'model.gguf', modelId: 'test' };
+      const event = {
+        downloadId: 42,
+        bytesDownloaded: 500,
+        totalBytes: 1000,
+        status: 'running',
+        fileName: 'model.gguf',
+        modelId: 'test',
+      };
       if (eventHandlers.DownloadProgress) {
         eventHandlers.DownloadProgress(event);
       }
@@ -688,7 +806,15 @@ describe('BackgroundDownloadService', () => {
       const globalCb = jest.fn();
       service.onAnyComplete(globalCb);
 
-      const event = { downloadId: 99, fileName: 'model.gguf', modelId: 'test', bytesDownloaded: 5000, totalBytes: 5000, status: 'completed', localUri: '/path' };
+      const event = {
+        downloadId: 99,
+        fileName: 'model.gguf',
+        modelId: 'test',
+        bytesDownloaded: 5000,
+        totalBytes: 5000,
+        status: 'completed',
+        localUri: '/path',
+      };
       if (eventHandlers.DownloadComplete) {
         eventHandlers.DownloadComplete(event);
       }
@@ -700,7 +826,15 @@ describe('BackgroundDownloadService', () => {
       const specificCb = jest.fn();
       service.onComplete(42, specificCb);
 
-      const event = { downloadId: 42, fileName: 'model.gguf', modelId: 'test', bytesDownloaded: 5000, totalBytes: 5000, status: 'completed', localUri: '/path' };
+      const event = {
+        downloadId: 42,
+        fileName: 'model.gguf',
+        modelId: 'test',
+        bytesDownloaded: 5000,
+        totalBytes: 5000,
+        status: 'completed',
+        localUri: '/path',
+      };
       if (eventHandlers.DownloadComplete) {
         eventHandlers.DownloadComplete(event);
       }
@@ -712,7 +846,13 @@ describe('BackgroundDownloadService', () => {
       const globalCb = jest.fn();
       service.onAnyError(globalCb);
 
-      const event = { downloadId: 99, fileName: 'model.gguf', modelId: 'test', status: 'failed', reason: 'Error' };
+      const event = {
+        downloadId: 99,
+        fileName: 'model.gguf',
+        modelId: 'test',
+        status: 'failed',
+        reason: 'Error',
+      };
       if (eventHandlers.DownloadError) {
         eventHandlers.DownloadError(event);
       }
@@ -724,7 +864,13 @@ describe('BackgroundDownloadService', () => {
       const specificCb = jest.fn();
       service.onError(42, specificCb);
 
-      const event = { downloadId: 42, fileName: 'model.gguf', modelId: 'test', status: 'failed', reason: 'Error' };
+      const event = {
+        downloadId: 42,
+        fileName: 'model.gguf',
+        modelId: 'test',
+        status: 'failed',
+        reason: 'Error',
+      };
       if (eventHandlers.DownloadError) {
         eventHandlers.DownloadError(event);
       }
@@ -733,7 +879,15 @@ describe('BackgroundDownloadService', () => {
     });
 
     it('handles complete event with no listeners at all', () => {
-      const event = { downloadId: 99, fileName: 'model.gguf', modelId: 'test', bytesDownloaded: 5000, totalBytes: 5000, status: 'completed', localUri: '/path' };
+      const event = {
+        downloadId: 99,
+        fileName: 'model.gguf',
+        modelId: 'test',
+        bytesDownloaded: 5000,
+        totalBytes: 5000,
+        status: 'completed',
+        localUri: '/path',
+      };
       expect(() => {
         if (eventHandlers.DownloadComplete) {
           eventHandlers.DownloadComplete(event);
@@ -742,7 +896,13 @@ describe('BackgroundDownloadService', () => {
     });
 
     it('handles error event with no listeners at all', () => {
-      const event = { downloadId: 99, fileName: 'model.gguf', modelId: 'test', status: 'failed', reason: 'Error' };
+      const event = {
+        downloadId: 99,
+        fileName: 'model.gguf',
+        modelId: 'test',
+        status: 'failed',
+        reason: 'Error',
+      };
       expect(() => {
         if (eventHandlers.DownloadError) {
           eventHandlers.DownloadError(event);
@@ -811,13 +971,18 @@ describe('BackgroundDownloadService', () => {
       const savedModule = NativeModules.DownloadManagerModule;
       NativeModules.DownloadManagerModule = null;
 
-      const addListenerSpy = jest.spyOn(NativeEventEmitter.prototype, 'addListener');
+      const addListenerSpy = jest.spyOn(
+        NativeEventEmitter.prototype,
+        'addListener',
+      );
       addListenerSpy.mockClear();
 
       let unavailableService: any;
       jest.isolateModules(() => {
         const mod = require('../../../src/services/backgroundDownloadService');
-        unavailableService = new (mod.backgroundDownloadService as any).constructor();
+        unavailableService = new (
+          mod.backgroundDownloadService as any
+        ).constructor();
       });
 
       expect(unavailableService.eventEmitter).toBeNull();
@@ -878,9 +1043,13 @@ describe('BackgroundDownloadService', () => {
     it('does not throw when permission request rejects', async () => {
       Object.defineProperty(Platform, 'OS', { get: () => 'android' });
       Object.defineProperty(Platform, 'Version', { get: () => 33 });
-      PermissionsAndroid.request = jest.fn().mockRejectedValue(new Error('Permission error'));
+      PermissionsAndroid.request = jest
+        .fn()
+        .mockRejectedValue(new Error('Permission error'));
 
-      await expect(service.requestNotificationPermission()).resolves.toBeUndefined();
+      await expect(
+        service.requestNotificationPermission(),
+      ).resolves.toBeUndefined();
     });
 
     it('handles denied permission without throwing', async () => {
@@ -888,7 +1057,9 @@ describe('BackgroundDownloadService', () => {
       Object.defineProperty(Platform, 'Version', { get: () => 33 });
       PermissionsAndroid.request = jest.fn().mockResolvedValue('denied');
 
-      await expect(service.requestNotificationPermission()).resolves.toBeUndefined();
+      await expect(
+        service.requestNotificationPermission(),
+      ).resolves.toBeUndefined();
     });
   });
 
@@ -905,9 +1076,13 @@ describe('BackgroundDownloadService', () => {
 
     it('resolves after complete event and calls moveCompletedDownload', async () => {
       mockDownloadManagerModule.startDownload.mockResolvedValue({
-        downloadId: 10, fileName: 'dep.gguf', modelId: 'test/model',
+        downloadId: 10,
+        fileName: 'dep.gguf',
+        modelId: 'test/model',
       });
-      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue('/dest/dep.gguf');
+      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue(
+        '/dest/dep.gguf',
+      );
 
       const { promise } = service.downloadFileTo({
         params: baseParams,
@@ -919,21 +1094,31 @@ describe('BackgroundDownloadService', () => {
 
       if (eventHandlers.DownloadComplete) {
         eventHandlers.DownloadComplete({
-          downloadId: 10, fileName: 'dep.gguf', modelId: 'test/model',
-          bytesDownloaded: 1_000_000, totalBytes: 1_000_000,
-          status: 'completed', localUri: '/downloads/dep.gguf',
+          downloadId: 10,
+          fileName: 'dep.gguf',
+          modelId: 'test/model',
+          bytesDownloaded: 1_000_000,
+          totalBytes: 1_000_000,
+          status: 'completed',
+          localUri: '/downloads/dep.gguf',
         });
       }
 
       await promise;
-      expect(mockDownloadManagerModule.moveCompletedDownload).toHaveBeenCalledWith(10, '/dest/dep.gguf');
+      expect(
+        mockDownloadManagerModule.moveCompletedDownload,
+      ).toHaveBeenCalledWith(10, '/dest/dep.gguf');
     });
 
     it('resolves downloadIdPromise once native start returns id', async () => {
       mockDownloadManagerModule.startDownload.mockResolvedValue({
-        downloadId: 17, fileName: 'dep.gguf', modelId: 'test/model',
+        downloadId: 17,
+        fileName: 'dep.gguf',
+        modelId: 'test/model',
       });
-      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue('/dest/dep.gguf');
+      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue(
+        '/dest/dep.gguf',
+      );
 
       const { downloadIdPromise, promise } = service.downloadFileTo({
         params: baseParams,
@@ -944,16 +1129,22 @@ describe('BackgroundDownloadService', () => {
 
       if (eventHandlers.DownloadComplete) {
         eventHandlers.DownloadComplete({
-          downloadId: 17, fileName: 'dep.gguf', modelId: 'test/model',
-          bytesDownloaded: 1_000_000, totalBytes: 1_000_000,
-          status: 'completed', localUri: '/downloads/dep.gguf',
+          downloadId: 17,
+          fileName: 'dep.gguf',
+          modelId: 'test/model',
+          bytesDownloaded: 1_000_000,
+          totalBytes: 1_000_000,
+          status: 'completed',
+          localUri: '/downloads/dep.gguf',
         });
       }
       await promise;
     });
 
     it('rejects downloadIdPromise when native startDownload fails', async () => {
-      mockDownloadManagerModule.startDownload.mockRejectedValue(new Error('Failed to start'));
+      mockDownloadManagerModule.startDownload.mockRejectedValue(
+        new Error('Failed to start'),
+      );
 
       const { downloadIdPromise, promise } = service.downloadFileTo({
         params: baseParams,
@@ -966,7 +1157,9 @@ describe('BackgroundDownloadService', () => {
 
     it('rejects when error event fires', async () => {
       mockDownloadManagerModule.startDownload.mockResolvedValue({
-        downloadId: 11, fileName: 'dep.gguf', modelId: 'test/model',
+        downloadId: 11,
+        fileName: 'dep.gguf',
+        modelId: 'test/model',
       });
 
       const { promise } = service.downloadFileTo({
@@ -978,8 +1171,11 @@ describe('BackgroundDownloadService', () => {
 
       if (eventHandlers.DownloadError) {
         eventHandlers.DownloadError({
-          downloadId: 11, fileName: 'dep.gguf', modelId: 'test/model',
-          status: 'failed', reason: 'Network timeout',
+          downloadId: 11,
+          fileName: 'dep.gguf',
+          modelId: 'test/model',
+          status: 'failed',
+          reason: 'Network timeout',
         });
       }
 
@@ -988,9 +1184,13 @@ describe('BackgroundDownloadService', () => {
 
     it('passes hideNotification:true to native when silent:true', async () => {
       mockDownloadManagerModule.startDownload.mockResolvedValue({
-        downloadId: 12, fileName: 'dep.gguf', modelId: 'test/model',
+        downloadId: 12,
+        fileName: 'dep.gguf',
+        modelId: 'test/model',
       });
-      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue('/dest/dep.gguf');
+      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue(
+        '/dest/dep.gguf',
+      );
 
       const { promise } = service.downloadFileTo({
         params: baseParams,
@@ -1002,9 +1202,13 @@ describe('BackgroundDownloadService', () => {
 
       if (eventHandlers.DownloadComplete) {
         eventHandlers.DownloadComplete({
-          downloadId: 12, fileName: 'dep.gguf', modelId: 'test/model',
-          bytesDownloaded: 1_000_000, totalBytes: 1_000_000,
-          status: 'completed', localUri: '/downloads/dep.gguf',
+          downloadId: 12,
+          fileName: 'dep.gguf',
+          modelId: 'test/model',
+          bytesDownloaded: 1_000_000,
+          totalBytes: 1_000_000,
+          status: 'completed',
+          localUri: '/downloads/dep.gguf',
         });
       }
 
@@ -1015,9 +1219,13 @@ describe('BackgroundDownloadService', () => {
 
     it('passes hideNotification:false when silent is false', async () => {
       mockDownloadManagerModule.startDownload.mockResolvedValue({
-        downloadId: 13, fileName: 'dep.gguf', modelId: 'test/model',
+        downloadId: 13,
+        fileName: 'dep.gguf',
+        modelId: 'test/model',
       });
-      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue('/dest/dep.gguf');
+      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue(
+        '/dest/dep.gguf',
+      );
 
       const { promise } = service.downloadFileTo({
         params: baseParams,
@@ -1029,9 +1237,13 @@ describe('BackgroundDownloadService', () => {
 
       if (eventHandlers.DownloadComplete) {
         eventHandlers.DownloadComplete({
-          downloadId: 13, fileName: 'dep.gguf', modelId: 'test/model',
-          bytesDownloaded: 1_000_000, totalBytes: 1_000_000,
-          status: 'completed', localUri: '/downloads/dep.gguf',
+          downloadId: 13,
+          fileName: 'dep.gguf',
+          modelId: 'test/model',
+          bytesDownloaded: 1_000_000,
+          totalBytes: 1_000_000,
+          status: 'completed',
+          localUri: '/downloads/dep.gguf',
         });
       }
 
@@ -1042,9 +1254,13 @@ describe('BackgroundDownloadService', () => {
 
     it('calls onProgress callback with bytesDownloaded and totalBytes', async () => {
       mockDownloadManagerModule.startDownload.mockResolvedValue({
-        downloadId: 14, fileName: 'dep.gguf', modelId: 'test/model',
+        downloadId: 14,
+        fileName: 'dep.gguf',
+        modelId: 'test/model',
       });
-      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue('/dest/dep.gguf');
+      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue(
+        '/dest/dep.gguf',
+      );
 
       const onProgress = jest.fn();
       const { promise } = service.downloadFileTo({
@@ -1057,16 +1273,24 @@ describe('BackgroundDownloadService', () => {
 
       if (eventHandlers.DownloadProgress) {
         eventHandlers.DownloadProgress({
-          downloadId: 14, fileName: 'dep.gguf', modelId: 'test/model',
-          bytesDownloaded: 500_000, totalBytes: 1_000_000, status: 'running',
+          downloadId: 14,
+          fileName: 'dep.gguf',
+          modelId: 'test/model',
+          bytesDownloaded: 500_000,
+          totalBytes: 1_000_000,
+          status: 'running',
         });
       }
 
       if (eventHandlers.DownloadComplete) {
         eventHandlers.DownloadComplete({
-          downloadId: 14, fileName: 'dep.gguf', modelId: 'test/model',
-          bytesDownloaded: 1_000_000, totalBytes: 1_000_000,
-          status: 'completed', localUri: '/downloads/dep.gguf',
+          downloadId: 14,
+          fileName: 'dep.gguf',
+          modelId: 'test/model',
+          bytesDownloaded: 1_000_000,
+          totalBytes: 1_000_000,
+          status: 'completed',
+          localUri: '/downloads/dep.gguf',
         });
       }
 
@@ -1076,9 +1300,13 @@ describe('BackgroundDownloadService', () => {
 
     it('starts polling when download begins', async () => {
       mockDownloadManagerModule.startDownload.mockResolvedValue({
-        downloadId: 15, fileName: 'dep.gguf', modelId: 'test/model',
+        downloadId: 15,
+        fileName: 'dep.gguf',
+        modelId: 'test/model',
       });
-      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue('/dest/dep.gguf');
+      mockDownloadManagerModule.moveCompletedDownload.mockResolvedValue(
+        '/dest/dep.gguf',
+      );
 
       const { promise } = service.downloadFileTo({
         params: baseParams,
@@ -1089,9 +1317,13 @@ describe('BackgroundDownloadService', () => {
 
       if (eventHandlers.DownloadComplete) {
         eventHandlers.DownloadComplete({
-          downloadId: 15, fileName: 'dep.gguf', modelId: 'test/model',
-          bytesDownloaded: 1_000_000, totalBytes: 1_000_000,
-          status: 'completed', localUri: '/downloads/dep.gguf',
+          downloadId: 15,
+          fileName: 'dep.gguf',
+          modelId: 'test/model',
+          bytesDownloaded: 1_000_000,
+          totalBytes: 1_000_000,
+          status: 'completed',
+          localUri: '/downloads/dep.gguf',
         });
       }
 
@@ -1106,14 +1338,16 @@ describe('BackgroundDownloadService', () => {
       let unavailableService: any;
       jest.isolateModules(() => {
         const mod = require('../../../src/services/backgroundDownloadService');
-        unavailableService = new (mod.backgroundDownloadService as any).constructor();
+        unavailableService = new (
+          mod.backgroundDownloadService as any
+        ).constructor();
       });
 
       expect(() =>
         unavailableService.downloadFileTo({
           params: baseParams,
           destPath: '/dest/dep.gguf',
-        })
+        }),
       ).toThrow('not available');
 
       NativeModules.DownloadManagerModule = savedModule;
@@ -1121,7 +1355,9 @@ describe('BackgroundDownloadService', () => {
 
     it('rejects with fallback message when error event has no reason', async () => {
       mockDownloadManagerModule.startDownload.mockResolvedValue({
-        downloadId: 16, fileName: 'dep.gguf', modelId: 'test/model',
+        downloadId: 16,
+        fileName: 'dep.gguf',
+        modelId: 'test/model',
       });
 
       const { promise } = service.downloadFileTo({
@@ -1133,12 +1369,77 @@ describe('BackgroundDownloadService', () => {
 
       if (eventHandlers.DownloadError) {
         eventHandlers.DownloadError({
-          downloadId: 16, fileName: 'dep.gguf', modelId: 'test/model',
-          status: 'failed', reason: undefined as any,
+          downloadId: 16,
+          fileName: 'dep.gguf',
+          modelId: 'test/model',
+          status: 'failed',
+          reason: undefined as any,
         });
       }
 
       await expect(promise).rejects.toThrow('Download failed');
+    });
+  });
+
+  // ========================================================================
+  // excludeFromBackup
+  // ========================================================================
+  describe('excludeFromBackup', () => {
+    it('returns false when service is not available', async () => {
+      const savedModule = NativeModules.DownloadManagerModule;
+      NativeModules.DownloadManagerModule = null;
+
+      try {
+        let freshService: any;
+        jest.isolateModules(() => {
+          const mod = require('../../../src/services/backgroundDownloadService');
+          freshService = new (
+            mod.backgroundDownloadService as any
+          ).constructor();
+        });
+
+        const result = await freshService.excludeFromBackup('/some/path');
+        expect(result).toBe(false);
+      } finally {
+        NativeModules.DownloadManagerModule = savedModule;
+      }
+    });
+
+    it('returns false when excludePathFromBackup is not a function (Android)', async () => {
+      // Simulate Android where the native module lacks excludePathFromBackup
+      const originalMethod = (mockDownloadManagerModule as any)
+        .excludePathFromBackup;
+      delete (mockDownloadManagerModule as any).excludePathFromBackup;
+
+      try {
+        const result = await service.excludeFromBackup('/some/path');
+        expect(result).toBe(false);
+      } finally {
+        // Restore for other tests
+        (mockDownloadManagerModule as any).excludePathFromBackup =
+          originalMethod;
+      }
+    });
+
+    it('calls native excludePathFromBackup when available (iOS)', async () => {
+      (mockDownloadManagerModule as any).excludePathFromBackup = jest.fn(() =>
+        Promise.resolve(true),
+      );
+
+      const result = await service.excludeFromBackup('/some/path');
+      expect(result).toBe(true);
+      expect(
+        (mockDownloadManagerModule as any).excludePathFromBackup,
+      ).toHaveBeenCalledWith('/some/path');
+    });
+
+    it('returns false when native excludePathFromBackup rejects', async () => {
+      (mockDownloadManagerModule as any).excludePathFromBackup = jest.fn(() =>
+        Promise.reject(new Error('fail')),
+      );
+
+      const result = await service.excludeFromBackup('/some/path');
+      expect(result).toBe(false);
     });
   });
 });

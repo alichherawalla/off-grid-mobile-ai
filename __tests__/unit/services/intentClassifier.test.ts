@@ -879,8 +879,8 @@ describe('IntentClassifier', () => {
       mockLlmService.isModelLoaded.mockReturnValue(true);
       mockLlmService.generateResponse.mockImplementation(
         async (_messages, onStream, onComplete) => {
-          onStream?.('YES');
-          onComplete?.('YES');
+          onStream?.({ content: 'YES' });
+          onComplete?.({ content: 'YES', reasoningContent: '' });
           return 'YES';
         }
       );
@@ -898,8 +898,8 @@ describe('IntentClassifier', () => {
       mockLlmService.isModelLoaded.mockReturnValue(true);
       mockLlmService.generateResponse.mockImplementation(
         async (_messages, onStream, onComplete) => {
-          onStream?.('NO');
-          onComplete?.('NO');
+          onStream?.({ content: 'NO' });
+          onComplete?.({ content: 'NO', reasoningContent: '' });
           return 'NO';
         }
       );
@@ -962,7 +962,7 @@ describe('IntentClassifier', () => {
       mockLlmService.isModelLoaded.mockReturnValue(true);
       mockLlmService.generateResponse.mockImplementation(
         async (_messages, onStream) => {
-          onStream?.('YES');
+          onStream?.({ content: 'YES' });
           return 'YES';
         }
       );
@@ -1010,7 +1010,7 @@ describe('IntentClassifier', () => {
       mockLlmService.isModelLoaded.mockReturnValue(true);
       mockLlmService.generateResponse.mockImplementation(
         async (_messages, onStream) => {
-          onStream?.('NO');
+          onStream?.({ content: 'NO' });
           return 'NO';
         }
       );
@@ -1052,7 +1052,7 @@ describe('IntentClassifier', () => {
       mockLlmService.isModelLoaded.mockReturnValue(true);
       mockLlmService.generateResponse.mockImplementation(
         async (_messages, onStream) => {
-          onStream?.('NO');
+          onStream?.({ content: 'NO' });
           return 'NO';
         }
       );

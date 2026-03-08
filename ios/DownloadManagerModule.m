@@ -27,6 +27,10 @@ RCT_EXTERN_METHOD(moveCompletedDownload:(double)downloadId
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(excludePathFromBackup:(NSString *)path
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(startProgressPolling)
 RCT_EXTERN_METHOD(stopProgressPolling)
 

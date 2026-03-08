@@ -13,7 +13,6 @@ import { createStyles } from './styles';
 import { SystemPromptSection } from './SystemPromptSection';
 import { ImageGenerationSection } from './ImageGenerationSection';
 import { TextGenerationSection } from './TextGenerationSection';
-import { PerformanceSection } from './PerformanceSection';
 
 export const ModelSettingsScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -26,7 +25,6 @@ export const ModelSettingsScreen: React.FC = () => {
   const [promptOpen, setPromptOpen] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
   const [textOpen, setTextOpen] = useState(false);
-  const [perfOpen, setPerfOpen] = useState(false);
 
   // If user arrived here via onboarding spotlight flow, show accordion spotlight
   useEffect(() => {
@@ -107,21 +105,6 @@ export const ModelSettingsScreen: React.FC = () => {
           />
         </TouchableOpacity>
         {textOpen && <TextGenerationSection />}
-
-        <TouchableOpacity
-          style={styles.accordionHeader}
-          onPress={() => setPerfOpen(!perfOpen)}
-          activeOpacity={0.7}
-          testID="performance-accordion"
-        >
-          <Text style={styles.accordionTitle}>Performance</Text>
-          <Icon
-            name={perfOpen ? 'chevron-up' : 'chevron-down'}
-            size={16}
-            color={colors.textMuted}
-          />
-        </TouchableOpacity>
-        {perfOpen && <PerformanceSection />}
 
         <Button
           title="Reset All to Defaults"

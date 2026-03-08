@@ -10,8 +10,8 @@ import {
   ModelType,
   MemoryCheckResult,
   MemoryCheckSeverity,
-  MEMORY_BUDGET_PERCENT,
-  MEMORY_WARNING_PERCENT,
+  getMemoryBudgetPercent,
+  getMemoryWarningPercent,
   TEXT_MODEL_OVERHEAD_MULTIPLIER,
   IMAGE_MODEL_OVERHEAD_MULTIPLIER,
 } from './types';
@@ -23,13 +23,13 @@ import {
 export const getMemoryBudgetGB = async (): Promise<number> => {
   const deviceInfo = await hardwareService.getDeviceInfo();
   const totalGB = deviceInfo.totalMemory / (1024 * 1024 * 1024);
-  return totalGB * MEMORY_BUDGET_PERCENT;
+  return totalGB * getMemoryBudgetPercent(totalGB);
 };
 
 export const getMemoryWarningThresholdGB = async (): Promise<number> => {
   const deviceInfo = await hardwareService.getDeviceInfo();
   const totalGB = deviceInfo.totalMemory / (1024 * 1024 * 1024);
-  return totalGB * MEMORY_WARNING_PERCENT;
+  return totalGB * getMemoryWarningPercent(totalGB);
 };
 
 // ---------------------------------------------------------------------------

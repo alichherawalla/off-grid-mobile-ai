@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { AdvancedToggle } from '../AdvancedToggle';
 import { useTheme, useThemedStyles } from '../../theme';
 import { useAppStore } from '../../stores';
 import { hardwareService } from '../../services';
 import { createStyles } from './styles';
-import { ImageQualitySliders } from './ImageQualitySliders';
+import { ImageQualityBasicSliders, ImageQualityAdvancedSliders } from './ImageQualitySliders';
 
 // ─── Image Model Picker ───────────────────────────────────────────────────────
 
@@ -227,13 +228,58 @@ const ClassifierModelPicker: React.FC = () => {
   );
 };
 
+// ─── Advanced Section ────────────────────────────────────────────────────────
+
+const ImageAdvancedSection: React.FC = () => {
+  const styles = useThemedStyles(createStyles);
+  const { settings, updateSettings } = useAppStore();
+  const isAutoMode = settings.imageGenerationMode === 'auto';
+  const isLlmDetect = settings.autoDetectMethod === 'llm';
+
+  return (
+    <>
+      <ImageQualityAdvancedSliders />
+      {isAutoMode && <AutoDetectMethodToggle />}
+      {isAutoMode && isLlmDetect && <ClassifierModelPicker />}
+      <View style={styles.modeToggleContainer}>
+        <View style={styles.modeToggleInfo}>
+          <Text style={styles.modeToggleLabel}>Enhance Image Prompts</Text>
+          <Text style={styles.modeToggleDesc}>
+            {settings.enhanceImagePrompts
+              ? 'Text model refines your prompt before image generation (slower but better results)'
+              : 'Use your prompt directly for image generation (faster)'}
+          </Text>
+        </View>
+        <View style={styles.modeToggleButtons}>
+          <TouchableOpacity
+            style={[styles.modeButton, !settings.enhanceImagePrompts && styles.modeButtonActive]}
+            onPress={() => updateSettings({ enhanceImagePrompts: false })}
+          >
+            <Text style={[styles.modeButtonText, !settings.enhanceImagePrompts && styles.modeButtonTextActive]}>
+              Off
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeButton, settings.enhanceImagePrompts && styles.modeButtonActive]}
+            onPress={() => updateSettings({ enhanceImagePrompts: true })}
+          >
+            <Text style={[styles.modeButtonText, settings.enhanceImagePrompts && styles.modeButtonTextActive]}>
+              On
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </>
+  );
+};
+
 // ─── Main Section ─────────────────────────────────────────────────────────────
 
 export const ImageGenerationSection: React.FC = () => {
   const styles = useThemedStyles(createStyles);
   const { settings, updateSettings } = useAppStore();
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const isAutoMode = settings.imageGenerationMode === 'auto';
-  const isLlmDetect = settings.autoDetectMethod === 'llm';
 
   return (
     <View style={styles.sectionCard}>
@@ -271,50 +317,11 @@ export const ImageGenerationSection: React.FC = () => {
         </View>
       </View>
 
-      {isAutoMode && <AutoDetectMethodToggle />}
-      {isAutoMode && isLlmDetect && <ClassifierModelPicker />}
+      <ImageQualityBasicSliders />
 
-      <ImageQualitySliders />
+      <AdvancedToggle isExpanded={showAdvanced} onPress={() => setShowAdvanced(!showAdvanced)} testID="modal-image-advanced-toggle" />
 
-      {/* Enhance Image Prompts Toggle */}
-      <View style={styles.modeToggleContainer}>
-        <View style={styles.modeToggleInfo}>
-          <Text style={styles.modeToggleLabel}>Enhance Image Prompts</Text>
-          <Text style={styles.modeToggleDesc}>
-            {settings.enhanceImagePrompts
-              ? 'Text model refines your prompt before image generation (slower but better results)'
-              : 'Use your prompt directly for image generation (faster)'}
-          </Text>
-        </View>
-        <View style={styles.modeToggleButtons}>
-          <TouchableOpacity
-            style={[styles.modeButton, !settings.enhanceImagePrompts && styles.modeButtonActive]}
-            onPress={() => updateSettings({ enhanceImagePrompts: false })}
-          >
-            <Text
-              style={[
-                styles.modeButtonText,
-                !settings.enhanceImagePrompts && styles.modeButtonTextActive,
-              ]}
-            >
-              Off
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.modeButton, settings.enhanceImagePrompts && styles.modeButtonActive]}
-            onPress={() => updateSettings({ enhanceImagePrompts: true })}
-          >
-            <Text
-              style={[
-                styles.modeButtonText,
-                settings.enhanceImagePrompts && styles.modeButtonTextActive,
-              ]}
-            >
-              On
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      {showAdvanced && <ImageAdvancedSection />}
     </View>
   );
 };

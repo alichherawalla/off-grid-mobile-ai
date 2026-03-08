@@ -7,9 +7,9 @@ import { useAppStore } from '../stores';
 import {
   initContextWithFallback, captureGpuInfo, logContextMetadata, getModelMaxContext,
   initMultimodal, checkContextMultimodal,
-  recordGenerationStats,
-  hashString, ensureSessionCacheDir, getSessionPath, buildModelParams,
-  buildCompletionParams, createThinkInjector, getMaxContextForDevice, getGpuLayersForDevice, BYTES_PER_GB,
+  recordGenerationStats, getStreamingDelta, hashString, ensureSessionCacheDir, getSessionPath, buildModelParams,
+  buildCompletionParams, buildThinkingCompletionParams, supportsNativeThinking,
+  getMaxContextForDevice, getGpuLayersForDevice, BYTES_PER_GB,
 } from './llmHelpers';
 import { hardwareService } from './hardware';
 import { formatLlamaMessages, buildOAIMessages } from './llmMessages';
@@ -19,8 +19,10 @@ import type { ToolCall } from './tools/types';
 export type { MultimodalSupport, LLMPerformanceSettings, LLMPerformanceStats } from './llmTypes';
 import type { MultimodalSupport, LLMPerformanceSettings, LLMPerformanceStats } from './llmTypes';
 import logger from '../utils/logger';
-type StreamCallback = (token: string) => void;
-type CompleteCallback = (fullResponse: string) => void;
+export type StreamToken = { content?: string; reasoningContent?: string };
+type StreamCallback = (data: StreamToken) => void;
+type CompleteCallback = (result: { content: string; reasoningContent: string }) => void;
+
 class LLMService {
   private context: LlamaContext | null = null;
   private currentModelPath: string | null = null;
@@ -28,36 +30,33 @@ class LLMService {
   private activeCompletionPromise: Promise<void> | null = null;
   private multimodalSupport: MultimodalSupport | null = null;
   private multimodalInitialized: boolean = false;
-  private performanceStats: LLMPerformanceStats = {
-    lastTokensPerSecond: 0, lastDecodeTokensPerSecond: 0,
-    lastTimeToFirstToken: 0, lastGenerationTime: 0, lastTokenCount: 0,
-  };
-  private currentSettings: LLMPerformanceSettings = {
-    nThreads: Platform.OS === 'android' ? 6 : 4,
-    nBatch: 512,
-    contextLength: 2048,
-  };
+  private performanceStats: LLMPerformanceStats = { lastTokensPerSecond: 0, lastDecodeTokensPerSecond: 0, lastTimeToFirstToken: 0, lastGenerationTime: 0, lastTokenCount: 0 };
+  private currentSettings: LLMPerformanceSettings = { nThreads: Platform.OS === 'android' ? 6 : 4, nBatch: 512, contextLength: 2048 };
   private gpuEnabled: boolean = false;
   private gpuReason: string = '';
   private gpuDevices: string[] = [];
   private activeGpuLayers: number = 0;
   private toolCallingSupported: boolean = false;
   private thinkingSupported: boolean = false;
-  private lastSystemPromptHash: string | null = null;
   private sessionCacheDir: string = `${RNFS.CachesDirectoryPath}/llm-sessions`;
 
-  private hashString(str: string): string { return hashString(str); }
-  private ensureSessionCacheDir(): Promise<void> { return ensureSessionCacheDir(this.sessionCacheDir); }
-  private getSessionPath(promptHash: string): string { return getSessionPath(this.sessionCacheDir, promptHash); }
+  private hashString(value: string): string {
+    return hashString(value);
+  }
+
+  private ensureSessionCacheDir(): Promise<void> {
+    return ensureSessionCacheDir(this.sessionCacheDir);
+  }
+
+  private getSessionPath(promptHash: string): string {
+    return getSessionPath(this.sessionCacheDir, promptHash);
+  }
 
   async loadModel(modelPath: string, mmProjPath?: string): Promise<void> {
     if (this.context && this.currentModelPath !== modelPath) await this.unloadModel();
     if (this.context && this.currentModelPath === modelPath) return;
     if (!await RNFS.exists(modelPath)) throw new Error(`Model file not found at: ${modelPath}`);
-    if (mmProjPath && !await RNFS.exists(mmProjPath)) {
-      logger.warn('[LLM] MMProj file not found, disabling vision support');
-      mmProjPath = undefined;
-    }
+    if (mmProjPath && !await RNFS.exists(mmProjPath)) { logger.warn('[LLM] MMProj file not found, disabling vision support'); mmProjPath = undefined; }
     const { settings } = useAppStore.getState();
     const { baseParams, nThreads, nBatch, ctxLen, nGpuLayers } = buildModelParams(modelPath, settings);
     this.currentSettings = { nThreads, nBatch, contextLength: ctxLen };
@@ -81,24 +80,18 @@ class LLMService {
       this.detectThinkingSupport();
       logger.log(`[LLM] Model loaded, vision: ${this.supportsVision()}, tools: ${this.toolCallingSupported}, thinking: ${this.thinkingSupported}`);
     } catch (error: any) {
-      this.context = null;
-      this.currentModelPath = null;
-      this.multimodalSupport = null;
-      this.toolCallingSupported = false;
-      this.thinkingSupported = false;
+      this.context = null; this.currentModelPath = null; this.multimodalSupport = null;
+      this.toolCallingSupported = false; this.thinkingSupported = false;
       Object.assign(this, { gpuEnabled: false, gpuReason: '', activeGpuLayers: 0, gpuDevices: [] });
       throw new Error(error?.message || 'Unknown error loading model');
     }
   }
-  /** Auto-scale context and cap GPU layers based on device RAM to prevent abort() on low-RAM devices. */
   private async initWithAutoContext(
     params: { baseParams: object; ctxLen: number; nGpuLayers: number },
   ): Promise<{ context: LlamaContext; gpuAttemptFailed: boolean; actualLength: number }> {
     const deviceInfo = await hardwareService.getDeviceInfo();
     const safeGpuLayers = getGpuLayersForDevice(deviceInfo.totalMemory, params.nGpuLayers);
-    if (safeGpuLayers !== params.nGpuLayers) {
-      logger.log(`[LLM] Low RAM (${(deviceInfo.totalMemory / BYTES_PER_GB).toFixed(1)}GB), GPU layers ${params.nGpuLayers} → ${safeGpuLayers}`);
-    }
+    if (safeGpuLayers !== params.nGpuLayers) logger.log(`[LLM] Low RAM (${(deviceInfo.totalMemory / BYTES_PER_GB).toFixed(1)}GB), GPU layers ${params.nGpuLayers} → ${safeGpuLayers}`);
     const initial = await initContextWithFallback(params.baseParams, params.ctxLen, safeGpuLayers);
     const modelMax = getModelMaxContext(initial.context);
     const userIsOnDefault = this.currentSettings.contextLength === APP_CONFIG.maxContextLength;
@@ -134,6 +127,7 @@ class LLMService {
   supportsVision(): boolean { return this.multimodalSupport?.vision || false; }
   supportsToolCalling(): boolean { return this.toolCallingSupported; }
   supportsThinking(): boolean { return this.thinkingSupported; }
+  isThinkingEnabled(): boolean { return this.thinkingSupported && useAppStore.getState().settings.thinkingEnabled; }
   private detectToolCallingSupport(): void {
     if (!this.context) { this.toolCallingSupported = false; return; }
     try {
@@ -143,11 +137,7 @@ class LLMService {
     } catch (e) { logger.warn('[LLM] Error detecting tool calling support:', e); this.toolCallingSupported = false; }
   }
   private detectThinkingSupport(): void {
-    if (!this.context) { this.thinkingSupported = false; return; }
-    try {
-      const template = (this.context as any)?.model?.metadata?.['tokenizer.chat_template'] || '';
-      this.thinkingSupported = typeof template === 'string' && template.includes('<think>');
-    } catch (_e) { this.thinkingSupported = false; }
+    this.thinkingSupported = supportsNativeThinking(this.context);
   }
 
   async unloadModel(): Promise<void> {
@@ -156,15 +146,12 @@ class LLMService {
         try { await this.context.stopCompletion(); } catch (e) { logger.log('[LLM] Stop during unload:', e); }
         this.isGenerating = false;
       }
-      if (this.activeCompletionPromise !== null) {
-        await this.activeCompletionPromise;
-        this.activeCompletionPromise = null;
-      }
+      if (this.activeCompletionPromise !== null) { await this.activeCompletionPromise; this.activeCompletionPromise = null; }
       await this.context.release();
       useAppStore.getState().setModelMaxContext(null);
       Object.assign(this, {
         context: null, currentModelPath: null, multimodalSupport: null,
-        multimodalInitialized: false, toolCallingSupported: false,
+        multimodalInitialized: false, toolCallingSupported: false, thinkingSupported: false,
         gpuEnabled: false, gpuReason: '', gpuDevices: [], activeGpuLayers: 0,
       });
     }
@@ -194,27 +181,33 @@ class LLMService {
       const startTime = Date.now();
       let firstTokenMs = 0;
       let tokenCount = 0;
-      let fullResponse = '';
       let firstReceived = false;
-      const thinkStream = this.thinkingSupported && onStream
-        ? createThinkInjector(t => onStream(t)) : null;
-      const completionResult = await ctx.completion({
-        messages: oaiMessages,
-        ...buildCompletionParams(settings),
-      }, (data) => {
-        if (!this.isGenerating || !data.token) return;
+      let fullContent = '';
+      let fullReasoningContent = '';
+      let streamedContentSoFar = '';
+      let streamedReasoningSoFar = '';
+      const enableThinking = this.isThinkingEnabled();
+      const completionParams = { messages: oaiMessages, ...buildCompletionParams(settings), ...buildThinkingCompletionParams(enableThinking) };
+      const completionResult = await ctx.completion(completionParams, (data: any) => {
+        if (!this.isGenerating) return;
+        if (!data.token) return;
         if (!firstReceived) { firstReceived = true; firstTokenMs = Date.now() - startTime; }
         tokenCount++;
-        fullResponse += data.token;
-        if (thinkStream) { thinkStream(data.token); } else { onStream?.(data.token); }
+        const content = getStreamingDelta(data.content ?? (!data.reasoning_content ? data.token : undefined), streamedContentSoFar);
+        const reasoningContent = getStreamingDelta(data.reasoning_content || undefined, streamedReasoningSoFar);
+        if (data.content) streamedContentSoFar = data.content;
+        else if (!data.reasoning_content && data.token) streamedContentSoFar += data.token;
+        if (data.reasoning_content) streamedReasoningSoFar = data.reasoning_content;
+        if (content) fullContent += content;
+        if (reasoningContent) fullReasoningContent += reasoningContent;
+        onStream?.({ reasoningContent, content });
       });
+      const cr = completionResult as any;
       this.performanceStats = recordGenerationStats(startTime, firstTokenMs, tokenCount);
-      if (completionResult?.context_full) {
-        logger.log('[LLM] Context full detected — signalling for compaction');
-        throw new Error('Context is full');
-      }
-      onComplete?.(fullResponse);
-      return fullResponse;
+      if (completionResult?.context_full) { logger.log('[LLM] Context full detected — signalling for compaction'); throw new Error('Context is full'); }
+      const result = { content: cr?.content || cr?.text || fullContent, reasoningContent: cr?.reasoning_content || fullReasoningContent };
+      onComplete?.(result);
+      return result.content;
     })();
     this.activeCompletionPromise = completionWork.then(() => {}, () => {});
     try {
@@ -231,11 +224,17 @@ class LLMService {
   ): Promise<{ fullResponse: string; toolCalls: ToolCall[] }> {
     const work = generateWithToolsImpl({
       context: this.context, isGenerating: this.isGenerating,
+      isThinkingEnabled: this.isThinkingEnabled(),
       manageContextWindow: (msgs, extra?) => this.manageContextWindow(msgs, extra),
       convertToOAIMessages: (msgs) => this.convertToOAIMessages(msgs),
       setPerformanceStats: (s) => { this.performanceStats = s; },
       setIsGenerating: (v) => { this.isGenerating = v; },
-    }, messages, options);
+    }, messages, {
+      tools: options.tools,
+      onStream: options.onStream,
+      onComplete: options.onComplete
+        ? ((onComplete) => (fullResponse: string) => onComplete({ content: fullResponse, reasoningContent: '' }))(options.onComplete) : undefined,
+    });
     this.activeCompletionPromise = work.then(() => {}, () => {});
     try {
       return await work;
@@ -346,5 +345,4 @@ class LLMService {
     }
   }
 }
-
 export const llmService = new LLMService();

@@ -60,7 +60,7 @@ export const useHomeScreen = (navigation: HomeScreenNavigationProp) => {
     handleUnloadTextModel,
     handleSelectImageModel,
     handleUnloadImageModel,
-  } = useModelLoading(activeModelId, activeImageModelId, {
+  } = useModelLoading({
     setLoadingState,
     setPickerType,
     setAlertState,
@@ -111,6 +111,11 @@ export const useHomeScreen = (navigation: HomeScreenNavigationProp) => {
     const doEjectAll = async () => {
       setAlertState(hideAlert());
       setIsEjecting(true);
+      setLoadingState({ isLoading: true, type: 'text', modelName: 'Ejecting models...' });
+      // Let the overlay render before blocking the bridge
+      await new Promise<void>(resolve =>
+        InteractionManager.runAfterInteractions(() => setTimeout(resolve, 350))
+      );
       try {
         const results = await activeModelService.unloadAllModels();
         const count = (results.textUnloaded ? 1 : 0) + (results.imageUnloaded ? 1 : 0);
@@ -121,6 +126,7 @@ export const useHomeScreen = (navigation: HomeScreenNavigationProp) => {
         setAlertState(showAlert('Error', 'Failed to unload models'));
       } finally {
         setIsEjecting(false);
+        setLoadingState({ isLoading: false, type: null, modelName: null });
       }
     };
     setAlertState(showAlert(

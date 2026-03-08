@@ -21,7 +21,6 @@ import {
 import { useChatStore, useProjectStore } from '../../stores';
 import { Message, MediaAttachment, Project, DownloadedModel, ModelLoadingStrategy, CacheType } from '../../types';
 import logger from '../../utils/logger';
-
 type SetState<T> = Dispatch<SetStateAction<T>>;
 const FALLBACK_RECENT_MESSAGE_COUNT = 2;
 
@@ -152,7 +151,6 @@ export async function handleImageGenerationFn(
 }
 
 export type StartGenerationCall = { setDebugInfo: SetState<any>; targetConversationId: string; messageText: string };
-
 async function ensureModelReady(deps: GenerationDeps): Promise<boolean> {
   const loadedPath = llmService.getLoadedModelPath();
   if (loadedPath && loadedPath === deps.activeModel!.filePath) return true;
@@ -174,10 +172,10 @@ async function prepareContext(setDebugInfo: SetState<any>, systemPrompt: string,
 /** Run generation; if context is full, compact old messages and retry once. */
 async function generateWithCompactionRetry(
   opts: { id: string; prompt: string; messages: Message[] },
-  enabledTools: string[],
+  activeTools: string[],
 ): Promise<void> {
-  const gen = (msgs: Message[]) => enabledTools.length > 0
-    ? generationService.generateWithTools(opts.id, msgs, { enabledToolIds: enabledTools })
+  const gen = (msgs: Message[]) => activeTools.length > 0
+    ? generationService.generateWithTools(opts.id, msgs, { enabledToolIds: activeTools })
     : generationService.generateResponse(opts.id, msgs);
   try { await gen(opts.messages); } catch (error: any) {
     if (!contextCompactionService.isContextFullError(error)) throw error;
@@ -207,12 +205,13 @@ export async function startGenerationFn(deps: GenerationDeps, call: StartGenerat
   const conversation = useChatStore.getState().conversations.find(c => c.id === targetConversationId);
   const project = conversation?.projectId ? useProjectStore.getState().getProject(conversation.projectId) : null;
   const enabledTools = llmService.supportsToolCalling() ? (deps.settings.enabledTools || []) : [];
+  const activeTools = enabledTools;
   const basePrompt = project?.systemPrompt || deps.settings.systemPrompt || APP_CONFIG.defaultSystemPrompt;
-  const systemPrompt = enabledTools.length > 0 ? basePrompt + buildToolSystemPromptHint(enabledTools) : basePrompt;
+  const systemPrompt = activeTools.length > 0 ? basePrompt + buildToolSystemPromptHint(activeTools) : basePrompt;
   const messagesForContext = buildMessagesForContext(targetConversationId, messageText, systemPrompt);
   await prepareContext(setDebugInfo, systemPrompt, messagesForContext);
   try {
-    await generateWithCompactionRetry({ id: targetConversationId, prompt: systemPrompt, messages: messagesForContext }, enabledTools);
+    await generateWithCompactionRetry({ id: targetConversationId, prompt: systemPrompt, messages: messagesForContext }, activeTools);
   } catch (error: any) {
     const msg = error?.message || error?.toString?.() || 'Failed to generate response';
     logger.error('[ChatGen] Generation failed:', msg, error);

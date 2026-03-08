@@ -63,17 +63,24 @@ class LocalDreamGeneratorService {
     }
   }
 
-  async loadModel(modelPath: string, threads?: number, backend: 'mnn' | 'qnn' | 'auto' = 'auto'): Promise<boolean> {
+  async loadModel(modelPath: string, threads?: number, opts: { backend?: 'mnn' | 'qnn' | 'auto'; cpuOnly?: boolean; attentionVariant?: 'split_einsum' | 'original' } = {}): Promise<boolean> {
     if (!this.isAvailable()) {
       throw new Error('LocalDream image generation is not available on this platform');
     }
 
-    const params: { modelPath: string; threads?: number; backend: string } = {
+    const backend = opts.backend ?? 'auto';
+    const params: { modelPath: string; threads?: number; backend: string; cpuOnly?: boolean; attentionVariant?: string } = {
       modelPath,
       backend,
     };
     if (typeof threads === 'number') {
       params.threads = threads;
+    }
+    if (opts.cpuOnly) {
+      params.cpuOnly = true;
+    }
+    if (opts.attentionVariant) {
+      params.attentionVariant = opts.attentionVariant;
     }
 
     const result = await DiffusionModule.loadModel(params);
@@ -129,12 +136,13 @@ class LocalDreamGeneratorService {
       const result = await DiffusionModule.generateImage({
         prompt: params.prompt,
         negativePrompt: params.negativePrompt || '',
-        steps: params.steps || 20,
+        steps: params.steps || 8,
         guidanceScale: params.guidanceScale || 7.5,
         seed: params.seed ?? generateRandomSeed(),
         width: params.width || 512,
         height: params.height || 512,
         previewInterval: params.previewInterval ?? 2,
+        useOpenCL: params.useOpenCL ?? true,
       });
 
       return {
@@ -144,7 +152,7 @@ class LocalDreamGeneratorService {
         imagePath: result.imagePath,
         width: result.width,
         height: result.height,
-        steps: params.steps || 20,
+        steps: params.steps || 8,
         seed: result.seed,
         modelId: '',
         createdAt: Date.now().toString(),
@@ -188,6 +196,16 @@ class LocalDreamGeneratorService {
   async deleteGeneratedImage(imageId: string): Promise<boolean> {
     if (!this.isAvailable()) return false;
     return await DiffusionModule.deleteGeneratedImage(imageId);
+  }
+
+  async clearOpenCLCache(modelPath: string): Promise<number> {
+    if (Platform.OS !== 'android' || !this.isAvailable()) return 0;
+    return await DiffusionModule.clearOpenCLCache(modelPath);
+  }
+
+  async hasKernelCache(modelPath: string): Promise<boolean> {
+    if (Platform.OS !== 'android' || !this.isAvailable()) return true;
+    return await DiffusionModule.hasOpenCLCache(modelPath);
   }
 
   getConstants() {

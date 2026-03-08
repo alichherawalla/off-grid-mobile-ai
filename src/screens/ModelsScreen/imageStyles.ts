@@ -193,7 +193,7 @@ const createImageModelsStylesPart2 = (colors: ThemeColors, _shadows: ThemeShadow
   },
   badgeRow: { flexDirection: 'row' as const, gap: 6, marginBottom: 4 },
   backendBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  cpuBadge: { backgroundColor: `${colors.primary}25` },
+  gpuBadge: { backgroundColor: `${colors.primary}25` },
   npuBadge: { backgroundColor: '#FF990025' },
   backendBadgeText: { ...TYPOGRAPHY.label, color: colors.text },
   variantBadge: {

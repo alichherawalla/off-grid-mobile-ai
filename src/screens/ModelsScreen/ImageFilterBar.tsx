@@ -21,7 +21,7 @@ interface Props {
 }
 
 function getBackendLabel(filter: BackendFilter): string {
-  if (filter === 'mnn') return 'CPU';
+  if (filter === 'mnn') return 'GPU';
   if (filter === 'qnn') return 'NPU';
   if (filter === 'coreml') return 'Core ML';
   return 'Backend';

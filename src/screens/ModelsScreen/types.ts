@@ -21,6 +21,8 @@ export interface ImageModelDescriptor {
   coremlFiles?: { path: string; relativePath: string; size: number; downloadUrl: string }[];
   /** HuggingFace repo slug (e.g. 'apple/coreml-stable-diffusion-2-1-base-palettized') */
   repo?: string;
+  /** Core ML attention variant: 'original' uses CPU/GPU (lower peak memory) */
+  attentionVariant?: 'split_einsum' | 'original';
 }
 
 export type CredibilityFilter = 'all' | ModelSource;

@@ -2584,7 +2584,7 @@ describe('ModelsScreen', () => {
     const mnnModel = {
       id: 'cpu-model',
       name: 'cpu-model',
-      displayName: 'CPU Model',
+      displayName: 'GPU Model',
       backend: 'mnn' as const,
       fileName: 'cpu.zip',
       downloadUrl: 'https://example.com/cpu.zip',
@@ -2616,7 +2616,7 @@ describe('ModelsScreen', () => {
         await new Promise<void>(resolve => setTimeout(resolve, 100));
       });
 
-      // CPU Model (mnn) matches recommendedBackend='mnn' → visible
+      // GPU Model (mnn) matches recommendedBackend='mnn' → visible
       // NPU Model (qnn) does not match → filtered out by showRecommendedOnly
       expect(queryByText('NPU Model')).toBeNull();
     });

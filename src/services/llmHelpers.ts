@@ -151,6 +151,35 @@ export function captureGpuInfo(
   return { gpuEnabled, gpuReason, gpuDevices, activeGpuLayers };
 }
 
+export function supportsNativeThinking(context: LlamaContext | null): boolean {
+  if (!context) return false;
+  try {
+    if (typeof context.isJinjaSupported === 'function') {
+      return context.isJinjaSupported();
+    }
+    const jinja = (context as any)?.model?.chatTemplates?.jinja;
+    return !!(jinja?.default || jinja?.toolUse);
+  } catch {
+    return false;
+  }
+}
+
+export function buildThinkingCompletionParams(enableThinking: boolean): {
+  enable_thinking: boolean;
+  reasoning_format: 'none' | 'deepseek';
+} {
+  return {
+    enable_thinking: enableThinking,
+    reasoning_format: enableThinking ? 'deepseek' : 'none',
+  };
+}
+
+export function getStreamingDelta(nextValue: string | undefined, previousValue: string): string | undefined {
+  if (!nextValue) return undefined;
+  if (!previousValue) return nextValue;
+  return nextValue.startsWith(previousValue) ? nextValue.slice(previousValue.length) || undefined : nextValue;
+}
+
 /**
  * Reads the model's trained context length from metadata.
  * Returns the max context the model supports, or null if unavailable.
@@ -283,7 +312,7 @@ export function getGpuLayersForDevice(totalMemoryBytes: number, requestedLayers:
   return requestedLayers;
 }
 
-export const STOP_TOKENS = ['</s>', '<|end|>', '<|eot_id|>', '<|im_end|>', '<|im_start|>'];
+export const STOP_TOKENS = ['</s>', '<|end|>', '<|eot_id|>'];
 
 export function buildCompletionParams(settings: {
   maxTokens?: number; temperature?: number; topP?: number; repeatPenalty?: number;
@@ -299,25 +328,6 @@ export function buildCompletionParams(settings: {
   };
 }
 
-/**
- * Creates a one-shot injector that prepends `<think>` into the stream
- * for thinking models whose Jinja template consumes the tag.
- * Returns a wrapper: call it with each token; it injects once then passes through.
- */
-export function createThinkInjector(
-  emit: (token: string) => void,
-): (token: string) => void {
-  let injected = false;
-  return (token: string) => {
-    if (!injected) {
-      injected = true;
-      if (!token.startsWith('<think>')) {
-        emit('<think>');
-      }
-    }
-    emit(token);
-  };
-}
 
 export function recordGenerationStats(
   startTime: number,

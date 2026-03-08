@@ -55,10 +55,11 @@ class ModelManager {
   private isMMProjFile(f: string) { return isMMProjFile(f); }
 
   async initialize(): Promise<void> {
-    const exists = await RNFS.exists(this.modelsDir);
-    if (!exists) await RNFS.mkdir(this.modelsDir);
-    const imageModelsExists = await RNFS.exists(this.imageModelsDir);
-    if (!imageModelsExists) await RNFS.mkdir(this.imageModelsDir);
+    if (!(await RNFS.exists(this.modelsDir))) await RNFS.mkdir(this.modelsDir);
+    if (!(await RNFS.exists(this.imageModelsDir))) await RNFS.mkdir(this.imageModelsDir);
+    const exclude = (p: string) => backgroundDownloadService.excludeFromBackup(p);
+    await Promise.all([exclude(this.modelsDir), exclude(this.imageModelsDir),
+      exclude(`${RNFS.DocumentDirectoryPath}/${APP_CONFIG.whisperStorageDir}`)]);
   }
 
   async getDownloadedModels(): Promise<DownloadedModel[]> {

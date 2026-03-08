@@ -6,11 +6,12 @@
 import { useAppStore } from '../stores';
 import type { Message } from '../types';
 import type { ToolCall } from './tools/types';
-import { recordGenerationStats, buildCompletionParams } from './llmHelpers';
+import { recordGenerationStats, buildCompletionParams, buildThinkingCompletionParams } from './llmHelpers';
+import type { StreamToken } from './llm';
 import logger from '../utils/logger';
 
-type StreamCallback = (token: string) => void;
-type CompleteCallback = (fullResponse: string) => void;
+type ToolStreamCallback = (data: StreamToken) => void;
+type ToolCompleteCallback = (fullResponse: string) => void;
 
 function parseToolCall(tc: any): ToolCall {
   const fn = tc.function || {};
@@ -24,6 +25,7 @@ function parseToolCall(tc: any): ToolCall {
 export interface ToolGenerationDeps {
   context: any;
   isGenerating: boolean;
+  isThinkingEnabled: boolean;
   manageContextWindow: (messages: Message[], extraReserve?: number) => Promise<Message[]>;
   convertToOAIMessages: (messages: Message[]) => any[];
   setPerformanceStats: (stats: any) => void;
@@ -33,7 +35,7 @@ export interface ToolGenerationDeps {
 export async function generateWithToolsImpl(
   deps: ToolGenerationDeps,
   messages: Message[],
-  options: { tools: any[]; onStream?: StreamCallback; onComplete?: CompleteCallback },
+  options: { tools: any[]; onStream?: ToolStreamCallback; onComplete?: ToolCompleteCallback },
 ): Promise<{ fullResponse: string; toolCalls: ToolCall[] }> {
   if (!deps.context) throw new Error('No model loaded');
   if (deps.isGenerating) throw new Error('Generation already in progress');
@@ -60,8 +62,10 @@ export async function generateWithToolsImpl(
       ...buildCompletionParams(settings),
       tools: options.tools,
       tool_choice: 'auto',
+      ...buildThinkingCompletionParams(deps.isThinkingEnabled),
     };
-    logger.log(`[LLM-Tools] Completion params: ${oaiMessages.length} msgs, ${options.tools.length} tools, n_predict=${(completionParams as any).n_predict}`);
+    console.log('[LLM-Tools] === INPUT ===');
+    console.log(JSON.stringify(completionParams, null, 2));
     const completionResult = await deps.context.completion(completionParams as any, (data: any) => {
       if (!generating) return;
       if (data.tool_calls) {
@@ -73,13 +77,12 @@ export async function generateWithToolsImpl(
       if (!firstReceived) { firstReceived = true; firstTokenMs = Date.now() - startTime; }
       tokenCount++;
       fullResponse += data.token;
-      options.onStream?.(data.token);
+      options.onStream?.({ content: data.token });
     });
+    console.log('[LLM-Tools] === OUTPUT ===');
+    console.log(JSON.stringify(completionResult, null, 2));
 
     const cr = completionResult as any;
-    logger.log(`[LLM-Tools] Completion done: streamed=${tokenCount} tokens, response="${fullResponse.substring(0, 100)}"`);
-    logger.log(`[LLM-Tools] Result: predicted=${cr?.tokens_predicted}, evaluated=${cr?.tokens_evaluated}, context_full=${cr?.context_full}, stopped_eos=${cr?.stopped_eos}`);
-    logger.log(`[LLM-Tools] Result text="${(cr?.text || '').substring(0, 200)}", content="${(cr?.content || '').substring(0, 200)}"`);
 
     // If streaming didn't capture tokens but completionResult has text, use it
     if (!fullResponse && cr?.text) {

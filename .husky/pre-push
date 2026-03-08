@@ -1,0 +1,80 @@
+#!/usr/bin/env sh
+
+ZERO_OID="0000000000000000000000000000000000000000"
+
+collect_changed_files() {
+  changed_files=""
+
+  if [ -t 0 ]; then
+    git diff --name-only --diff-filter=ACMR @{upstream}..HEAD 2>/dev/null || true
+    return
+  fi
+
+  while read -r local_ref local_oid remote_ref remote_oid; do
+    [ -z "$local_oid" ] && continue
+    [ "$local_oid" = "$ZERO_OID" ] && continue
+
+    if [ "$remote_oid" = "$ZERO_OID" ]; then
+      base=$(git merge-base "$local_oid" origin/main 2>/dev/null || true)
+      if [ -n "$base" ]; then
+        range="$base..$local_oid"
+        changed=$(git diff --name-only --diff-filter=ACMR "$range")
+      else
+        changed=$(git diff-tree --no-commit-id --name-only -r --diff-filter=ACMR "$local_oid")
+      fi
+    else
+      range="$remote_oid..$local_oid"
+      changed=$(git diff --name-only --diff-filter=ACMR "$range")
+    fi
+
+    changed_files="${changed_files}
+${changed}"
+  done
+
+  printf '%s\n' "$changed_files" | sed '/^$/d' | sort -u
+}
+
+CHANGED_FILES=$(collect_changed_files)
+
+PUSHED_JS=$(printf '%s\n' "$CHANGED_FILES" | grep -E '\.(ts|tsx|js|jsx)$' || true)
+PUSHED_SWIFT=$(printf '%s\n' "$CHANGED_FILES" | grep '\.swift$' | grep -v 'Pods/' | grep -v 'build/' || true)
+PUSHED_KOTLIN=$(printf '%s\n' "$CHANGED_FILES" | grep -E '\.(kt|kts)$' || true)
+
+if [ -n "$PUSHED_JS" ]; then
+  echo "▶ JS/TS lint (push range)..."
+  echo "$PUSHED_JS" | tr '\n' '\0' | xargs -0 eslint --max-warnings=999
+
+  echo "▶ TypeScript type check..."
+  npx tsc --noEmit
+
+  echo "▶ JS/TS tests..."
+  npm test
+fi
+
+if [ -n "$PUSHED_SWIFT" ]; then
+  if command -v swiftlint >/dev/null 2>&1; then
+    echo "▶ SwiftLint (push range)..."
+    echo "$PUSHED_SWIFT" | tr '\n' '\0' | xargs -0 swiftlint lint --quiet
+  else
+    echo "⚠️  SwiftLint not installed — skipping Swift lint. Install: brew install swiftlint"
+  fi
+
+  echo "▶ iOS tests..."
+  npm run test:ios
+fi
+
+if [ -n "$PUSHED_KOTLIN" ]; then
+  echo "▶ Kotlin type check (compileDebugKotlin)..."
+  (cd android && ./gradlew compileDebugKotlin --quiet)
+
+  echo "▶ Android lint..."
+  (cd android && ./gradlew lintDebug --quiet)
+
+  echo "▶ Android tests..."
+  npm run test:android
+fi
+
+if [ -n "$PUSHED_JS$PUSHED_SWIFT$PUSHED_KOTLIN" ]; then
+  echo "▶ Sonar scan..."
+  npm run sonar
+fi

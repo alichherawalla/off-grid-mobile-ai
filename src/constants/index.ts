@@ -85,6 +85,7 @@ export const CREDIBILITY_LABELS = {
 // App configuration
 export const APP_CONFIG = {
   modelStorageDir: 'models',
+  whisperStorageDir: 'whisper-models',
   maxConcurrentDownloads: 1,
   defaultSystemPrompt: `You are a helpful AI assistant running locally on the user's device. Your responses should be:
 - Accurate and factual - never make up information

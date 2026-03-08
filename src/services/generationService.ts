@@ -8,6 +8,7 @@ import logger from '../utils/logger';
 import { shouldShowSharePrompt, emitSharePrompt } from '../utils/sharePrompt';
 
 const SHARE_PROMPT_DELAY_MS = 1500;
+type StreamChunk = string | { content?: string; reasoningContent?: string };
 
 export interface QueuedMessage {
   id: string; conversationId: string; text: string;
@@ -39,13 +40,19 @@ class GenerationService {
 
   // Token batching — collect tokens and flush to UI at a controlled rate
   private tokenBuffer: string = '';
+  private reasoningBuffer: string = '';
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly FLUSH_INTERVAL_MS = 50; // ~20 updates/sec
 
   private flushTokenBuffer(): void {
+    const store = useChatStore.getState();
     if (this.tokenBuffer) {
-      useChatStore.getState().appendToStreamingMessage(this.tokenBuffer);
+      store.appendToStreamingMessage(this.tokenBuffer);
       this.tokenBuffer = '';
+    }
+    if (this.reasoningBuffer) {
+      store.appendToStreamingReasoningContent(this.reasoningBuffer);
+      this.reasoningBuffer = '';
     }
     this.flushTimer = null;
   }
@@ -56,6 +63,10 @@ class GenerationService {
       this.flushTimer = null;
     }
     this.flushTokenBuffer();
+  }
+
+  private normalizeStreamChunk(data: StreamChunk): { content?: string; reasoningContent?: string } {
+    return typeof data === 'string' ? { content: data } : data;
   }
 
   getState(): GenerationState { return { ...this.state }; }
@@ -114,6 +125,7 @@ class GenerationService {
     if (!llmService.isModelLoaded()) { this.resetState(); throw new Error('No model loaded'); }
     if (llmService.isCurrentlyGenerating()) { this.resetState(); throw new Error('LLM service busy'); }
     this.tokenBuffer = '';
+    this.reasoningBuffer = '';
     return true;
   }
 
@@ -131,15 +143,21 @@ class GenerationService {
     try {
       await llmService.generateResponse(
         messages,
-        (token) => {
+        (data) => {
           if (this.abortRequested) return;
+          const chunk = this.normalizeStreamChunk(data);
           if (!firstTokenReceived) {
             firstTokenReceived = true;
             this.updateState({ isThinking: false });
             onFirstToken?.();
           }
-          this.state.streamingContent += token;
-          this.tokenBuffer += token;
+          if (chunk.content) {
+            this.state.streamingContent += chunk.content;
+            this.tokenBuffer += chunk.content;
+          }
+          if (chunk.reasoningContent) {
+            this.reasoningBuffer += chunk.reasoningContent;
+          }
           if (!this.flushTimer) {
             this.flushTimer = setTimeout(
               () => this.flushTokenBuffer(),
@@ -195,10 +213,16 @@ class GenerationService {
         callbacks,
         isAborted: () => this.abortRequested,
         onThinkingDone: () => this.updateState({ isThinking: false }),
-        onStream: (token) => {
+        onStream: (data) => {
           if (this.abortRequested) return;
-          this.state.streamingContent += token;
-          this.tokenBuffer += token;
+          const chunk = this.normalizeStreamChunk(data);
+          if (chunk.content) {
+            this.state.streamingContent += chunk.content;
+            this.tokenBuffer += chunk.content;
+          }
+          if (chunk.reasoningContent) {
+            this.reasoningBuffer += chunk.reasoningContent;
+          }
           if (!this.flushTimer) {
             this.flushTimer = setTimeout(
               () => this.flushTokenBuffer(),
@@ -309,6 +333,7 @@ class GenerationService {
       this.flushTimer = null;
     }
     this.tokenBuffer = '';
+    this.reasoningBuffer = '';
     this.updateState({
       isGenerating: false,
       isThinking: false,

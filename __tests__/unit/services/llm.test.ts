@@ -205,6 +205,19 @@ describe('LLMService', () => {
       );
     });
 
+    it('uses llama.rn jinja support to detect thinking support', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext({
+        isJinjaSupported: jest.fn(() => true),
+      });
+      mockedInitLlama.mockResolvedValue(ctx as any);
+
+      await llmService.loadModel('/models/test.gguf');
+
+      expect(llmService.supportsThinking()).toBe(true);
+      expect(ctx.isJinjaSupported).toHaveBeenCalled();
+    });
+
     it('uses flashAttn=true from store and sets q8_0 KV cache', async () => {
       mockedRNFS.exists.mockResolvedValue(true);
       const ctx = createMockLlamaContext();
@@ -450,11 +463,14 @@ describe('LLMService', () => {
     it('streams tokens via onStream callback', async () => {
       await setupLoadedModel();
       const messages = [createUserMessage('Hello')];
-      const tokens: string[] = [];
+      const tokens: Array<{ content?: string; reasoningContent?: string }> = [];
 
       await llmService.generateResponse(messages, (token) => tokens.push(token));
 
-      expect(tokens).toEqual(['Hello', ' World']);
+      expect(tokens).toEqual([
+        { content: 'Hello', reasoningContent: undefined },
+        { content: ' World', reasoningContent: undefined },
+      ]);
     });
 
     it('returns full response and calls onComplete', async () => {
@@ -465,7 +481,7 @@ describe('LLMService', () => {
       const result = await llmService.generateResponse(messages, undefined, onComplete);
 
       expect(result).toBe('Hello World');
-      expect(onComplete).toHaveBeenCalledWith('Hello World');
+      expect(onComplete).toHaveBeenCalledWith({ content: 'Hello World', reasoningContent: '' });
     });
 
     it('updates performance stats', async () => {
@@ -508,7 +524,7 @@ describe('LLMService', () => {
     });
 
     it('ignores tokens after generation stops', async () => {
-      const tokens: string[] = [];
+      const tokens: Array<{ content?: string; reasoningContent?: string }> = [];
       await setupLoadedModel({
         completion: jest.fn(async (params: any, callback: any) => {
           callback({ token: 'Hello' });
@@ -523,7 +539,76 @@ describe('LLMService', () => {
       const messages = [createUserMessage('Hello')];
       await llmService.generateResponse(messages, (t) => tokens.push(t));
 
-      expect(tokens).toEqual(['Hello']);
+      expect(tokens).toEqual([{ content: 'Hello', reasoningContent: undefined }]);
+    });
+
+    it('passes llama.rn native thinking params when enabled', async () => {
+      const ctx = await setupLoadedModel({
+        isJinjaSupported: jest.fn(() => true),
+      });
+
+      useAppStore.setState({
+        settings: {
+          ...useAppStore.getState().settings,
+          thinkingEnabled: true,
+        },
+      });
+
+      await llmService.generateResponse([createUserMessage('Hello')]);
+
+      const callArgs = ctx.completion.mock.calls[0]![0]!;
+      expect(callArgs.enable_thinking).toBe(true);
+      expect(callArgs.reasoning_format).toBe('deepseek');
+    });
+
+    it('disables llama.rn thinking params when the toggle is off', async () => {
+      const ctx = await setupLoadedModel({
+        isJinjaSupported: jest.fn(() => true),
+      });
+
+      useAppStore.setState({
+        settings: {
+          ...useAppStore.getState().settings,
+          thinkingEnabled: false,
+        },
+      });
+
+      await llmService.generateResponse([createUserMessage('Hello')]);
+
+      const callArgs = ctx.completion.mock.calls[0]![0]!;
+      expect(callArgs.enable_thinking).toBe(false);
+      expect(callArgs.reasoning_format).toBe('none');
+    });
+
+    it('emits reasoning deltas when llama.rn streams cumulative reasoning_content', async () => {
+      const streamChunks: Array<{ content?: string; reasoningContent?: string }> = [];
+      await setupLoadedModel({
+        isJinjaSupported: jest.fn(() => true),
+        completion: jest.fn(async (_params: any, callback: any) => {
+          callback({ token: 'a', reasoning_content: 'I am' });
+          callback({ token: 'b', reasoning_content: 'I am thinking' });
+          callback({ token: 'c', content: 'Hello' });
+          callback({ token: 'd', content: 'Hello there' });
+          return { content: 'Hello there', reasoning_content: 'I am thinking' };
+        }),
+      });
+
+      useAppStore.setState({
+        settings: {
+          ...useAppStore.getState().settings,
+          thinkingEnabled: true,
+        },
+      });
+
+      const result = await llmService.generateResponse([createUserMessage('Hello')], (data) => streamChunks.push(data));
+
+      expect(streamChunks).toEqual([
+        { content: undefined, reasoningContent: 'I am' },
+        { content: undefined, reasoningContent: ' thinking' },
+        { content: 'Hello', reasoningContent: undefined },
+        { content: ' there', reasoningContent: undefined },
+      ]);
+      expect(result).toBe('Hello there');
     });
   });
 

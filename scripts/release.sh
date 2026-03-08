@@ -115,26 +115,7 @@ AAB_DST="android/app/build/outputs/bundle/release/OffgridMobile-v${NEW_VERSION}.
 mv "$AAB_SRC" "$AAB_DST"
 info "AAB ready: $AAB_DST (not uploaded — copy manually for Play Store)"
 
-# ── 5. Build iOS Archive ──────────────────────────────────────────
-info "Building iOS archive..."
-ARCHIVE_DIR="$ROOT_DIR/build"
-ARCHIVE_PATH="$ARCHIVE_DIR/OffgridMobile-v${NEW_VERSION}.xcarchive"
-mkdir -p "$ARCHIVE_DIR"
-
-xcodebuild archive \
-  -workspace ios/OffgridMobile.xcworkspace \
-  -scheme OffgridMobile \
-  -configuration Release \
-  -archivePath "$ARCHIVE_PATH" \
-  -destination "generic/platform=iOS" \
-  CODE_SIGN_STYLE=Automatic \
-  -allowProvisioningUpdates
-
-[ -d "$ARCHIVE_PATH" ] || error "iOS archive not found at $ARCHIVE_PATH"
-info "iOS archive ready: $ARCHIVE_PATH"
-info "  Open in Xcode to distribute: open \"$ARCHIVE_PATH\""
-
-# ── 6. Push version bump & create GitHub release ───────────────────
+# ── 5. Push version bump & create GitHub release ───────────────────
 info "Pushing version bump..."
 git push
 
@@ -153,10 +134,30 @@ echo ""
 info "Artifacts:"
 info "  APK (GitHub release): $APK_DST"
 info "  AAB (Play Store):     $AAB_DST"
-info "  iOS archive:          $ARCHIVE_PATH"
 info ""
 info "Next steps:"
 info "  Android: Upload AAB to Play Console"
-info "  iOS:     open \"$ARCHIVE_PATH\" → Distribute App in Xcode Organizer"
 info ""
 info "  GitHub: $(gh release view "v${NEW_VERSION}" --json url -q .url)"
+
+# ── 6. Build iOS Archive ──────────────────────────────────────────
+info "Building iOS archive..."
+ARCHIVE_DIR="$ROOT_DIR/build"
+ARCHIVE_PATH="$ARCHIVE_DIR/OffgridMobile-v${NEW_VERSION}.xcarchive"
+mkdir -p "$ARCHIVE_DIR"
+
+xcodebuild archive \
+  -workspace ios/OffgridMobile.xcworkspace \
+  -scheme OffgridMobile \
+  -configuration Release \
+  -archivePath "$ARCHIVE_PATH" \
+  -destination "generic/platform=iOS" \
+  CODE_SIGN_STYLE=Automatic \
+  -allowProvisioningUpdates
+
+[ -d "$ARCHIVE_PATH" ] || error "iOS archive not found at $ARCHIVE_PATH"
+info "iOS archive ready: $ARCHIVE_PATH"
+info "  Open in Xcode to distribute: open \"$ARCHIVE_PATH\""
+echo ""
+info "iOS next step:"
+info "  open \"$ARCHIVE_PATH\" → Distribute App in Xcode Organizer"

@@ -132,8 +132,32 @@ export const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
     textTransform: 'uppercase' as const,
     letterSpacing: 1,
   },
+  advancedToggle: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: SPACING.xs,
+  },
+  advancedToggleText: {
+    ...TYPOGRAPHY.bodySmall,
+    color: colors.textMuted,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+  },
   resetButton: {
     alignSelf: 'center' as const,
     marginTop: SPACING.lg,
+  },
+  clearCacheRow: {
+    justifyContent: 'center' as const,
+    paddingVertical: 8,
+  },
+  clearCacheText: {
+    color: colors.primary,
+    fontWeight: '600' as const,
   },
 });

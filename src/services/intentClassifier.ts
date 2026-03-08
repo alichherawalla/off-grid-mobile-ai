@@ -274,8 +274,8 @@ Answer:`;
             timestamp: Date.now(),
           },
         ],
-        (token) => {
-          response += token;
+        (data) => {
+          if (data.content) response += data.content;
         },
       );
     } finally {

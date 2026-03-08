@@ -85,6 +85,31 @@ class DownloadManagerModule: RCTEventEmitter {
   var hasListeners = false
   private let storageKey = "ai.offgridmobile.downloadmanager.state.v1"
 
+  // MARK: - Backup Exclusion
+
+  @discardableResult
+  static func excludeFromBackup(at url: URL) -> Bool {
+    var mutableURL = url
+    do {
+      var resourceValues = URLResourceValues()
+      resourceValues.isExcludedFromBackup = true
+      try mutableURL.setResourceValues(resourceValues)
+      NSLog("[DownloadManager] Excluded from backup: %@", url.path)
+      return true
+    } catch {
+      NSLog("[DownloadManager] Failed to exclude from backup %@: %@", url.path, error.localizedDescription)
+      return false
+    }
+  }
+
+  private static func isPathWithinAppSandbox(_ path: String) -> Bool {
+    let documentsDir = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first ?? ""
+    let cachesDir = NSSearchPathForDirectoriesInDomains(.cachesDirectory, .userDomainMask, true).first ?? ""
+    let tmpDir = NSTemporaryDirectory()
+    let resolved = (path as NSString).standardizingPath
+    return resolved.hasPrefix(documentsDir) || resolved.hasPrefix(cachesDir) || resolved.hasPrefix(tmpDir)
+  }
+
   // MARK: - RCTEventEmitter
 
   override init() {
@@ -264,6 +289,40 @@ class DownloadManagerModule: RCTEventEmitter {
     }
   }
 
+  private func restoreMultiFileTask(
+    _ downloadTask: URLSessionDownloadTask,
+    desc: TaskDescription,
+    relativePath: String,
+    destinationDir: String,
+    info: inout DownloadInfo
+  ) {
+    let totalBytes = downloadTask.countOfBytesExpectedToReceive > 0
+      ? downloadTask.countOfBytesExpectedToReceive
+      : (desc.fileSize ?? 0)
+    // swiftlint:disable:next force_unwrapping
+    let fallbackURL = URL(string: "about:blank")!
+    let fileTask = FileTask(
+      url: downloadTask.originalRequest?.url ?? fallbackURL,
+      relativePath: relativePath,
+      destinationDir: destinationDir,
+      task: downloadTask,
+      taskIdentifier: downloadTask.taskIdentifier,
+      bytesDownloaded: downloadTask.countOfBytesReceived,
+      totalBytes: totalBytes,
+      completed: false
+    )
+    info.fileTasks[downloadTask.taskIdentifier] = fileTask
+    info.multiFileDestDir = destinationDir
+    var aggregateBytes: Int64 = 0
+    for (_, file) in info.fileTasks { aggregateBytes += file.bytesDownloaded }
+    info.bytesDownloaded = aggregateBytes
+    if info.totalBytes <= 0 {
+      var aggregateTotal: Int64 = 0
+      for (_, file) in info.fileTasks { aggregateTotal += file.totalBytes }
+      info.totalBytes = aggregateTotal
+    }
+  }
+
   private func restoreTasksFromSession() {
     session.getAllTasks { [weak self] tasks in
       guard let self else { return }
@@ -299,29 +358,7 @@ class DownloadManagerModule: RCTEventEmitter {
             guard let relativePath = desc.relativePath, let destinationDir = desc.destinationDir else {
               continue
             }
-            let totalBytes = downloadTask.countOfBytesExpectedToReceive > 0
-              ? downloadTask.countOfBytesExpectedToReceive
-              : (desc.fileSize ?? 0)
-            let fileTask = FileTask(
-              url: downloadTask.originalRequest?.url ?? URL(string: "about:blank")!,
-              relativePath: relativePath,
-              destinationDir: destinationDir,
-              task: downloadTask,
-              taskIdentifier: downloadTask.taskIdentifier,
-              bytesDownloaded: downloadTask.countOfBytesReceived,
-              totalBytes: totalBytes,
-              completed: false
-            )
-            info.fileTasks[downloadTask.taskIdentifier] = fileTask
-            info.multiFileDestDir = destinationDir
-            var aggregateBytes: Int64 = 0
-            for (_, ft) in info.fileTasks { aggregateBytes += ft.bytesDownloaded }
-            info.bytesDownloaded = aggregateBytes
-            if info.totalBytes <= 0 {
-              var aggregateTotal: Int64 = 0
-              for (_, ft) in info.fileTasks { aggregateTotal += ft.totalBytes }
-              info.totalBytes = aggregateTotal
-            }
+            self.restoreMultiFileTask(downloadTask, desc: desc, relativePath: relativePath, destinationDir: destinationDir, info: &info)
           } else {
             info.task = downloadTask
             info.taskIdentifier = downloadTask.taskIdentifier
@@ -611,9 +648,11 @@ extension DownloadManagerModule {
 
       if info.isMultiFile {
         NSLog("[DownloadManager] Multi-file download already at: %@", info.multiFileDestDir ?? "nil")
+        let destDir = info.multiFileDestDir ?? targetPath
+        DownloadManagerModule.excludeFromBackup(at: URL(fileURLWithPath: destDir))
         self.downloads.removeValue(forKey: id)
         self.persistStateLocked()
-        resolve(info.multiFileDestDir ?? targetPath)
+        resolve(destDir)
         return
       }
 
@@ -633,26 +672,42 @@ extension DownloadManagerModule {
       try? fileManager.removeItem(at: targetURL)
 
       do {
-        try fileManager.moveItem(at: sourceURL, to: targetURL)
-        NSLog("[DownloadManager] File moved successfully")
+        do {
+          try fileManager.moveItem(at: sourceURL, to: targetURL)
+          NSLog("[DownloadManager] File moved successfully")
+        } catch {
+          NSLog("[DownloadManager] moveItem failed: %@, trying copyItem", error.localizedDescription)
+          try fileManager.copyItem(at: sourceURL, to: targetURL)
+          try? fileManager.removeItem(at: sourceURL)
+          NSLog("[DownloadManager] File copied successfully")
+        }
+        DownloadManagerModule.excludeFromBackup(at: targetURL)
         self.downloads.removeValue(forKey: id)
         self.persistStateLocked()
         resolve(targetPath)
       } catch {
-        NSLog("[DownloadManager] moveItem failed: %@, trying copyItem", error.localizedDescription)
-        do {
-          try fileManager.copyItem(at: sourceURL, to: targetURL)
-          try? fileManager.removeItem(at: sourceURL)
-          NSLog("[DownloadManager] File copied successfully")
-          self.downloads.removeValue(forKey: id)
-          self.persistStateLocked()
-          resolve(targetPath)
-        } catch {
-          NSLog("[DownloadManager] copyItem also failed: %@", error.localizedDescription)
-          reject("MOVE_FAILED", "Failed to move file: \(error.localizedDescription)", error)
-        }
+        NSLog("[DownloadManager] copyItem also failed: %@", error.localizedDescription)
+        reject("MOVE_FAILED", "Failed to move file: \(error.localizedDescription)", error)
       }
     }
+  }
+
+  @objc func excludePathFromBackup(
+    _ path: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    guard DownloadManagerModule.isPathWithinAppSandbox(path) else {
+      NSLog("[DownloadManager] excludePathFromBackup: path outside sandbox: %@", path)
+      reject("INVALID_PATH", "Path is outside the app sandbox", nil)
+      return
+    }
+    guard FileManager.default.fileExists(atPath: path) else {
+      resolve(false)
+      return
+    }
+    let result = DownloadManagerModule.excludeFromBackup(at: URL(fileURLWithPath: path))
+    resolve(result)
   }
 
   @objc func startProgressPolling() {
@@ -849,6 +904,9 @@ extension DownloadManagerModule {
     let allDone = info.fileTasks.values.allSatisfy { $0.completed }
     if allDone {
       NSLog("[DownloadManager] ALL files complete for download#%lld!", downloadId)
+      if let destDir = info.multiFileDestDir {
+        DownloadManagerModule.excludeFromBackup(at: URL(fileURLWithPath: destDir))
+      }
       info.status = "completed"
       info.bytesDownloaded = info.totalBytes
       info.localUri = info.multiFileDestDir

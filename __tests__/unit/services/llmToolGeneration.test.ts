@@ -27,6 +27,7 @@ function createMockDeps(overrides: Partial<ToolGenerationDeps> = {}): ToolGenera
       completion: jest.fn(async (_params: any, _cb?: any) => ({})),
     },
     isGenerating: false,
+    isThinkingEnabled: false,
     manageContextWindow: jest.fn(async (msgs: Message[]) => msgs),
     convertToOAIMessages: jest.fn((msgs: Message[]) =>
       msgs.map(m => ({ role: m.role, content: m.content })),
@@ -114,6 +115,28 @@ describe('generateWithToolsImpl', () => {
       const callArgs = completion.mock.calls[0][0];
       expect(callArgs.tools).toBe(SAMPLE_TOOLS);
       expect(callArgs.tool_choice).toBe('auto');
+    });
+
+    it('uses llama.rn auto reasoning format when thinking is enabled', async () => {
+      const completion = jest.fn(async (_params: any, _cb: any) => ({}));
+      const deps = createMockDeps({ context: { completion }, isThinkingEnabled: true });
+
+      await generateWithToolsImpl(deps, [createUserMessage('Hello')], { tools: SAMPLE_TOOLS });
+
+      const callArgs = completion.mock.calls[0][0];
+      expect(callArgs.enable_thinking).toBe(true);
+      expect(callArgs.reasoning_format).toBe('deepseek');
+    });
+
+    it('disables llama.rn reasoning extraction when thinking is off', async () => {
+      const completion = jest.fn(async (_params: any, _cb: any) => ({}));
+      const deps = createMockDeps({ context: { completion }, isThinkingEnabled: false });
+
+      await generateWithToolsImpl(deps, [createUserMessage('Hello')], { tools: SAMPLE_TOOLS });
+
+      const callArgs = completion.mock.calls[0][0];
+      expect(callArgs.enable_thinking).toBe(false);
+      expect(callArgs.reasoning_format).toBe('none');
     });
 
     it('passes temperature and other settings from the app store', async () => {
@@ -216,8 +239,8 @@ describe('generateWithToolsImpl', () => {
       });
 
       expect(onStream).toHaveBeenCalledTimes(2);
-      expect(onStream).toHaveBeenNthCalledWith(1, 'A');
-      expect(onStream).toHaveBeenNthCalledWith(2, 'B');
+      expect(onStream).toHaveBeenNthCalledWith(1, { content: 'A' });
+      expect(onStream).toHaveBeenNthCalledWith(2, { content: 'B' });
     });
 
     it('invokes onComplete with the full response', async () => {

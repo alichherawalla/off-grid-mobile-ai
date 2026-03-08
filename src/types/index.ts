@@ -169,6 +169,8 @@ export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
+  /** Reasoning/thinking content parsed by llama.rn (separate from response content) */
+  reasoningContent?: string;
   timestamp: number;
   isStreaming?: boolean;
   isThinking?: boolean;
@@ -254,16 +256,16 @@ export interface ImageGenerationModel {
   variant?: string; // e.g., 'gpu', 'npu', 'cpu'
 }
 
-// ONNX Image Model types (for Stable Diffusion via ONNX Runtime)
 export interface ONNXImageModel {
   id: string;
   name: string;
   description: string;
   modelPath: string;
   downloadedAt: string;
-  size: number; // Total size of all model files in bytes
-  style?: string; // e.g., 'creative', 'photorealistic', 'anime'
-  backend?: 'mnn' | 'qnn' | 'coreml'; // 'mnn' for CPU, 'qnn' for Qualcomm NPU, 'coreml' for Apple Core ML
+  size: number;
+  style?: string;
+  backend?: 'mnn' | 'qnn' | 'coreml';
+  attentionVariant?: 'split_einsum' | 'original';
 }
 
 // Image generation state for UI
@@ -304,8 +306,8 @@ export interface ImageGenerationParams {
   steps?: number;
   guidanceScale?: number;
   seed?: number;
+  useOpenCL?: boolean;
 }
-
 export interface ImageGenerationProgress {
   step: number;
   totalSteps: number;
@@ -342,9 +344,7 @@ export interface DebugInfo {
   originalMessageCount: number;
   managedMessageCount: number;
   truncatedCount: number;
-  formattedPrompt: string;
-  estimatedTokens: number;
-  maxContextLength: number;
-  contextUsagePercent: number;
+  formattedPrompt: string; estimatedTokens: number;
+  maxContextLength: number; contextUsagePercent: number;
 }
 export type AppScreen = 'onboarding' | 'home' | 'models' | 'chat' | 'settings' | 'generate' | 'model-download';

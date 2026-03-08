@@ -40,6 +40,7 @@ jest.mock('../../../src/services/backgroundDownloadService', () => ({
     onError: jest.fn(() => jest.fn()),
     markSilent: jest.fn(),
     unmarkSilent: jest.fn(),
+    excludeFromBackup: jest.fn(() => Promise.resolve(true)),
   },
 }));
 
@@ -111,6 +112,23 @@ describe('ModelManager', () => {
       await modelManager.initialize();
 
       expect(RNFS.mkdir).not.toHaveBeenCalled();
+    });
+
+    it('excludes model directories from iCloud backup on initialize', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+
+      await modelManager.initialize();
+
+      expect(mockedBackgroundDownloadService.excludeFromBackup).toHaveBeenCalledTimes(3);
+      expect(mockedBackgroundDownloadService.excludeFromBackup).toHaveBeenCalledWith(
+        expect.stringContaining('/models'),
+      );
+      expect(mockedBackgroundDownloadService.excludeFromBackup).toHaveBeenCalledWith(
+        expect.stringContaining('/image_models'),
+      );
+      expect(mockedBackgroundDownloadService.excludeFromBackup).toHaveBeenCalledWith(
+        expect.stringContaining('/whisper-models'),
+      );
     });
   });
 

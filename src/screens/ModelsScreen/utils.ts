@@ -119,14 +119,14 @@ export function getImageModelCompatibility(
 // -- HF model → descriptor conversion --
 
 export function hfModelToDescriptor(
-  hfModel: HFImageModel & { _coreml?: boolean; _coremlFiles?: any[] },
+  hfModel: HFImageModel & { _coreml?: boolean; _coremlFiles?: any[]; _coremlAttentionVariant?: 'split_einsum' | 'original' },
 ): ImageModelDescriptor {
   return {
     id: hfModel.id,
     name: hfModel.displayName,
     description: hfModel._coreml
       ? `Core ML model from ${hfModel.repo}`
-      : `${hfModel.backend === 'qnn' ? 'NPU' : 'CPU'} model from ${hfModel.repo}`,
+      : `${hfModel.backend === 'qnn' ? 'NPU' : 'GPU'} model from ${hfModel.repo}`,
     downloadUrl: hfModel.downloadUrl,
     size: hfModel.size,
     style: guessStyle(hfModel.name),
@@ -134,5 +134,6 @@ export function hfModelToDescriptor(
     variant: hfModel.variant,
     coremlFiles: hfModel._coremlFiles,
     repo: hfModel.repo,
+    attentionVariant: hfModel._coremlAttentionVariant,
   };
 }

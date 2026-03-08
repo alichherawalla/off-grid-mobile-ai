@@ -227,6 +227,7 @@ export async function proceedWithDownload(
       const imageModel: ONNXImageModel = {
         id: modelInfo.id, name: modelInfo.name, description: modelInfo.description,
         modelPath: resolvedModelDir, downloadedAt: new Date().toISOString(), size: modelInfo.size, style: modelInfo.style,
+        backend: modelInfo.backend, attentionVariant: modelInfo.attentionVariant,
       };
       await registerAndNotify(deps, { imageModel, modelName: modelInfo.name, downloadId: downloadInfo.downloadId });
     });
@@ -250,7 +251,7 @@ export async function handleDownloadImageModel(
     if (!socInfo.hasNPU) {
       warningMessage = 'NPU models require a Qualcomm Snapdragon processor. ' +
         'Your device does not have a compatible NPU and this model will not work. ' +
-        'Consider downloading a CPU model instead.';
+        'Consider downloading a GPU model instead.';
     } else if (modelInfo.variant && socInfo.qnnVariant) {
       const deviceVariant = socInfo.qnnVariant;
       const modelVariant = modelInfo.variant;

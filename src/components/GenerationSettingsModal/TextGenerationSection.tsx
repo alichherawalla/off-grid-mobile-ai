@@ -1,9 +1,18 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import Slider from '@react-native-community/slider';
+import { AdvancedToggle } from '../AdvancedToggle';
 import { useTheme, useThemedStyles } from '../../theme';
 import { useAppStore } from '../../stores';
 import { createStyles } from './styles';
+import {
+  CpuThreadsSlider,
+  BatchSizeSlider,
+  GpuAccelerationToggle,
+  FlashAttentionToggle,
+  KvCacheTypeToggle,
+  ModelLoadingStrategyToggle,
+} from './TextGenerationAdvanced';
 
 interface SettingConfig {
   key: string;
@@ -31,6 +40,8 @@ const formatContext = (v: number) => v >= 1024 ? `${(v / 1024).toFixed(0)}K` : v
 
 const contextWarning = (v: number): string | null =>
   v > HIGH_CONTEXT_THRESHOLD ? 'High context uses significant RAM and may crash on some devices' : null;
+
+const BASIC_KEYS = ['temperature', 'maxTokens', 'contextLength'];
 
 const buildSettingsConfig = (modelMaxContext: number | null): SettingConfig[] => [
   {
@@ -125,16 +136,72 @@ const SettingSlider: React.FC<SettingSliderProps> = ({ config }) => {
   );
 };
 
+// ─── Show Generation Details ──────────────────────────────────────────────────
+
+const ShowGenerationDetailsToggle: React.FC = () => {
+  const styles = useThemedStyles(createStyles);
+  const { settings, updateSettings } = useAppStore();
+  const isOn = settings.showGenerationDetails;
+
+  return (
+    <View style={styles.modeToggleContainer}>
+      <View style={styles.modeToggleInfo}>
+        <Text style={styles.modeToggleLabel}>Show Generation Details</Text>
+        <Text style={styles.modeToggleDesc}>
+          Display GPU, model, tok/s, and image settings below each message
+        </Text>
+      </View>
+      <View style={styles.modeToggleButtons}>
+        <TouchableOpacity
+          style={[styles.modeButton, !isOn && styles.modeButtonActive]}
+          onPress={() => updateSettings({ showGenerationDetails: false })}
+        >
+          <Text style={[styles.modeButtonText, !isOn && styles.modeButtonTextActive]}>Off</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.modeButton, isOn && styles.modeButtonActive]}
+          onPress={() => updateSettings({ showGenerationDetails: true })}
+        >
+          <Text style={[styles.modeButtonText, isOn && styles.modeButtonTextActive]}>On</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+// ─── Main Section ─────────────────────────────────────────────────────────────
+
 export const TextGenerationSection: React.FC = () => {
   const styles = useThemedStyles(createStyles);
   const modelMaxContext = useAppStore((s) => s.modelMaxContext);
   const settingsConfig = buildSettingsConfig(modelMaxContext);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const basicSettings = settingsConfig.filter(c => BASIC_KEYS.includes(c.key));
+  const advancedSettings = settingsConfig.filter(c => !BASIC_KEYS.includes(c.key));
 
   return (
     <View style={styles.sectionCard}>
-      {settingsConfig.map((config) => (
+      {basicSettings.map((config) => (
         <SettingSlider key={config.key} config={config} />
       ))}
+      <ShowGenerationDetailsToggle />
+
+      <AdvancedToggle isExpanded={showAdvanced} onPress={() => setShowAdvanced(!showAdvanced)} testID="modal-text-advanced-toggle" />
+
+      {showAdvanced && (
+        <>
+          {advancedSettings.map((config) => (
+            <SettingSlider key={config.key} config={config} />
+          ))}
+          <CpuThreadsSlider />
+          <BatchSizeSlider />
+          {Platform.OS !== 'ios' && <GpuAccelerationToggle />}
+          <FlashAttentionToggle />
+          <KvCacheTypeToggle />
+          <ModelLoadingStrategyToggle />
+        </>
+      )}
     </View>
   );
 };

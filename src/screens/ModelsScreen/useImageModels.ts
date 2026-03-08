@@ -115,6 +115,7 @@ export function useImageModels(setAlertState: (s: AlertState) => void) {
           id: m.id, name: m.name, displayName: m.displayName, backend: 'coreml' as any,
           fileName: m.fileName, downloadUrl: m.downloadUrl, size: m.size, repo: m.repo,
           _coreml: true, _coremlFiles: m.files,
+          _coremlAttentionVariant: m.attentionVariant,
         })));
       } else {
         const socInfo = await hardwareService.getSoCInfo();

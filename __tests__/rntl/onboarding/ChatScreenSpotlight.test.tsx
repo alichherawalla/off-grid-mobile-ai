@@ -109,6 +109,7 @@ jest.mock('../../../src/services/llm', () => ({
     isModelLoaded: jest.fn(() => true),
     supportsVision: jest.fn(() => false),
     supportsToolCalling: jest.fn(() => false),
+    supportsThinking: jest.fn(() => false),
     clearKVCache: jest.fn(() => Promise.resolve()),
     getMultimodalSupport: jest.fn(() => null),
     getLoadedModelPath: jest.fn(() => null),

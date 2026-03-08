@@ -39,6 +39,7 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
         private const val RUNTIME_DIR = "runtime_libs"
         private const val SERVER_PORT = 18081
 
+        private const val MNN_OPENCL_TUNING_MODE = "WIDE"
         private const val EVENT_PROGRESS = "LocalDreamProgress"
         private const val EVENT_ERROR = "LocalDreamError"
 
@@ -88,7 +89,9 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
             Log.d(TAG, "Detected text_embedding_size: $embeddingSize")
 
             return if (isCpu) {
-                // MNN CPU backend
+                // MNN backend — --cpu tells the binary to use MNN instead of QNN.
+                // OpenCL GPU acceleration is requested per-request via "use_opencl": true in the
+                // JSON body. Do NOT remove --cpu — without it the binary crashes on some devices.
                 // IMPORTANT: Always pass "clip.mnn" even if only clip_v2.mnn exists.
                 // The binary auto-detects clip_v2.mnn in the same directory when the
                 // --clip path ends with "clip.mnn", and loads pos_emb.bin + token_emb.bin.
@@ -192,6 +195,9 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
             env["LD_LIBRARY_PATH"] = systemLibPaths.joinToString(":")
             env["DSP_LIBRARY_PATH"] = runtimeDir.absolutePath
             env["ADSP_LIBRARY_PATH"] = runtimeDir.absolutePath
+
+            // MNN OpenCL tuning: request wider kernel search for better Adreno perf
+            env["MNN_OPENCL_TUNING"] = MNN_OPENCL_TUNING_MODE
 
             return env
         }
@@ -467,7 +473,7 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
                 StartResult(false,
                     "Server process exited with code $exitCode. " +
                     "Your device ($socModel) may not support this model's backend. " +
-                    "Try a CPU model instead.")
+                    "Try a GPU model instead.")
             } else {
                 StartResult(false,
                     "Server failed to start within ${timeoutMs/1000}s. " +
@@ -650,9 +656,17 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
                     put("scheduler", "dpm")
                     put("show_diffusion_process", true)
                     put("show_diffusion_stride", if (params.hasKey("previewInterval")) params.getInt("previewInterval") else 2)
+                    // OpenCL GPU acceleration — controlled by user toggle
+                    val useOpenCL = if (params.hasKey("useOpenCL")) params.getBoolean("useOpenCL") else false
+                    if (useOpenCL && currentBackend == "mnn") {
+                        put("use_opencl", true)
+                        Log.i(TAG, "OpenCL GPU acceleration ENABLED for this generation (backend=$currentBackend)")
+                    } else {
+                        Log.i(TAG, "OpenCL GPU acceleration DISABLED (useOpenCL=$useOpenCL, backend=$currentBackend)")
+                    }
                 }
 
-                Log.d(TAG, "Starting generation: ${body.toString().take(200)}...")
+                Log.d(TAG, "Starting generation (prompt length: ${params.getString("prompt")?.length ?: 0})...")
 
                 val url = URL("http://127.0.0.1:$SERVER_PORT/generate")
                 connection = (url.openConnection() as HttpURLConnection).apply {
@@ -943,6 +957,74 @@ class LocalDreamModule(reactContext: ReactApplicationContext) :
             ""
         }
         promise.resolve(soc)
+    }
+
+    /**
+     * Clear OpenCL kernel cache files (.mnnc) from a model directory.
+     * Forces MNN to retune OpenCL kernels on the next generation,
+     * which may find better kernels for the current GPU.
+     */
+    @ReactMethod
+    fun clearOpenCLCache(modelPath: String, promise: Promise) {
+        val appFilesDir = reactApplicationContext.filesDir.canonicalPath
+        val canonical = File(modelPath).canonicalPath
+        if (!canonical.startsWith(appFilesDir)) {
+            promise.reject("CACHE_ERROR", "Model path is outside the app directory")
+            return
+        }
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val modelDir = File(modelPath)
+                val cpuModelDir = resolveModelDir(modelDir, true)
+                if (cpuModelDir == null) {
+                    promise.resolve(0)
+                    return@launch
+                }
+
+                var cleared = 0
+                val cachePattern = Regex(".*\\.mnnc(\\..+)?$")
+                cpuModelDir.listFiles()?.filter { it.name.matches(cachePattern) }?.forEach { file ->
+                    Log.d(TAG, "Deleting OpenCL cache: ${file.name}")
+                    if (file.delete()) cleared++
+                }
+                Log.i(TAG, "Cleared $cleared OpenCL cache file(s) from ${cpuModelDir.absolutePath}")
+                promise.resolve(cleared)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to clear OpenCL cache", e)
+                promise.reject("CACHE_ERROR", "Failed to clear OpenCL cache: ${e.message}", e)
+            }
+        }
+    }
+
+    /**
+     * Check if OpenCL kernel cache (.mnnc files) exists for the given model.
+     * Returns false on first run, indicating GPU kernel compilation will be needed.
+     */
+    @ReactMethod
+    fun hasOpenCLCache(modelPath: String, promise: Promise) {
+        val appFilesDir = reactApplicationContext.filesDir.canonicalPath
+        val canonical = File(modelPath).canonicalPath
+        if (!canonical.startsWith(appFilesDir)) {
+            promise.reject("CACHE_ERROR", "Model path is outside the app directory")
+            return
+        }
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val modelDir = File(modelPath)
+                val cpuModelDir = resolveModelDir(modelDir, true)
+                if (cpuModelDir == null) {
+                    promise.resolve(false)
+                    return@launch
+                }
+
+                val cachePattern = Regex(".*\\.mnnc(\\..+)?$")
+                val hasCache = cpuModelDir.listFiles()?.any { it.name.matches(cachePattern) } == true
+                promise.resolve(hasCache)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to check OpenCL cache", e)
+                promise.reject("CACHE_ERROR", "Failed to check OpenCL cache: ${e.message}", e)
+            }
+        }
     }
 
     @ReactMethod

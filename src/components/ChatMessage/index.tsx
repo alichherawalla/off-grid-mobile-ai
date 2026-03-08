@@ -1,10 +1,5 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Clipboard,
-} from 'react-native';
+import { View, Text, TouchableOpacity, Clipboard } from 'react-native';
 import { useTheme, useThemedStyles } from '../../theme';
 import Icon from 'react-native-vector-icons/Feather';
 import { stripControlTokens } from '../../utils/messageContent';
@@ -50,10 +45,19 @@ function buildMessageData(message: Message) {
   const displayContent = message.role === 'assistant'
     ? stripControlTokens(message.content)
     : message.content;
-  const parsedContent = message.role === 'assistant'
-    ? parseThinkingContent(displayContent)
-    : { thinking: null, response: message.content, isThinkingComplete: true };
-  return { displayContent, parsedContent };
+  const responseContent = message.reasoningContent
+    ? displayContent.replaceAll(/<\/?think>/gi, '').trim()
+    : displayContent;
+  // Use reasoningContent from llama.rn if available, fall back to parsing <think> tags for old messages
+  let parsedContent;
+  if (message.role === 'assistant') {
+    parsedContent = message.reasoningContent
+      ? { thinking: message.reasoningContent, response: responseContent, isThinkingComplete: true }
+      : parseThinkingContent(displayContent);
+  } else {
+    parsedContent = { thinking: null, response: message.content, isThinkingComplete: true };
+  }
+  return { displayContent: responseContent, parsedContent };
 }
 
 type ToolResultBubbleProps = {
@@ -325,7 +329,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         onRetry={handleRetry}
         onGenerateImage={handleGenerateImage}
       />
-
       <EditSheet
         visible={isEditing}
         onClose={handleCancelEdit}
@@ -336,7 +339,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         styles={styles}
         colors={colors}
       />
-
       <CustomAlert visible={alertState.visible} title={alertState.title}
         message={alertState.message} buttons={alertState.buttons} onClose={() => setAlertState(hideAlert())} />
     </>

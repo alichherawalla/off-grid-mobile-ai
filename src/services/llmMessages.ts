@@ -49,7 +49,8 @@ function formatToolCallAsText(tc: { name: string; arguments: string }): string {
 }
 
 export function buildOAIMessages(messages: Message[]): RNLlamaOAICompatibleMessage[] {
-  return messages.filter(m => !m.isSystemInfo).map(message => {
+  const filtered = messages.filter(m => !m.isSystemInfo);
+  return filtered.map((message) => {
     // Flatten tool result messages into user messages —
     // avoids role:"tool" which some Jinja templates don't handle
     if (message.role === 'tool') {

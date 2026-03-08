@@ -57,7 +57,7 @@ export const SD_VERSION_OPTIONS = [
 
 export const BACKEND_OPTIONS: { key: BackendFilter; label: string }[] = [
   { key: 'all', label: 'All' },
-  { key: 'mnn', label: 'CPU' },
+  { key: 'mnn', label: 'GPU' },
   { key: 'qnn', label: 'NPU' },
 ];
 

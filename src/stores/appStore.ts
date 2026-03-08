@@ -18,9 +18,10 @@ type AppSettings = {
   imageGenerationMode: ImageGenerationMode; autoDetectMethod: AutoDetectMethod;
   classifierModelId: string | null; imageSteps: number; imageGuidanceScale: number;
   imageThreads: number; imageWidth: number; imageHeight: number;
-  enhanceImagePrompts: boolean; modelLoadingStrategy: ModelLoadingStrategy;
+  imageUseOpenCL: boolean; enhanceImagePrompts: boolean; modelLoadingStrategy: ModelLoadingStrategy;
   enableGpu: boolean; gpuLayers: number; flashAttn: boolean;
   cacheType: CacheType; showGenerationDetails: boolean; enabledTools: string[];
+  thinkingEnabled: boolean;
 };
 
 interface AppState {
@@ -110,11 +111,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   imageGenerationMode: 'auto' as ImageGenerationMode,
   autoDetectMethod: 'pattern' as AutoDetectMethod,
   classifierModelId: null,
-  imageSteps: 20,
+  imageSteps: Platform.OS === 'ios' ? 20 : 8,
   imageGuidanceScale: 7.5,
   imageThreads: 4,
   imageWidth: 512,
   imageHeight: 512,
+  imageUseOpenCL: true,
   enhanceImagePrompts: false,
   modelLoadingStrategy: 'performance' as ModelLoadingStrategy,
   enableGpu: Platform.OS === 'ios',
@@ -123,8 +125,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   cacheType: 'q8_0' as CacheType,
   showGenerationDetails: false,
   enabledTools: ['web_search', 'calculator', 'get_current_datetime', 'get_device_info', 'read_url'],
+  thinkingEnabled: true,
 };
-
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({

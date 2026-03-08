@@ -20,7 +20,6 @@ This document provides an in-depth reference for the OffgridMobile application: 
 12. [File System Layout (On-Device)](#12-file-system-layout-on-device)
 13. [Appendix: Default System Prompt](#appendix-default-system-prompt)
 14. [Appendix: Default Projects](#appendix-default-projects)
-15. [Appendix: Claude Code Memory System](#appendix-claude-code-memory-system)
 
 ---
 
@@ -414,10 +413,6 @@ OffgridMobile/
 │       └── TEST_SPEC_FORMAT.md          # Test specification format
 │
 ├── patches/                             # patch-package patches
-│
-└── (Claude Code Memory — External)      # NOT in repo
-    ~/.claude/projects/-Users-mac-wednesday-on-device-llm-LocalLLM/memory/
-    └── MEMORY.md                        # Persistent learnings across conversations
 ```
 
 ---
@@ -2144,67 +2139,3 @@ If asked about yourself, you can mention you're a local AI assistant that priori
 | **Writing Helper** | Writing assistant for drafting and editing |
 
 ---
-
-## Appendix: Claude Code Memory System
-
-This project uses **Claude Code** (Anthropic's official CLI) for development assistance. Claude Code maintains a persistent memory system to track learnings across conversations.
-
-### Memory Location
-
-```
-~/.claude/projects/-Users-mac-wednesday-on-device-llm-LocalLLM/memory/
-├── MEMORY.md                    # Main memory file (loaded into Claude's context)
-└── [topic-files].md             # Optional: detailed topic-specific notes
-```
-
-### Purpose
-
-The memory system helps Claude Code:
-- **Remember solutions** to common issues (e.g., download manager race conditions on emulators)
-- **Track architectural decisions** and their rationale
-- **Document gotchas** specific to this codebase (native module coordination, timing issues)
-- **Build context** across multiple development sessions
-
-### Structure
-
-**MEMORY.md** — Primary file, kept concise (max 200 lines to avoid truncation):
-- Quick reference for critical learnings
-- Links to detailed topic files for complex subjects
-- Recent significant fixes and their root causes
-
-**Topic files** — Detailed notes on specific areas:
-- `debugging.md` — Common debugging patterns
-- `native-modules.md` — Native bridge coordination patterns
-- `patterns.md` — Codebase-specific patterns and conventions
-
-### When to Update
-
-Update memory files when:
-- Fixing non-obvious bugs (especially race conditions, timing issues)
-- Making architectural decisions that future work should respect
-- Discovering undocumented behaviors in native modules or third-party libraries
-- Solving problems that could recur in different parts of the codebase
-
-### Example Memory Entry
-
-```markdown
-## Download Manager Event Delivery Fix
-
-**Issue**: Downloads complete but UI doesn't update on emulators.
-
-**Root Cause**: Race condition where status was set to "completed" before event could be sent.
-
-**Solution**: Track event delivery separately from status using `completedEventSent` flag.
-
-**Key Learning**: Always separate event delivery tracking from state changes when coordinating
-between native modules and React Native, especially on slow emulators.
-
-**Files Modified**: `android/app/src/main/java/ai/offgridmobile/download/DownloadManagerModule.kt`
-```
-
-### Best Practices
-
-- **Be concise** — Memory is most useful when it's scannable
-- **Focus on "why"** — Capture rationale, not just what was changed
-- **Include file paths** — Makes it easy to locate relevant code
-- **Update proactively** — Don't wait until the end of a session; update as you learn

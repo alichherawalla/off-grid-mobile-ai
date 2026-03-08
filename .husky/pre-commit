@@ -1,43 +1,4 @@
 #!/usr/bin/env sh
 
-# Detect staged file types
-STAGED_JS=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|tsx|js|jsx)$' || true)
-STAGED_SWIFT=$(git diff --cached --name-only --diff-filter=ACMR | grep '\.swift$' | grep -v 'Pods/' | grep -v 'build/' || true)
-STAGED_KOTLIN=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(kt|kts)$' || true)
-
-# ── JS / TS ────────────────────────────────────────────────────────────────────
-if [ -n "$STAGED_JS" ]; then
-  echo "▶ JS/TS lint (staged files)..."
-  npx lint-staged
-
-  echo "▶ TypeScript type check..."
-  npx tsc --noEmit
-
-  echo "▶ JS/TS tests..."
-  npm test
-fi
-
-# ── Swift / iOS ────────────────────────────────────────────────────────────────
-if [ -n "$STAGED_SWIFT" ]; then
-  if command -v swiftlint >/dev/null 2>&1; then
-    echo "▶ SwiftLint (staged files)..."
-    echo "$STAGED_SWIFT" | tr '\n' '\0' | xargs -0 swiftlint lint --quiet
-  else
-    echo "⚠️  SwiftLint not installed — skipping Swift lint. Install: brew install swiftlint"
-  fi
-
-  echo "▶ iOS tests..."
-  npm run test:ios
-fi
-
-# ── Kotlin / Android ───────────────────────────────────────────────────────────
-if [ -n "$STAGED_KOTLIN" ]; then
-  echo "▶ Kotlin type check (compileDebugKotlin)..."
-  (cd android && ./gradlew compileDebugKotlin --quiet)
-
-  echo "▶ Android lint..."
-  (cd android && ./gradlew lintDebug --quiet)
-
-  echo "▶ Android tests..."
-  npm run test:android
-fi
+# Quality gates moved to pre-push to keep commit latency low.
+exit 0

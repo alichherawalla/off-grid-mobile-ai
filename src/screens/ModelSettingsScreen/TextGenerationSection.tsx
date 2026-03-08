@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, Switch } from 'react-native';
 import Slider from '@react-native-community/slider';
-import { Card } from '../../components';
+import { AdvancedToggle, Card } from '../../components';
 import { useTheme, useThemedStyles } from '../../theme';
 import { useAppStore } from '../../stores';
 import { createStyles } from './styles';
+import { TextGenerationAdvanced } from './TextGenerationAdvanced';
 
 const FALLBACK_MAX_CONTEXT = 32768;
 const HIGH_CONTEXT_THRESHOLD = 8192;
@@ -14,6 +15,7 @@ export const TextGenerationSection: React.FC = () => {
   const styles = useThemedStyles(createStyles);
   const { settings, updateSettings } = useAppStore();
   const modelMaxContext = useAppStore((s) => s.modelMaxContext);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const trackColor = { false: colors.surfaceLight, true: `${colors.primary}80` };
   const maxTokens = settings?.maxTokens || 512;
@@ -29,6 +31,8 @@ export const TextGenerationSection: React.FC = () => {
   return (
     <Card style={styles.section}>
       <Text style={styles.settingHelp}>Configure LLM behavior for text responses.</Text>
+
+      {/* ── Basic Settings ── */}
 
       <View style={styles.sliderSection}>
         <View style={styles.sliderHeader}>
@@ -70,59 +74,6 @@ export const TextGenerationSection: React.FC = () => {
 
       <View style={styles.sliderSection}>
         <View style={styles.sliderHeader}>
-          <Text style={styles.sliderLabel}>Top P</Text>
-          <Text style={styles.sliderValue}>{(settings?.topP || 0.9).toFixed(2)}</Text>
-        </View>
-        <Text style={styles.sliderDesc}>Nucleus sampling threshold</Text>
-        <Slider
-          style={styles.slider}
-          minimumValue={0.1}
-          maximumValue={1.0}
-          step={0.05}
-          value={settings?.topP || 0.9}
-          onSlidingComplete={(value) => updateSettings({ topP: value })}
-          minimumTrackTintColor={colors.primary}
-          maximumTrackTintColor={colors.surface}
-          thumbTintColor={colors.primary}
-        />
-      </View>
-
-      <View style={styles.sliderSection}>
-        <View style={styles.sliderHeader}>
-          <Text style={styles.sliderLabel}>Repeat Penalty</Text>
-          <Text style={styles.sliderValue}>{(settings?.repeatPenalty || 1.1).toFixed(2)}</Text>
-        </View>
-        <Text style={styles.sliderDesc}>Penalize repeated tokens</Text>
-        <Slider
-          style={styles.slider}
-          minimumValue={1.0}
-          maximumValue={2.0}
-          step={0.05}
-          value={settings?.repeatPenalty || 1.1}
-          onSlidingComplete={(value) => updateSettings({ repeatPenalty: value })}
-          minimumTrackTintColor={colors.primary}
-          maximumTrackTintColor={colors.surface}
-          thumbTintColor={colors.primary}
-        />
-      </View>
-
-      <View style={styles.toggleRow}>
-        <View style={styles.toggleInfo}>
-          <Text style={styles.toggleLabel}>Show Generation Details</Text>
-          <Text style={styles.toggleDesc}>
-            Display tokens/sec, timing, and memory usage on responses
-          </Text>
-        </View>
-        <Switch
-          value={settings?.showGenerationDetails ?? false}
-          onValueChange={(value) => updateSettings({ showGenerationDetails: value })}
-          trackColor={trackColor}
-          thumbColor={settings?.showGenerationDetails ? colors.primary : colors.textMuted}
-        />
-      </View>
-
-      <View style={styles.sliderSection}>
-        <View style={styles.sliderHeader}>
           <Text style={styles.sliderLabel}>Context Length</Text>
           <Text style={styles.sliderValue}>{contextLengthLabel}</Text>
         </View>
@@ -144,6 +95,25 @@ export const TextGenerationSection: React.FC = () => {
           thumbTintColor={colors.primary}
         />
       </View>
+
+      <View style={styles.toggleRow}>
+        <View style={styles.toggleInfo}>
+          <Text style={styles.toggleLabel}>Show Generation Details</Text>
+          <Text style={styles.toggleDesc}>
+            Display tokens/sec, timing, and memory usage on responses
+          </Text>
+        </View>
+        <Switch
+          value={settings?.showGenerationDetails ?? false}
+          onValueChange={(value) => updateSettings({ showGenerationDetails: value })}
+          trackColor={trackColor}
+          thumbColor={settings?.showGenerationDetails ? colors.primary : colors.textMuted}
+        />
+      </View>
+
+      <AdvancedToggle isExpanded={showAdvanced} onPress={() => setShowAdvanced(!showAdvanced)} testID="text-advanced-toggle" />
+
+      {showAdvanced && <TextGenerationAdvanced />}
     </Card>
   );
 };

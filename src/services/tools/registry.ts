@@ -110,5 +110,25 @@ export function buildToolSystemPromptHint(enabledToolIds: string[]): string {
     .map(t => `- ${t.name}: ${t.description}`)
     .join('\n');
 
-  return `\n\nYou have access to the following tools. Use them when appropriate by making tool calls:\n${toolList}\n\nWhen a user asks about current information, real-time data, or anything you don't know, USE the appropriate tool instead of saying you cannot help.`;
+  const enabledNames = new Set(enabledTools.map(t => t.name));
+
+  const hints: string[] = [];
+  if (enabledNames.has('web_search')) {
+    hints.push('- The user asks about recent events, real-time data, or current news — use web_search');
+    hints.push('- The user asks for specific facts you cannot reliably answer from training data — use web_search');
+    hints.push('- The user asks you to look up or research a specific entity (company, person, product) — use web_search');
+  }
+  if (enabledNames.has('read_url')) {
+    hints.push('- The user provides a URL — use read_url');
+  }
+  if (enabledNames.has('calculator')) {
+    hints.push('- The user asks for calculations — use calculator');
+  }
+  if (enabledNames.has('get_current_datetime')) {
+    hints.push('- The user asks about the current time or date — use get_current_datetime');
+  }
+
+  const hintsBlock = hints.length > 0 ? `\n\nIMPORTANT: You MUST use the appropriate tool when:\n${hints.join('\n')}\nDo NOT say you cannot help or lack internet access. USE your tools instead.` : '';
+
+  return `\n\nYou have access to the following tools and MUST use them proactively:\n${toolList}${hintsBlock}`;
 }

@@ -249,10 +249,17 @@ export type SendCall = {
 export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promise<void> {
   const { text, attachments, imageMode, startGeneration } = call;
   const forceImageMode = imageMode === 'force';
-  if (!deps.activeConversationId || !deps.activeModel) {
-    deps.setAlertState(showAlert('No Model Selected', 'Please select a model first.'));
+
+  if (!deps.activeConversationId) {
+    deps.setAlertState(showAlert('Error', 'No active conversation.'));
     return;
   }
+
+  if (!deps.activeModel && !deps.activeImageModel) {
+    deps.setAlertState(showAlert('No Model Selected', 'Please load a model first.'));
+    return;
+  }
+
   const targetConversationId = deps.activeConversationId;
   let messageText = text;
   if (attachments) {
@@ -262,11 +269,18 @@ export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promis
       messageText += `\n\n---\n📄 **Attached Document: ${fileName}**\n\`\`\`\n${doc.textContent}\n\`\`\`\n---`;
     }
   }
-  const shouldGenerateImage = imageMode !== 'disabled' && await shouldRouteToImageGenerationFn(deps, messageText, forceImageMode);
+  const isOnlyImageModelLoaded = !deps.activeModel && !!deps.activeImageModel;
+  const shouldGenerateImage = imageMode !== 'disabled' && (isOnlyImageModelLoaded || await shouldRouteToImageGenerationFn(deps, messageText, forceImageMode));
   if (shouldGenerateImage && deps.activeImageModel) {
     await handleImageGenerationFn(deps, { prompt: text, conversationId: targetConversationId });
     return;
   }
+
+  if (!deps.activeModel) {
+    deps.setAlertState(showAlert('No Text Model Selected', 'Please load a text model to chat.'));
+    return;
+  }
+
   if (shouldGenerateImage && !deps.activeImageModel) {
     messageText = `[User wanted an image but no image model is loaded] ${messageText}`;
   }
@@ -286,8 +300,11 @@ export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promis
 
 export async function handleStopFn(deps: Pick<GenerationDeps, 'isGeneratingImage' | 'generatingForConversationRef'>): Promise<void> {
   deps.generatingForConversationRef.current = null;
-  try { await generationService.stopGeneration().catch(() => { }); }
-  catch (e) { logger.error('Error stopping generation:', e); }
+  try {
+    await generationService.stopGeneration().catch(() => { });
+  } catch (e) {
+    logger.error('Error stopping generation:', e);
+  }
   if (deps.isGeneratingImage) imageGenerationService.cancelGeneration().catch(() => { });
 }
 
@@ -312,7 +329,7 @@ export type RegenerateCall = { setDebugInfo: SetState<any>; userMessage: Message
 
 export async function regenerateResponseFn(deps: GenerationDeps, call: RegenerateCall): Promise<void> {
   const { userMessage } = call;
-  if (!deps.activeConversationId || !deps.activeModel) return;
+  if (!deps.activeConversationId || (!deps.activeModel && !deps.activeImageModel)) return;
   const targetConversationId = deps.activeConversationId;
   const shouldGenerateImage = await shouldRouteToImageGenerationFn(deps, userMessage.content);
   if (shouldGenerateImage && deps.activeImageModel) {

@@ -192,7 +192,7 @@ export interface Message {
 export interface Conversation {
   id: string;
   title: string;
-  modelId: string;
+  modelId: string | null;
   messages: Message[];
   createdAt: string;
   updatedAt: string;

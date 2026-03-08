@@ -37,7 +37,7 @@ export function getDisplayMessages(
   return allMessages;
 }
 
-export function getPlaceholderText(isModelLoaded: boolean, supportsVision: boolean): string {
-  if (!isModelLoaded) return 'Loading model...';
+export function getPlaceholderText(isAnyModelLoaded: boolean, supportsVision: boolean): string {
+  if (!isAnyModelLoaded) return 'Loading model...';
   return supportsVision ? 'Type a message or add an image...' : 'Type a message...';
 }

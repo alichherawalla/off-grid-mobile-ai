@@ -18,7 +18,7 @@ interface ChatState {
   isThinking: boolean; // True when processing prompt, before first token
 
   // Actions
-  createConversation: (modelId: string, title?: string, projectId?: string) => string;
+  createConversation: (modelId: string | null, title?: string, projectId?: string) => string;
   deleteConversation: (conversationId: string) => void;
   setActiveConversation: (conversationId: string | null) => void;
   getActiveConversation: () => Conversation | null;
@@ -125,14 +125,14 @@ export const useChatStore = create<ChatState>()(
           conversations: state.conversations.map((conv) =>
             conv.id === conversationId
               ? {
-                  ...conv,
-                  messages: [...conv.messages, message],
-                  updatedAt: new Date().toISOString(),
-                  // Update title from first user message if still default
-                  title: conv.title === 'New Conversation' && messageData.role === 'user'
-                    ? messageData.content.slice(0, 50) + (messageData.content.length > 50 ? '...' : '')
-                    : conv.title,
-                }
+                ...conv,
+                messages: [...conv.messages, message],
+                updatedAt: new Date().toISOString(),
+                // Update title from first user message if still default
+                title: conv.title === 'New Conversation' && messageData.role === 'user'
+                  ? messageData.content.slice(0, 50) + (messageData.content.length > 50 ? '...' : '')
+                  : conv.title,
+              }
               : conv
           ),
         }));
@@ -145,12 +145,12 @@ export const useChatStore = create<ChatState>()(
           conversations: state.conversations.map((conv) =>
             conv.id === conversationId
               ? {
-                  ...conv,
-                  messages: conv.messages.map((msg) =>
-                    msg.id === messageId ? { ...msg, content } : msg
-                  ),
-                  updatedAt: new Date().toISOString(),
-                }
+                ...conv,
+                messages: conv.messages.map((msg) =>
+                  msg.id === messageId ? { ...msg, content } : msg
+                ),
+                updatedAt: new Date().toISOString(),
+              }
               : conv
           ),
         }));
@@ -161,12 +161,12 @@ export const useChatStore = create<ChatState>()(
           conversations: state.conversations.map((conv) =>
             conv.id === conversationId
               ? {
-                  ...conv,
-                  messages: conv.messages.map((msg) =>
-                    msg.id === messageId ? { ...msg, isThinking } : msg
-                  ),
-                  updatedAt: new Date().toISOString(),
-                }
+                ...conv,
+                messages: conv.messages.map((msg) =>
+                  msg.id === messageId ? { ...msg, isThinking } : msg
+                ),
+                updatedAt: new Date().toISOString(),
+              }
               : conv
           ),
         }));
@@ -177,10 +177,10 @@ export const useChatStore = create<ChatState>()(
           conversations: state.conversations.map((conv) =>
             conv.id === conversationId
               ? {
-                  ...conv,
-                  messages: conv.messages.filter((msg) => msg.id !== messageId),
-                  updatedAt: new Date().toISOString(),
-                }
+                ...conv,
+                messages: conv.messages.filter((msg) => msg.id !== messageId),
+                updatedAt: new Date().toISOString(),
+              }
               : conv
           ),
         }));

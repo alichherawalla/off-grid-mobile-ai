@@ -403,11 +403,11 @@ describe('handleSendFn', () => {
       startGeneration: jest.fn(),
       setDebugInfo: jest.fn(),
     });
-    expect(deps.setAlertState).toHaveBeenCalledWith(expect.objectContaining({ title: 'No Model Selected' }));
+    expect(deps.setAlertState).toHaveBeenCalledWith(expect.objectContaining({ title: 'Error' }));
   });
 
-  it('shows alert when no activeModel', async () => {
-    const deps = makeGenerationDeps({ activeModel: undefined });
+  it('shows alert when no activeModel and no activeImageModel', async () => {
+    const deps = makeGenerationDeps({ activeModel: undefined, activeImageModel: null });
     await handleSendFn(deps, {
       text: 'hello',
       imageMode: 'auto',

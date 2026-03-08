@@ -34,7 +34,7 @@ export const ChatsListScreen: React.FC = () => {
   const styles = useThemedStyles(createStyles);
   const { conversations, deleteConversation, setActiveConversation } = useChatStore();
   const { getProject } = useProjectStore();
-  const { downloadedModels, removeImagesByConversationId, activeImageModelId, onboardingChecklist, shownSpotlights, markSpotlightShown } = useAppStore();
+  const { downloadedModels, downloadedImageModels, removeImagesByConversationId, activeImageModelId, onboardingChecklist, shownSpotlights, markSpotlightShown } = useAppStore();
   const [alertState, setAlertState] = useState<AlertState>(initialAlertState);
   const { goTo } = useSpotlightTour();
 
@@ -52,7 +52,7 @@ export const ChatsListScreen: React.FC = () => {
     }
   }, [activeImageModelId, shownSpotlights, onboardingChecklist.triedImageGen, markSpotlightShown, goTo]);
 
-  const hasModels = downloadedModels.length > 0;
+  const hasModels = downloadedModels.length > 0 || downloadedImageModels.length > 0;
 
   const handleChatPress = (conversation: Conversation) => {
     setActiveConversation(conversation.id);
@@ -101,9 +101,9 @@ export const ChatsListScreen: React.FC = () => {
       return 'Yesterday';
     } else if (diffDays < 7) {
       return date.toLocaleDateString([], { weekday: 'short' });
-    } 
-      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    
+    }
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
   };
 
   const renderRightActions = (conversation: Conversation) => (

@@ -237,7 +237,7 @@ export const useChatScreen = () => {
     },
     handleCopyMessage: (_content: string) => { },
     handleRetryMessage: async (message: Message) => {
-      if (!activeConversationId || !activeModel) return;
+      if (!activeConversationId || (!activeModel && !activeImageModel)) return;
       if (message.role === 'user') {
         const msgs = activeConversation?.messages || [];
         const idx = msgs.findIndex((m: Message) => m.id === message.id);
@@ -256,7 +256,7 @@ export const useChatScreen = () => {
       }
     },
     handleEditMessage: async (message: Message, newContent: string) => {
-      if (!activeConversationId || !activeModel) return;
+      if (!activeConversationId || (!activeModel && !activeImageModel)) return;
       updateMessageContent(activeConversationId, message.id, newContent);
       deleteMessagesAfter(activeConversationId, message.id);
       await regenerateResponseFn(genDeps, { setDebugInfo, userMessage: { ...message, content: newContent } });

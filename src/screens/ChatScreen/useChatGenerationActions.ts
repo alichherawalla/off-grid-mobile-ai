@@ -332,7 +332,7 @@ export type RegenerateCall = { setDebugInfo: SetState<any>; userMessage: Message
 
 export async function regenerateResponseFn(deps: GenerationDeps, call: RegenerateCall): Promise<void> {
   const { userMessage } = call;
-  if (!deps.activeConversationId || !deps.activeModel) return;
+  if (!deps.activeConversationId || (!deps.activeModel && !deps.activeImageModel)) return;
   const targetConversationId = deps.activeConversationId;
   const shouldGenerateImage = await shouldRouteToImageGenerationFn(deps, userMessage.content);
   if (shouldGenerateImage && deps.activeImageModel) {

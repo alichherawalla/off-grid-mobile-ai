@@ -828,7 +828,7 @@ describe('HomeScreen', () => {
       expect(queryByTestId('app-sheet-title')?.props.children).toBe('Image Models');
     });
 
-    it('shows "No text models downloaded" when picker opened with no models', () => {
+    it('shows "No text models available" when picker opened with no models', () => {
       const { getByText, queryByText } = renderHomeScreen();
 
       // Use "Select Model" button for models-exist case, but for no-models case
@@ -838,15 +838,15 @@ describe('HomeScreen', () => {
       // Open text picker - the text model card area
       fireEvent.press(getByText('Text'));
 
-      expect(queryByText('No text models downloaded')).toBeTruthy();
+      expect(queryByText('No text models available')).toBeTruthy();
     });
 
-    it('shows "No image models downloaded" when image picker opened with no models', () => {
+    it('shows "No image models available" when image picker opened with no models', () => {
       const { getByTestId, queryByText } = renderHomeScreen();
 
       fireEvent.press(getByTestId('image-model-card'));
 
-      expect(queryByText('No image models downloaded')).toBeTruthy();
+      expect(queryByText('No image models available')).toBeTruthy();
     });
 
     it('shows model items in text picker', () => {

@@ -22,7 +22,7 @@ import {
 } from '../../services';
 import { embeddingService } from '../../services/rag/embedding';
 import { useChatStore, useProjectStore } from '../../stores';
-import { Message, MediaAttachment, Project, DownloadedModel, ModelLoadingStrategy, CacheType } from '../../types';
+import { Message, MediaAttachment, Project, DownloadedModel, RemoteModel, ModelLoadingStrategy, CacheType } from '../../types';
 import logger from '../../utils/logger';
 import { shouldUseToolsForMessage } from './toolUsage';
 type SetState<T> = Dispatch<SetStateAction<T>>;
@@ -30,7 +30,9 @@ const FALLBACK_RECENT_MESSAGE_COUNT = 2;
 
 type GenerationDeps = {
   activeModelId: string | null;
-  activeModel: DownloadedModel | undefined;
+  activeModel: DownloadedModel | null | undefined;
+  activeModelInfo?: { isRemote: boolean; model: DownloadedModel | RemoteModel | null; modelId: string | null; modelName: string };
+  hasActiveModel?: boolean;
   activeConversationId: string | null | undefined;
   activeConversation: any;
   activeProject: any;
@@ -151,6 +153,9 @@ export async function handleImageGenerationFn(
 }
 export type StartGenerationCall = { setDebugInfo: SetState<any>; targetConversationId: string; messageText: string };
 async function ensureModelReady(deps: GenerationDeps): Promise<boolean> {
+  // Remote models don't need local loading
+  if (deps.activeModelInfo?.isRemote) return true;
+  // Local models need to be loaded
   const loadedPath = llmService.getLoadedModelPath();
   if (loadedPath && loadedPath === deps.activeModel!.filePath) return true;
   await deps.ensureModelLoaded();
@@ -238,12 +243,15 @@ function maybeCacheTypeNudge(deps: GenerationDeps): void {
 }
 export async function startGenerationFn(deps: GenerationDeps, call: StartGenerationCall): Promise<void> {
   const { setDebugInfo, targetConversationId, messageText } = call;
-  if (!deps.activeModel) return;
+  if (!deps.hasActiveModel) return;
   deps.generatingForConversationRef.current = targetConversationId;
-  if (!(await ensureModelReady(deps))) {
-    deps.setAlertState(showAlert('Error', 'Failed to load model. Please try again.'));
-    deps.generatingForConversationRef.current = null;
-    return;
+  // For remote models, skip local model loading
+  if (!deps.activeModelInfo?.isRemote && deps.activeModel) {
+    if (!(await ensureModelReady(deps))) {
+      deps.setAlertState(showAlert('Error', 'Failed to load model. Please try again.'));
+      deps.generatingForConversationRef.current = null;
+      return;
+    }
   }
   const conversation = useChatStore.getState().conversations.find(c => c.id === targetConversationId);
   const { enabledTools, rawPrompt } = resolveToolsAndPrompt(deps, conversation);
@@ -267,7 +275,7 @@ export async function startGenerationFn(deps: GenerationDeps, call: StartGenerat
 export type SendCall = { text: string; attachments?: MediaAttachment[]; imageMode?: 'auto' | 'force' | 'disabled'; startGeneration: (convId: string, text: string) => Promise<void>; setDebugInfo: SetState<any> };
 export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promise<void> {
   const { text, attachments, imageMode, startGeneration } = call;
-  if (!deps.activeConversationId || !deps.activeModel) {
+  if (!deps.activeConversationId || !deps.hasActiveModel) {
     deps.setAlertState(showAlert('No Model Selected', 'Please select a model first.'));
     return;
   }
@@ -313,14 +321,15 @@ export async function executeDeleteConversationFn(
 export type RegenerateCall = { setDebugInfo: SetState<any>; userMessage: Message };
 export async function regenerateResponseFn(deps: GenerationDeps, call: RegenerateCall): Promise<void> {
   const { userMessage } = call;
-  if (!deps.activeConversationId || !deps.activeModel) return;
+  if (!deps.activeConversationId || !deps.hasActiveModel) return;
   const targetConversationId = deps.activeConversationId;
   const shouldGenerateImage = await shouldRouteToImageGenerationFn(deps, userMessage.content);
   if (shouldGenerateImage && deps.activeImageModel) {
     await handleImageGenerationFn(deps, { prompt: userMessage.content, conversationId: targetConversationId, skipUserMessage: true });
     return;
   }
-  if (!llmService.isModelLoaded()) return;
+  // For local models, check if model is loaded
+  if (!deps.activeModelInfo?.isRemote && !llmService.isModelLoaded()) return;
   deps.generatingForConversationRef.current = targetConversationId;
   const conversation = useChatStore.getState().conversations.find(c => c.id === targetConversationId);
   const messages = (conversation?.messages || []).filter((m: Message) => !m.isSystemInfo);

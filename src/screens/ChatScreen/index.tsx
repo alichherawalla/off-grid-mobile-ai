@@ -134,8 +134,7 @@ export const ChatScreen: React.FC = () => {
       onClose={() => chat.setAlertState(hideAlert())}
     />
   );
-
-  if (!chat.activeModelId || !chat.activeModel) {
+  if (!chat.hasActiveModel) {
     return (
       <>
         <NoModelScreen
@@ -155,14 +154,15 @@ export const ChatScreen: React.FC = () => {
 
   if (chat.isModelLoading) {
     const sizeSource = chat.loadingModel ?? chat.activeModel;
+    const modelName = chat.loadingModel?.name || chat.activeModelName || 'Unknown';
     return (
       <>
         <LoadingScreen
           styles={styles} colors={colors}
           navigation={chat.navigation}
-          loadingModelName={chat.loadingModel?.name || chat.activeModel.name}
+          loadingModelName={modelName}
           modelSize={sizeSource ? chat.hardwareService.formatModelSize(sizeSource) : ''}
-          hasVision={!!(chat.loadingModel?.mmProjPath || chat.activeModel.mmProjPath)}
+          hasVision={!!(chat.loadingModel?.mmProjPath || chat.activeModel?.mmProjPath)}
         />
         {alertEl}
       </>
@@ -201,10 +201,12 @@ export const ChatScreen: React.FC = () => {
           styles={styles} colors={colors}
           activeConversation={chat.activeConversation}
           activeModel={chat.activeModel}
+          activeModelName={chat.activeModelName}
           activeImageModel={chat.activeImageModel}
           navigation={chat.navigation}
           setShowModelSelector={chat.setShowModelSelector}
           setShowSettingsPanel={chat.setShowSettingsPanel}
+          isRemote={chat.activeModelInfo?.isRemote}
         />
         <ChatMessageArea
           flatListRef={flatListRef}
@@ -270,8 +272,10 @@ const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
       <EmptyChat
         styles={styles} colors={colors}
         activeModel={chat.activeModel}
+        activeModelName={chat.activeModelName}
         activeProject={chat.activeProject}
         setShowProjectSelector={chat.setShowProjectSelector}
+        isRemote={chat.activeModelInfo?.isRemote}
       />
     ) : (
       <FlatList
@@ -282,7 +286,7 @@ const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
         contentContainerStyle={styles.messageList}
         onScroll={handleScroll}
         onContentSizeChange={(_w, _h) => { if (isNearBottomRef.current) flatListRef.current?.scrollToEnd({ animated: false }); }}
-        onLayout={() => {}}
+        onLayout={() => { }}
         scrollEventThrottle={16}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
@@ -323,7 +327,7 @@ const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
       <ChatInput
         onSend={chat.handleSend}
         onStop={chat.handleStop}
-        disabled={!llmService.isModelLoaded()}
+        disabled={!chat.hasActiveModel}
         isGenerating={chat.isStreaming || chat.isThinking}
         supportsVision={chat.supportsVision}
         conversationId={chat.activeConversationId}
@@ -332,7 +336,7 @@ const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
         queueCount={chat.queueCount}
         queuedTexts={chat.queuedTexts}
         onClearQueue={() => generationService.clearQueue()}
-        placeholder={getPlaceholderText(llmService.isModelLoaded(), chat.supportsVision)}
+        placeholder={getPlaceholderText(chat.hasActiveModel, chat.supportsVision)}
         onToolsPress={() => chat.setShowToolPicker(true)}
         enabledToolCount={chat.enabledTools.length}
         supportsToolCalling={chat.supportsToolCalling}

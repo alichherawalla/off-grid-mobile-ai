@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { AlertState, showAlert, initialAlertState } from '../../components';
-import { useAppStore, useChatStore, useProjectStore } from '../../stores';
+import { useAppStore, useChatStore, useProjectStore, useRemoteServerStore } from '../../stores';
 import {
   llmService, modelManager, activeModelService,
   generationService, imageGenerationService,
   ImageGenerationState, hardwareService, QueuedMessage,
   contextCompactionService,
 } from '../../services';
-import { Message, MediaAttachment, Project, DownloadedModel, DebugInfo } from '../../types';
+import { Message, MediaAttachment, Project, DownloadedModel, DebugInfo, RemoteModel } from '../../types';
 import { RootStackParamList } from '../../navigation/types';
 import { ensureModelLoadedFn, handleModelSelectFn, handleUnloadModelFn } from './useChatModelActions';
 import {
@@ -23,6 +23,13 @@ export type { AlertState, ChatMessageItem, StreamingState };
 export { getDisplayMessages, getPlaceholderText };
 
 type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>;
+
+type ActiveModelInfo = {
+  isRemote: boolean;
+  model: DownloadedModel | RemoteModel | null;
+  modelId: string | null;
+  modelName: string;
+};
 
 export const useChatScreen = () => {
   const navigation = useNavigation();
@@ -61,6 +68,11 @@ export const useChatScreen = () => {
     removeImagesByConversationId,
   } = useAppStore();
 
+  // Remote model state - use proper selectors for reactivity
+  const activeServerId = useRemoteServerStore((s) => s.activeServerId);
+  const activeRemoteTextModelId = useRemoteServerStore((s) => s.activeRemoteTextModelId);
+  const discoveredModels = useRemoteServerStore((s) => s.discoveredModels);
+
   const {
     activeConversationId, conversations, createConversation, addMessage,
     updateMessageContent, deleteMessagesAfter, streamingMessage, streamingReasoningContent,
@@ -72,7 +84,57 @@ export const useChatScreen = () => {
   addMessageRef.current = addMessage;
 
   const activeConversation = conversations.find(c => c.id === activeConversationId);
-  const activeModel = downloadedModels.find(m => m.id === activeModelId);
+
+  // Compute active model from either local or remote source
+  const getActiveModelInfo = useCallback((): ActiveModelInfo => {
+    // Check for remote model first
+    if (activeServerId && activeRemoteTextModelId) {
+      const serverModels = discoveredModels[activeServerId] || [];
+      const remoteModel = serverModels.find(m => m.id === activeRemoteTextModelId);
+      if (remoteModel) {
+        return {
+          isRemote: true,
+          model: remoteModel,
+          modelId: remoteModel.id,
+          modelName: remoteModel.name,
+        };
+      }
+      // Debug: remote model not found
+      console.log('[ChatScreen] Remote model not found:', {
+        activeServerId,
+        activeRemoteTextModelId,
+        availableModels: serverModels.map(m => ({ id: m.id, name: m.name })),
+      });
+    }
+    // Fall back to local model
+    const localModel = downloadedModels.find(m => m.id === activeModelId);
+    if (localModel) {
+      return {
+        isRemote: false,
+        model: localModel,
+        modelId: localModel.id,
+        modelName: localModel.name,
+      };
+    }
+    // Debug: no model found
+    console.log('[ChatScreen] No active model found:', {
+      activeServerId,
+      activeRemoteTextModelId,
+      activeModelId,
+      discoveredModelsKeys: Object.keys(discoveredModels),
+    });
+    return { isRemote: false, model: null, modelId: null, modelName: 'Unknown' };
+  }, [activeServerId, activeRemoteTextModelId, discoveredModels, activeModelId, downloadedModels]);
+
+  const activeModelInfo = getActiveModelInfo();
+  // Debug: log active model info
+  console.log('[ChatScreen] activeModelInfo:', { modelId: activeModelInfo.modelId, isRemote: activeModelInfo.isRemote, modelName: activeModelInfo.modelName });
+  // activeModel is for LOCAL models only (for file path, memory checks, etc.)
+  const activeModel = activeModelInfo.isRemote ? undefined : (activeModelInfo.model as DownloadedModel | undefined);
+  const activeRemoteModel = activeModelInfo.isRemote ? (activeModelInfo.model as RemoteModel | null) : null;
+  const hasActiveModel = activeModelInfo.modelId !== null;
+  const activeModelName = activeModelInfo.modelName;
+
   const activeProject = activeConversation?.projectId ? getProject(activeConversation.projectId) : null;
   const activeImageModel = downloadedImageModels.find(m => m.id === activeImageModelId);
   const imageModelLoaded = !!activeImageModel;
@@ -80,7 +142,7 @@ export const useChatScreen = () => {
   const isStreamingForThisConversation = streamingForConversationId === activeConversationId;
 
   const genDeps = {
-    activeModelId, activeModel, activeConversationId, activeConversation, activeProject,
+    activeModelId: activeModelInfo.modelId, activeModel, activeModelInfo, hasActiveModel, activeConversationId, activeConversation, activeProject,
     activeImageModel, imageModelLoaded, isStreaming, isGeneratingImage, imageGenState, settings,
     downloadedModels, setAlertState, setIsClassifying, setAppImageGenerationStatus,
     setAppIsGeneratingImage, addMessage, clearStreamingMessage, deleteConversation,
@@ -89,7 +151,7 @@ export const useChatScreen = () => {
   };
 
   const modelDeps = {
-    activeModel, activeModelId, activeConversationId, isStreaming, settings,
+    activeModel, activeModelId: activeModelInfo.modelId, activeModelInfo, hasActiveModel, activeConversationId, isStreaming, settings,
     clearStreamingMessage, createConversation, addMessage,
     setIsModelLoading, setLoadingModel, setSupportsVision, setShowModelSelector,
     setAlertState, modelLoadStartTimeRef,
@@ -120,7 +182,8 @@ export const useChatScreen = () => {
   useEffect(() => {
     const { conversationId, projectId } = route.params || {};
     if (conversationId) { setActiveConversation(conversationId); }
-    else if (activeModelId) { createConversation(activeModelId, undefined, projectId); }
+    // Use modelId from activeModelInfo for both local and remote models
+    else if (activeModelInfo.modelId) { createConversation(activeModelInfo.modelId, undefined, projectId); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.params?.conversationId, route.params?.projectId]);
 
@@ -165,6 +228,8 @@ export const useChatScreen = () => {
   }, [settings.imageGenerationMode, settings.autoDetectMethod, settings.classifierModelId, activeImageModelId, settings.modelLoadingStrategy]);
 
   useEffect(() => {
+    // Skip model loading for remote models - they don't need local loading
+    if (activeModelInfo.isRemote) return;
     if (activeModelId && activeModel) { ensureModelLoadedFn(modelDeps); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeModelId]);
@@ -212,7 +277,8 @@ export const useChatScreen = () => {
     isClassifying, animateLastN, queueCount, queuedTexts,
     viewerImageUri, setViewerImageUri, imageGenState,
     enabledTools, handleToggleTool,
-    activeModelId, activeConversationId, activeConversation, activeModel,
+    activeModelId: activeModelInfo.modelId, activeConversationId, activeConversation, activeModel,
+    activeModelInfo, hasActiveModel, activeRemoteModel, activeModelName,
     activeProject, activeImageModel, imageModelLoaded, isGeneratingImage,
     imageGenerationProgress: imageGenState.progress,
     imageGenerationStatus: imageGenState.status,
@@ -237,7 +303,7 @@ export const useChatScreen = () => {
     },
     handleCopyMessage: (_content: string) => {},
     handleRetryMessage: async (message: Message) => {
-      if (!activeConversationId || !activeModel) return;
+      if (!activeConversationId || !hasActiveModel) return;
       if (message.role === 'user') {
         const msgs = activeConversation?.messages || [];
         const idx = msgs.findIndex((m: Message) => m.id === message.id);
@@ -256,7 +322,7 @@ export const useChatScreen = () => {
       }
     },
     handleEditMessage: async (message: Message, newContent: string) => {
-      if (!activeConversationId || !activeModel) return;
+      if (!activeConversationId || !hasActiveModel) return;
       updateMessageContent(activeConversationId, message.id, newContent);
       deleteMessagesAfter(activeConversationId, message.id);
       await regenerateResponseFn(genDeps, { setDebugInfo, userMessage: { ...message, content: newContent } });

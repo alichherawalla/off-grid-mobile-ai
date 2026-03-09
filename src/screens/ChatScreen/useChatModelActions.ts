@@ -5,13 +5,22 @@ import {
   hideAlert,
 } from '../../components';
 import { llmService, activeModelService } from '../../services';
-import { DownloadedModel } from '../../types';
+import { DownloadedModel, RemoteModel } from '../../types';
 
 type SetState<T> = Dispatch<SetStateAction<T>>;
 
+type ActiveModelInfo = {
+  isRemote: boolean;
+  model: DownloadedModel | RemoteModel | null;
+  modelId: string | null;
+  modelName: string;
+};
+
 type ModelActionDeps = {
-  activeModel: DownloadedModel | undefined;
+  activeModel: DownloadedModel | null | undefined;
   activeModelId: string | null;
+  activeModelInfo?: ActiveModelInfo;
+  hasActiveModel?: boolean;
   activeConversationId: string | null | undefined;
   isStreaming: boolean;
   settings: { showGenerationDetails: boolean };

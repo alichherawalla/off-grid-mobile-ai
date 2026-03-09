@@ -106,11 +106,13 @@ export const ChatHeader: React.FC<{
   colors: ColorsType;
   activeConversation: any;
   activeModel: any;
+  activeModelName?: string;
   activeImageModel: any;
   navigation: any;
   setShowModelSelector: (v: boolean) => void;
   setShowSettingsPanel: (v: boolean) => void;
-}> = ({ styles, colors, activeConversation, activeModel, activeImageModel, navigation, setShowModelSelector, setShowSettingsPanel }) => (
+  isRemote?: boolean;
+}> = ({ styles, colors, activeConversation, activeModel, activeModelName, activeImageModel, navigation, setShowModelSelector, setShowSettingsPanel, isRemote }) => (
   <View style={styles.header}>
     <View style={styles.headerRow}>
       <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
@@ -121,8 +123,11 @@ export const ChatHeader: React.FC<{
           {activeConversation?.title || 'New Chat'}
         </Text>
         <TouchableOpacity style={styles.modelSelector} onPress={() => setShowModelSelector(true)} testID="model-selector">
+          {isRemote && (
+            <Icon name="cloud" size={12} color={colors.primary} style={{ marginRight: 4 }} />
+          )}
           <Text style={styles.headerSubtitle} numberOfLines={1} testID="model-loaded-indicator">
-            {activeModel.name}
+            {activeModelName || activeModel?.name || 'Unknown'}
           </Text>
           {activeImageModel && (
             <View style={styles.headerImageBadge}>
@@ -147,9 +152,11 @@ export const EmptyChat: React.FC<{
   styles: StylesType;
   colors: ColorsType;
   activeModel: any;
+  activeModelName?: string;
   activeProject: any;
   setShowProjectSelector: (v: boolean) => void;
-}> = ({ styles, colors, activeModel, activeProject, setShowProjectSelector }) => (
+  isRemote?: boolean;
+}> = ({ styles, colors, activeModel, activeModelName, activeProject, setShowProjectSelector, isRemote }) => (
   <View style={styles.emptyChat}>
     <AnimatedEntry index={0} staggerMs={60}>
       <View style={styles.emptyChatIconContainer}>
@@ -161,7 +168,7 @@ export const EmptyChat: React.FC<{
     </AnimatedEntry>
     <AnimatedEntry index={2} staggerMs={60}>
       <Text style={styles.emptyChatText}>
-        Type a message below to begin chatting with {activeModel.name}.
+        Type a message below to begin chatting with {activeModelName || activeModel?.name || 'Unknown'}.
       </Text>
     </AnimatedEntry>
     <AnimatedEntry index={3} staggerMs={60}>
@@ -178,7 +185,9 @@ export const EmptyChat: React.FC<{
     </AnimatedEntry>
     <AnimatedEntry index={4} staggerMs={60}>
       <Text style={styles.privacyText}>
-        This conversation is completely private. All processing happens on your device.
+        {isRemote
+          ? 'This conversation uses a remote model. Your messages will be sent to the remote server.'
+          : 'This conversation is completely private. All processing happens on your device.'}
       </Text>
     </AnimatedEntry>
   </View>

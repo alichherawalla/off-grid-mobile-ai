@@ -95,6 +95,8 @@ interface AppState {
   incrementImageGenerationCount: () => number;
   hasEngagedSharePrompt: boolean;
   setHasEngagedSharePrompt: (v: boolean) => void;
+  loadedSettings: Partial<AppSettings> | null;
+  setLoadedSettings: (settings: Partial<AppSettings> | null) => void;
 }
 
 const DEFAULT_CHECKLIST: OnboardingChecklist = {
@@ -293,6 +295,8 @@ export const useAppStore = create<AppState>()(
       incrementImageGenerationCount: () => { const c = get().imageGenerationCount + 1; set({ imageGenerationCount: c }); return c; },
       hasEngagedSharePrompt: false,
       setHasEngagedSharePrompt: (v) => set({ hasEngagedSharePrompt: v }),
+      loadedSettings: null,
+      setLoadedSettings: (settings) => set({ loadedSettings: settings }),
     }),
     {
       name: 'local-llm-app-storage',

@@ -30,6 +30,7 @@ describe('remoteServerManager', () => {
         unloadModel: jest.fn(),
         isModelLoaded: jest.fn().mockReturnValue(true),
         getLoadedModelId: jest.fn().mockReturnValue('llama2'),
+        isReady: jest.fn().mockResolvedValue(true),
       };
 
       (providerRegistry.getProvider as jest.Mock).mockReturnValue(mockProvider);
@@ -38,6 +39,7 @@ describe('remoteServerManager', () => {
         setActiveServerId: jest.fn(),
         setActiveRemoteTextModelId: jest.fn(),
         setActiveRemoteImageModelId: jest.fn(),
+        getServerById: jest.fn().mockReturnValue(null),
       });
 
       await remoteServerManager.setActiveRemoteTextModel('server-123', 'llama2');
@@ -54,6 +56,7 @@ describe('remoteServerManager', () => {
         setActiveServerId: jest.fn(),
         setActiveRemoteTextModelId: jest.fn(),
         setActiveRemoteImageModelId: jest.fn(),
+        getServerById: jest.fn().mockReturnValue(null),
       });
 
       // Should not throw
@@ -71,6 +74,7 @@ describe('remoteServerManager', () => {
         unloadModel: jest.fn(),
         isModelLoaded: jest.fn().mockReturnValue(true),
         getLoadedModelId: jest.fn().mockReturnValue('llava'),
+        isReady: jest.fn().mockResolvedValue(true),
       };
 
       (providerRegistry.getProvider as jest.Mock).mockReturnValue(mockProvider);
@@ -78,6 +82,7 @@ describe('remoteServerManager', () => {
         setActiveServerId: jest.fn(),
         setActiveRemoteTextModelId: jest.fn(),
         setActiveRemoteImageModelId: jest.fn(),
+        getServerById: jest.fn().mockReturnValue(null),
       });
 
       await remoteServerManager.setActiveRemoteImageModel('server-123', 'llava');
@@ -95,6 +100,7 @@ describe('remoteServerManager', () => {
         setActiveServerId: jest.fn(),
         setActiveRemoteTextModelId: jest.fn(),
         setActiveRemoteImageModelId: jest.fn(),
+        getServerById: jest.fn().mockReturnValue(null),
       });
 
       remoteServerManager.clearActiveRemoteModel();
@@ -159,8 +165,8 @@ describe('remoteServerManager', () => {
 
       // These should NOT match the tool capability patterns
       const nonToolModels = [
-        'llama-2-7b',
-        'codellama-34b',
+        'phi-2',
+        'tinyllama',
       ];
 
       nonToolModels.forEach(modelId => {

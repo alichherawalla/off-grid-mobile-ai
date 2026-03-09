@@ -109,6 +109,19 @@ export async function doLoadTextModel(ctx: TextLoadContext): Promise<void> {
       timeoutPromise,
     ]);
 
+    // Capture settings that require model reload
+    const { settings } = ctx.store;
+    const reloadSettings = {
+      enableGpu: settings.enableGpu,
+      gpuLayers: settings.gpuLayers,
+      nThreads: settings.nThreads,
+      nBatch: settings.nBatch,
+      contextLength: settings.contextLength,
+      flashAttn: settings.flashAttn,
+      cacheType: settings.cacheType,
+    };
+    ctx.store.setLoadedSettings(reloadSettings);
+
     ctx.onLoaded(ctx.modelId);
     ctx.store.setActiveModelId(ctx.modelId);
   } catch (error) {

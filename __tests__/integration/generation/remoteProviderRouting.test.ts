@@ -49,6 +49,9 @@ jest.mock('../../../src/services/llm', () => ({
   llmService: {
     isModelLoaded: jest.fn(() => true),
     isCurrentlyGenerating: jest.fn(() => false),
+    supportsVision: jest.fn(() => false),
+    supportsToolCalling: jest.fn(() => true),
+    supportsThinking: jest.fn(() => false),
     getGpuInfo: jest.fn(() => ({ gpu: false, gpuBackend: 'CPU', gpuLayers: 0 })),
     getPerformanceStats: jest.fn(() => ({
       lastTokensPerSecond: 10,
@@ -60,6 +63,7 @@ jest.mock('../../../src/services/llm', () => ({
     generateResponse: jest.fn(),
     generateResponseWithTools: jest.fn(),
     stopGeneration: jest.fn(),
+    loadModel: jest.fn(),
   },
 }));
 
@@ -143,11 +147,11 @@ describe('Generation Service Provider Routing', () => {
       providerRegistry.unregisterProvider('remote-1');
     });
 
-    it('should fall back to local for unknown provider', () => {
+    it('should return undefined for unknown provider', () => {
       const provider = providerRegistry.getProvider('unknown-id');
 
-      // Should fall back to local
-      expect(provider!.id).toBe('local');
+      // Should return undefined for unknown provider
+      expect(provider).toBeUndefined();
     });
 
     it('should not unregister local provider', () => {

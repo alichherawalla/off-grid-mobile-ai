@@ -14,11 +14,17 @@ jest.mock('@op-engineering/op-sqlite', () => ({
 }));
 
 jest.mock('../../../../src/utils/logger', () => ({
-  default: { log: jest.fn(), error: jest.fn(), warn: jest.fn() },
+  __esModule: true,
+  default: {
+    log: jest.fn(),
+    error: jest.fn(),
+    warn: jest.fn(),
+  },
 }));
 
 // Import after mocks
 import { ragDatabase } from '../../../../src/services/rag/database';
+import logger from '../../../../src/utils/logger';
 
 describe('RagDatabase', () => {
   beforeEach(() => {
@@ -45,6 +51,20 @@ describe('RagDatabase', () => {
       await ragDatabase.ensureReady();
       expect(mockExecuteSync.mock.calls.length).toBe(callCount);
     });
+
+    it('throws and logs error when ensureReady fails', async () => {
+      const error = new Error('Database open failed');
+      (open as jest.Mock).mockImplementationOnce(() => {
+        throw error;
+      });
+
+      // Reset the database state
+      (ragDatabase as any).ready = false;
+      (ragDatabase as any).db = null;
+
+      await expect(ragDatabase.ensureReady()).rejects.toThrow('Database open failed');
+      expect(logger.error).toHaveBeenCalledWith('[RagDB] Failed to initialize:', error);
+    });
   });
 
   describe('insertDocument', () => {
@@ -58,6 +78,14 @@ describe('RagDatabase', () => {
         expect.stringContaining('INSERT INTO rag_documents'),
         expect.arrayContaining(['proj1', 'test.txt', '/path/test.txt', 1234])
       );
+    });
+
+    it('throws error when insertDocument returns no insertId', async () => {
+      await ragDatabase.ensureReady();
+      mockExecuteSync.mockReturnValue({ insertId: null, rowsAffected: 0, rows: [] });
+
+      expect(() => ragDatabase.insertDocument({ projectId: 'p', name: 'n', path: 'path', size: 0 }))
+        .toThrow('Failed to insert document: no insertId returned');
     });
   });
 
@@ -79,6 +107,37 @@ describe('RagDatabase', () => {
       expect(chunkInserts[0][1]).toEqual(['chunk one', 42, 0]);
       expect(chunkInserts[1][1]).toEqual(['chunk two', 42, 1]);
     });
+
+    it('rolls back on error during chunk insert', async () => {
+      await ragDatabase.ensureReady();
+      const error = new Error('Insert failed');
+
+      // First call succeeds, second call fails
+      mockExecuteSync
+        .mockReturnValueOnce({ insertId: 1, rowsAffected: 1, rows: [] }) // BEGIN
+        .mockReturnValueOnce({ insertId: 10, rowsAffected: 1, rows: [] }) // First chunk insert
+        .mockImplementationOnce(() => {
+          throw error;
+        });
+
+      const chunks = [
+        { content: 'chunk one', position: 0 },
+        { content: 'chunk two', position: 1 },
+      ];
+
+      expect(() => ragDatabase.insertChunks(42, chunks)).toThrow('Insert failed');
+    });
+
+    it('throws when insertId is null', async () => {
+      await ragDatabase.ensureReady();
+      mockExecuteSync
+        .mockReturnValueOnce({ insertId: 1, rowsAffected: 1, rows: [] }) // BEGIN
+        .mockReturnValueOnce({ insertId: null, rowsAffected: 0, rows: [] }); // Insert fails
+
+      const chunks = [{ content: 'chunk', position: 0 }];
+
+      expect(() => ragDatabase.insertChunks(42, chunks)).toThrow('Failed to insert chunk at position 0');
+    });
   });
 
   describe('insertEmbeddingsBatch', () => {
@@ -93,6 +152,21 @@ describe('RagDatabase', () => {
         (c: any[]) => typeof c[0] === 'string' && c[0].includes('INSERT INTO rag_embeddings')
       );
       expect(embInserts).toHaveLength(2);
+    });
+
+    it('rolls back on error during embedding insert', async () => {
+      await ragDatabase.ensureReady();
+      const error = new Error('Embedding insert failed');
+
+      mockExecuteSync
+        .mockReturnValueOnce({ insertId: 1, rowsAffected: 1, rows: [] }) // BEGIN
+        .mockImplementationOnce(() => {
+          throw error;
+        });
+
+      const entries = [{ chunkRowid: 1, docId: 42, embedding: [0.1] }];
+
+      expect(() => ragDatabase.insertEmbeddingsBatch(entries)).toThrow('Embedding insert failed');
     });
   });
 
@@ -125,6 +199,13 @@ describe('RagDatabase', () => {
     it('returns false when no embeddings', async () => {
       await ragDatabase.ensureReady();
       mockExecuteSync.mockReturnValue({ rows: [{ count: 0 }] });
+
+      expect(ragDatabase.hasEmbeddingsForDocument(42)).toBe(false);
+    });
+
+    it('returns false when rows is empty', async () => {
+      await ragDatabase.ensureReady();
+      mockExecuteSync.mockReturnValue({ rows: [] });
 
       expect(ragDatabase.hasEmbeddingsForDocument(42)).toBe(false);
     });

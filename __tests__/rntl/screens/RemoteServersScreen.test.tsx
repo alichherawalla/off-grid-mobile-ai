@@ -319,10 +319,10 @@ describe('RemoteServersScreen', () => {
 
       // Get the delete callback from the alert
       const alertCall = mockAlert.mock.calls[0];
-      const deleteButton = alertCall[2].find((btn: any) => btn.text === 'Delete');
+      const deleteButton = alertCall[2]!.find((btn: any) => btn.text === 'Delete');
 
       // Execute the delete callback
-      await deleteButton.onPress();
+      await deleteButton!.onPress!();
 
       expect(remoteServerManager.removeServer).toHaveBeenCalledWith(server.id);
     });
@@ -340,8 +340,8 @@ describe('RemoteServersScreen', () => {
       fireEvent.press(getByText('Delete'));
 
       const alertCall = mockAlert.mock.calls[0];
-      const deleteButton = alertCall[2].find((btn: any) => btn.text === 'Delete');
-      await deleteButton.onPress();
+      const deleteButton = alertCall[2]!.find((btn: any) => btn.text === 'Delete');
+      await deleteButton!.onPress!();
 
       expect(mockSetActiveServerId).toHaveBeenCalledWith(null);
     });
@@ -362,8 +362,8 @@ describe('RemoteServersScreen', () => {
       fireEvent.press(deleteButtons[0]);
 
       const alertCall = mockAlert.mock.calls[0];
-      const deleteButton = alertCall[2].find((btn: any) => btn.text === 'Delete');
-      await deleteButton.onPress();
+      const deleteButton = alertCall[2]!.find((btn: any) => btn.text === 'Delete');
+      await deleteButton!.onPress!();
 
       expect(mockSetActiveServerId).not.toHaveBeenCalled();
     });

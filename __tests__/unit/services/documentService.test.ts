@@ -658,4 +658,112 @@ describe('DocumentService', () => {
       expect(documentService.formatForContext(attachment)).toBe('');
     });
   });
+
+  // ========================================================================
+  // iOS file:// URI fallback paths
+  // ========================================================================
+  describe('iOS file:// URI resolution', () => {
+    beforeEach(() => {
+      Object.defineProperty(Platform, 'OS', { value: 'ios' });
+    });
+
+    it('copies iOS file:// URI to temp location on success', async () => {
+      mockedRNFS.copyFile.mockResolvedValue(undefined as any);
+      mockedRNFS.exists.mockResolvedValue(true);
+      mockedRNFS.stat.mockResolvedValue({ size: 100, isFile: () => true } as any);
+      mockedRNFS.readFile.mockResolvedValue('hello');
+      mockedRNFS.mkdir.mockResolvedValue(undefined as any);
+
+      const result = await documentService.processDocumentFromPath('file:///tmp/doc.txt', 'doc.txt');
+
+      expect(mockedRNFS.copyFile).toHaveBeenCalledWith('file:///tmp/doc.txt', expect.stringContaining('doc.txt'));
+      expect(result).not.toBeNull();
+    });
+
+    it('falls back to stripped scheme when direct iOS copy fails', async () => {
+      mockedRNFS.copyFile
+        .mockRejectedValueOnce(new Error('security-scoped access denied'))
+        .mockResolvedValue(undefined as any);
+      mockedRNFS.exists.mockResolvedValue(true);
+      mockedRNFS.stat.mockResolvedValue({ size: 50, isFile: () => true } as any);
+      mockedRNFS.readFile.mockResolvedValue('fallback content');
+      mockedRNFS.mkdir.mockResolvedValue(undefined as any);
+
+      const result = await documentService.processDocumentFromPath('file:///tmp/note.txt', 'note.txt');
+
+      expect(result).not.toBeNull();
+      expect(result!.textContent).toBe('fallback content');
+      // Two iOS copy attempts + one savePersistentCopy call = 3 total
+      expect(mockedRNFS.copyFile).toHaveBeenCalledTimes(3);
+    });
+
+    it('throws when both iOS copy attempts fail', async () => {
+      mockedRNFS.copyFile.mockRejectedValue(new Error('access denied'));
+
+      await expect(
+        documentService.processDocumentFromPath('file:///restricted/secret.txt', 'secret.txt'),
+      ).rejects.toThrow('Could not access file. Please try selecting the file again.');
+    });
+  });
+
+  // ========================================================================
+  // exists() error handling
+  // ========================================================================
+  describe('file existence error handling', () => {
+    it('throws when exists() raises an error (security-scoped URL)', async () => {
+      Object.defineProperty(Platform, 'OS', { value: 'ios' });
+
+      mockedRNFS.copyFile.mockResolvedValue(undefined as any);
+      mockedRNFS.exists.mockRejectedValue(new Error('Cannot stat security-scoped URL'));
+
+      await expect(
+        documentService.processDocumentFromPath('file:///private/doc.txt', 'doc.txt'),
+      ).rejects.toThrow('Could not access file. Please try selecting the file again.');
+    });
+  });
+
+  // ========================================================================
+  // savePersistentCopy fallback
+  // ========================================================================
+  describe('persistent copy fallback', () => {
+    it('returns resolvedPath when persistent copy fails', async () => {
+      Object.defineProperty(Platform, 'OS', { value: 'android' });
+
+      mockedRNFS.exists
+        .mockResolvedValueOnce(true)  // attachments dir check
+        .mockResolvedValueOnce(false); // persistent file check after failed copy
+      mockedRNFS.stat.mockResolvedValue({ size: 100, isFile: () => true } as any);
+      mockedRNFS.readFile.mockResolvedValue('content');
+      // First copyFile for content:// → temp, second for temp → persistent (fails)
+      mockedRNFS.copyFile
+        .mockResolvedValueOnce(undefined as any)
+        .mockRejectedValueOnce(new Error('disk full'));
+      mockedRNFS.mkdir.mockResolvedValue(undefined as any);
+
+      const result = await documentService.processDocumentFromPath(
+        'content://provider/file.txt',
+        'file.txt',
+      );
+
+      // Falls back to the resolved (temp) path since persistent copy failed
+      expect(result).not.toBeNull();
+      expect(result!.uri).toContain(RNFS.CachesDirectoryPath);
+    });
+  });
+
+  // ========================================================================
+  // createFromText error handling
+  // ========================================================================
+  describe('createFromText writeFile failure', () => {
+    it('returns empty uri when writeFile fails', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      mockedRNFS.writeFile.mockRejectedValue(new Error('no space'));
+
+      const result = await documentService.createFromText('some text', 'note.txt');
+
+      expect(result.uri).toBe('');
+      expect(result.textContent).toBe('some text');
+      expect(result.fileName).toBe('note.txt');
+    });
+  });
 });

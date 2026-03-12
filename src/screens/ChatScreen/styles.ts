@@ -31,7 +31,7 @@ const createHeaderStyles = (colors: ThemeColors) => ({
   headerProjectBadge: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    backgroundColor: `${colors.primary}18`,
+    backgroundColor: colors.surface,
     borderRadius: 10,
     paddingHorizontal: 6,
     paddingVertical: 2,

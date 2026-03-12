@@ -125,12 +125,12 @@ export const ChatHeader: React.FC<{
           <Text style={styles.headerTitle} numberOfLines={1}>
             {activeConversation?.title || 'New Chat'}
           </Text>
-          {activeProject && (
-            <TouchableOpacity style={styles.headerProjectBadge} onPress={() => setShowProjectSelector(true)}>
-              <Icon name="folder" size={10} color={colors.primary} />
-              <Text style={styles.headerProjectBadgeText} numberOfLines={1}>{activeProject.name}</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity style={styles.headerProjectBadge} onPress={() => setShowProjectSelector(true)}>
+            <Icon name="folder" size={10} color={activeProject ? colors.primary : colors.textMuted} />
+            <Text style={[styles.headerProjectBadgeText, !activeProject && { color: colors.textMuted }]} numberOfLines={1}>
+              {activeProject ? activeProject.name : 'Default'}
+            </Text>
+          </TouchableOpacity>
         </View>
         <TouchableOpacity style={styles.modelSelector} onPress={() => setShowModelSelector(true)} testID="model-selector">
           {isRemote && (

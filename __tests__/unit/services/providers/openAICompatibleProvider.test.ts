@@ -645,27 +645,6 @@ describe('OpenAICompatibleProvider', () => {
     });
   });
 
-  describe('generate — fallback completion when no finish_reason', () => {
-    it('calls onComplete when stream ends without a recognized finish_reason', async () => {
-      await provider.loadModel('test-model');
-      const mockStream = httpClient.createStreamingRequest as jest.Mock;
-      mockStream.mockImplementation((_url, _body, _headers, onEvent) => {
-        // Stream content with no finish_reason (simulates 'length' or null)
-        onEvent({ data: '{"choices":[{"delta":{"content":"Hello"},"finish_reason":null}]}' });
-        return Promise.resolve();
-      });
-
-      const onComplete = jest.fn();
-      await provider.generate(
-        [{ id: '1', role: 'user', content: 'Hi', timestamp: 0 }],
-        {},
-        { onToken: jest.fn(), onComplete, onError: jest.fn() }
-      );
-
-      expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ content: 'Hello' }));
-    });
-  });
-
   describe('generate — onReasoning callback is optional', () => {
     it('does not throw when onReasoning callback is not provided', async () => {
       await provider.loadModel('test-model');

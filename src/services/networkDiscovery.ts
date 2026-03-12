@@ -31,7 +31,7 @@ async function probe(ip: string, port: number, path: string): Promise<boolean> {
     const timer = setTimeout(() => { controller.abort(); resolve(false); }, TIMEOUT_MS);
 
     fetch(`http://${ip}:${port}${path}`, { signal: controller.signal })
-      .then(res => { clearTimeout(timer); resolve(res.status < 500); })
+      .then(res => { clearTimeout(timer); resolve(res.status === 200); })
       .catch(() => { clearTimeout(timer); resolve(false); });
   });
 }
@@ -68,8 +68,12 @@ function isIPv6(ip: string): boolean {
   return ip.includes(':');
 }
 
-/** Common home/office subnets to try when IPv4 detection fails (e.g. device returns IPv6) */
-const FALLBACK_SUBNETS = ['192.168.1', '192.168.0', '10.0.0', '10.0.1', '10.0.2', '172.16.0'];
+/**
+ * Common home/office subnets to try when IPv4 detection fails (e.g. device returns IPv6).
+ * Intentionally limited to the 2 most common home subnets to avoid a flood of timeouts
+ * on devices with no WiFi (e.g. cellular-only) where all probes would time out anyway.
+ */
+const FALLBACK_SUBNETS = ['192.168.1', '192.168.0'];
 
 /**
  * Scan the local subnet for LLM servers.
@@ -117,21 +121,22 @@ export async function discoverLANServers(): Promise<DiscoveredServer[]> {
     const discovered: DiscoveredServer[] = [];
     const seenEndpoints = new Set<string>();
 
+    const recordIfFound = (target: string, provider: typeof PROVIDERS[0]) => (found: boolean) => {
+      if (!found) return;
+      const endpoint = `http://${target}:${provider.port}`;
+      if (!seenEndpoints.has(endpoint)) {
+        seenEndpoints.add(endpoint);
+        logger.log(`[Discovery] Found ${provider.name} at ${target}:${provider.port}`);
+        discovered.push({ endpoint, type: provider.type, name: `${provider.name} (${target})` });
+      }
+    };
+
     // Scan all subnets in parallel — each subnet is independent
     await Promise.all(subnetsToScan.map(async (base) => {
       for (const provider of PROVIDERS) {
         const tasks = Array.from({ length: 254 }, (_, i) => {
           const target = `${base}.${i + 1}`;
-          return () => probe(target, provider.port, provider.probePath).then(found => {
-            if (found) {
-              const endpoint = `http://${target}:${provider.port}`;
-              if (!seenEndpoints.has(endpoint)) {
-                seenEndpoints.add(endpoint);
-                logger.log(`[Discovery] Found ${provider.name} at ${target}:${provider.port}`);
-                discovered.push({ endpoint, type: provider.type, name: `${provider.name} (${target})` });
-              }
-            }
-          });
+          return () => probe(target, provider.port, provider.probePath).then(recordIfFound(target, provider));
         });
         await runBatch(tasks);
       }

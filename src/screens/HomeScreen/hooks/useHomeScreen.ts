@@ -127,52 +127,28 @@ export const useHomeScreen = (navigation: HomeScreenNavigationProp) => {
     return () => unsubscribe();
   }, [refreshMemoryInfo]);
 
-  const runLANDiscovery = async () => {
-    let discovered: Awaited<ReturnType<typeof discoverLANServers>>;
-    try {
-      discovered = await discoverLANServers();
-    } catch (error) {
-      logger.warn('[HomeScreen] LAN discovery skipped:', (error as Error).message);
-      return;
+  const getPort = (endpoint: string): string | null => {
+    try { return new URL(endpoint).port; } catch { return null; }
+  };
+
+  const updateExistingServerAtNewIP = async (
+    store: ReturnType<typeof useRemoteServerStore.getState>,
+    samePortServer: NonNullable<ReturnType<typeof useRemoteServerStore.getState>['servers'][0]>,
+    discovered: { endpoint: string; name: string }
+  ) => {
+    logger.log('[HomeScreen] Server moved to new IP, updating:', samePortServer.name, '->', discovered.endpoint);
+    await remoteServerManager.updateServer(samePortServer.id, { endpoint: discovered.endpoint, name: discovered.name });
+    try { await useRemoteServerStore.getState().discoverModels(samePortServer.id); } catch { /* offline */ }
+    if (store.activeServerId === samePortServer.id && store.activeRemoteTextModelId) {
+      try {
+        await remoteServerManager.setActiveRemoteTextModel(samePortServer.id, store.activeRemoteTextModelId);
+      } catch { /* user can re-select */ }
     }
-    if (discovered.length === 0) return;
+  };
 
-    const store = useRemoteServerStore.getState();
-    const existingServers = store.servers;
-    const existingEndpoints = new Set(existingServers.map(s => s.endpoint.replace(/\/$/, '')));
-
-    const getPort = (endpoint: string): string | null => {
-      try { return new URL(endpoint).port; } catch { return null; }
-    };
-
-    const newServersToAdd: typeof discovered = [];
-
-    for (const d of discovered) {
-      if (existingEndpoints.has(d.endpoint.replace(/\/$/, ''))) continue;
-
-      // Check if a server of the same type (same port) already exists at a different IP.
-      // This handles the case where the laptop switched networks and got a new IP.
-      const dPort = getPort(d.endpoint);
-      const samePortServer = dPort
-        ? existingServers.find(s => getPort(s.endpoint) === dPort)
-        : null;
-
-      if (samePortServer) {
-        logger.log('[HomeScreen] Server moved to new IP, updating:', samePortServer.name, '->', d.endpoint);
-        await remoteServerManager.updateServer(samePortServer.id, { endpoint: d.endpoint, name: d.name });
-        // Re-discover models at the new endpoint
-        try { await useRemoteServerStore.getState().discoverModels(samePortServer.id); } catch { /* offline */ }
-        // If this was the active server, reconnect to the active model
-        if (store.activeServerId === samePortServer.id && store.activeRemoteTextModelId) {
-          try {
-            await remoteServerManager.setActiveRemoteTextModel(samePortServer.id, store.activeRemoteTextModelId);
-          } catch { /* user can re-select */ }
-        }
-      } else {
-        newServersToAdd.push(d);
-      }
-    }
-
+  const addNewServersAndNotify = async (
+    newServersToAdd: Awaited<ReturnType<typeof discoverLANServers>>
+  ) => {
     for (const server of newServersToAdd) {
       logger.log('[HomeScreen] Auto-adding discovered server:', server.name);
       const added = await remoteServerManager.addServer({
@@ -180,7 +156,6 @@ export const useHomeScreen = (navigation: HomeScreenNavigationProp) => {
         endpoint: server.endpoint,
         providerType: 'openai-compatible',
       });
-      // Silently probe the server to populate health status and model list
       remoteServerManager.testConnection(added.id).catch(() => {});
     }
 
@@ -201,6 +176,40 @@ export const useHomeScreen = (navigation: HomeScreenNavigationProp) => {
         }},
       ],
     ));
+  };
+
+  const runLANDiscovery = async () => {
+    let discovered: Awaited<ReturnType<typeof discoverLANServers>>;
+    try {
+      discovered = await discoverLANServers();
+    } catch (error) {
+      logger.warn('[HomeScreen] LAN discovery skipped:', (error as Error).message);
+      return;
+    }
+    if (discovered.length === 0) return;
+
+    const store = useRemoteServerStore.getState();
+    const existingServers = store.servers;
+    const existingEndpoints = new Set(existingServers.map(s => s.endpoint.replace(/\/$/, '')));
+
+    const newServersToAdd: typeof discovered = [];
+
+    for (const d of discovered) {
+      if (existingEndpoints.has(d.endpoint.replace(/\/$/, ''))) continue;
+
+      const dPort = getPort(d.endpoint);
+      const samePortServer = dPort
+        ? existingServers.find(s => getPort(s.endpoint) === dPort)
+        : null;
+
+      if (samePortServer) {
+        await updateExistingServerAtNewIP(store, samePortServer, d);
+      } else {
+        newServersToAdd.push(d);
+      }
+    }
+
+    await addNewServersAndNotify(newServersToAdd);
   };
 
   const loadData = async () => {

@@ -186,7 +186,7 @@ const ToolCallWithThinking: React.FC<{
   const hasText = !!tc?.response?.trim();
   return (
     <View style={styles.systemInfoContainer}>
-      {tc?.thinking && (
+      {!!tc?.thinking && (
         <ThinkingBlock parsedContent={tc} showThinking={showThinking} onToggle={onToggle} styles={styles} />
       )}
       {hasText && (

@@ -53,11 +53,8 @@ class GenerationService {
   /** Get the current provider (local or remote) */
   private getCurrentProvider() {
     const activeServerId = useRemoteServerStore.getState().activeServerId;
-    logger.log('[GenerationService] getCurrentProvider - activeServerId:', activeServerId);
     if (activeServerId) {
-      const provider = providerRegistry.getProvider(activeServerId);
-      logger.log('[GenerationService] Provider found:', !!provider, 'id:', activeServerId);
-      return provider;
+      return providerRegistry.getProvider(activeServerId);
     }
     return providerRegistry.getProvider('local');
   }
@@ -70,8 +67,12 @@ class GenerationService {
     if (!activeServerId) return false;
     // Provider must be registered (not just persisted from a previous session)
     if (!hasProvider) return false;
-    // If a local model is loaded, prefer it over the remote server
-    if (localLoaded) return false;
+    // If a local model is loaded, prefer it over the remote server.
+    // Log a warning so this is diagnosable if a user selects remote but gets local responses.
+    if (localLoaded) {
+      logger.warn('[GenerationService] Local model is loaded — preferring local over active remote server:', activeServerId);
+      return false;
+    }
     return true;
   }
 
@@ -201,7 +202,6 @@ class GenerationService {
   /** Shared pre-generation setup: guard, state init, drain pending stop, validate provider. */
   private async prepareGeneration(conversationId: string): Promise<boolean> {
     if (this.state.isGenerating) {
-      logger.log('[GenerationService] Already generating, ignoring request');
       return false;
     }
     this.updateState({
@@ -217,16 +217,11 @@ class GenerationService {
     // Check provider readiness
     if (this.isUsingRemoteProvider()) {
       const provider = this.getCurrentProvider();
-      logger.log('[GenerationService] Checking remote provider:', {
-        hasProvider: !!provider,
-        activeServerId: useRemoteServerStore.getState().activeServerId,
-      });
       if (!provider) {
         this.resetState();
         throw new Error('Remote provider not found');
       }
       const ready = await provider.isReady();
-      logger.log('[GenerationService] Provider ready:', ready);
       if (!ready) {
         this.resetState();
         throw new Error('Remote provider not ready');
@@ -249,17 +244,13 @@ class GenerationService {
     messages: Message[],
     onFirstToken?: () => void
   ): Promise<void> {
-    logger.log('[GenerationService] generateResponse called, checking if remote...');
     // Route to remote provider if active
     if (this.isUsingRemoteProvider()) {
-      logger.log('[GenerationService] Routing to remote provider');
       return this.generateRemoteResponse(conversationId, messages, onFirstToken);
     }
 
-    logger.log('[GenerationService] Using local provider');
     if (!(await this.prepareGeneration(conversationId))) return;
     const chatStore = useChatStore.getState();
-    logger.log('[GenerationService] Starting text generation');
     let firstTokenReceived = false;
 
     try {
@@ -288,7 +279,6 @@ class GenerationService {
           }
         },
         () => {
-          logger.log('[GenerationService] Text generation completed');
           // If aborted, stopGeneration() already handled cleanup — don't clobber new generation state.
           if (this.abortRequested) return;
           this.forceFlushTokens();
@@ -425,7 +415,6 @@ class GenerationService {
     messages: Message[],
     onFirstToken?: () => void
   ): Promise<void> {
-    logger.log('[GenerationService] generateRemoteResponse called');
     if (!(await this.prepareGeneration(conversationId))) return;
     const chatStore = useChatStore.getState();
     const provider = this.getCurrentProvider();
@@ -434,10 +423,6 @@ class GenerationService {
       this.resetState();
       throw new Error('No remote provider available');
     }
-
-    logger.log('[GenerationService] Using provider:', provider.id, 'model:', provider.getLoadedModelId());
-
-    logger.log('[GenerationService] Starting remote text generation');
     let firstTokenReceived = false;
     this.remoteTimeToFirstToken = undefined;
 
@@ -490,7 +475,6 @@ class GenerationService {
           },
           onComplete: (_result: CompletionResult) => {
             if (generationSignal.aborted) return;
-            logger.log('[GenerationService] Remote text generation completed');
             this.forceFlushTokens();
             const generationTime = this.state.startTime ? Date.now() - this.state.startTime : undefined;
             chatStore.finalizeStreamingMessage(conversationId, generationTime, this.buildGenerationMeta());
@@ -556,7 +540,6 @@ class GenerationService {
       throw new Error('No remote provider available');
     }
 
-    logger.log('[GenerationService] Starting remote generation with tools');
     const { enabledToolIds, projectId, ...callbacks } = options;
 
     // Use the same tool loop but with remote provider

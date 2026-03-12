@@ -1092,7 +1092,6 @@ describe('HardwareService', () => {
     });
 
     describe('Android Qualcomm 8gen1 and min variant recommendations', () => {
-      const _originalOSInner = Platform.OS; void _originalOSInner;
       afterEach(() => {
         Platform.OS = originalOS;
         delete NativeModules.LocalDreamModule;

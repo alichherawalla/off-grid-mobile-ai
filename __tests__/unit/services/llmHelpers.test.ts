@@ -150,11 +150,11 @@ describe('estimateTokens', () => {
   });
 });
 
-describe('fitMessagesInBudget', () => {
-  function makeMsg(content: string): any {
-    return { id: '1', role: 'user', content, timestamp: 0 };
-  }
+function makeMsg(content: string): any {
+  return { id: '1', role: 'user', content, timestamp: 0 };
+}
 
+describe('fitMessagesInBudget', () => {
   it('includes all messages when budget is large', async () => {
     const ctx = { tokenize: jest.fn().mockResolvedValue({ tokens: new Array(10).fill(1) }) } as any;
     const msgs = [makeMsg('short'), makeMsg('message')];

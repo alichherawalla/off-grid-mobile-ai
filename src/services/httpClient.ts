@@ -379,8 +379,8 @@ export async function createStreamingRequest(
 export async function createNDJSONStreamingRequest(
   url: string,
   body: unknown,
-  headers: Record<string, string> = {},
   onLine: (parsed: Record<string, unknown>) => void,
+  headers: Record<string, string> = {},
   timeout: number = 300000,
   signal?: AbortSignal
 ): Promise<void> {

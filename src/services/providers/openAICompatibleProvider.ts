@@ -29,6 +29,11 @@ function isOllamaEndpoint(endpoint: string): boolean {
   return endpoint.includes(':11434');
 }
 
+/** Returns true if the endpoint looks like an LM Studio server (port 1234) */
+function isLMStudioEndpoint(endpoint: string): boolean {
+  return endpoint.includes(':1234');
+}
+
 /**
  * Streaming parser for <think>...</think> tags embedded in delta.content.
  * Routes thinking content to onReasoning and regular content to onToken.
@@ -43,43 +48,60 @@ class ThinkTagParser {
     this.flush(onToken, onReasoning);
   }
 
+  /**
+   * Handle one iteration of the while loop when we are outside a think block.
+   * Returns true if the while loop should break (buffer needs more data).
+   */
+  private handleOutsideThink(openTag: string, onToken: (t: string) => void): boolean {
+    const idx = this.buffer.indexOf(openTag);
+    if (idx === -1) {
+      const partial = this.partialSuffix(this.buffer, openTag);
+      if (partial > 0) {
+        onToken(this.buffer.slice(0, this.buffer.length - partial));
+        this.buffer = this.buffer.slice(this.buffer.length - partial);
+        return true;
+      }
+      onToken(this.buffer);
+      this.buffer = '';
+      return true;
+    }
+    if (idx > 0) onToken(this.buffer.slice(0, idx));
+    this.buffer = this.buffer.slice(idx + openTag.length);
+    this.inThinkBlock = true;
+    return false;
+  }
+
+  /**
+   * Handle one iteration of the while loop when we are inside a think block.
+   * Returns true if the while loop should break (buffer needs more data).
+   */
+  private handleInsideThink(closeTag: string, onReasoning: (t: string) => void): boolean {
+    const idx = this.buffer.indexOf(closeTag);
+    if (idx === -1) {
+      const partial = this.partialSuffix(this.buffer, closeTag);
+      if (partial > 0) {
+        onReasoning(this.buffer.slice(0, this.buffer.length - partial));
+        this.buffer = this.buffer.slice(this.buffer.length - partial);
+        return true;
+      }
+      onReasoning(this.buffer);
+      this.buffer = '';
+      return true;
+    }
+    if (idx > 0) onReasoning(this.buffer.slice(0, idx));
+    this.buffer = this.buffer.slice(idx + closeTag.length);
+    this.inThinkBlock = false;
+    return false;
+  }
+
   private flush(onToken: (t: string) => void, onReasoning: (t: string) => void): void {
     const openTag = '<think>';
     const closeTag = '</think>';
     while (this.buffer.length > 0) {
       if (!this.inThinkBlock) {
-        const idx = this.buffer.indexOf(openTag);
-        if (idx === -1) {
-          // Check if buffer ends with a partial open tag
-          const partial = this.partialSuffix(this.buffer, openTag);
-          if (partial > 0) {
-            onToken(this.buffer.slice(0, this.buffer.length - partial));
-            this.buffer = this.buffer.slice(this.buffer.length - partial);
-            break;
-          }
-          onToken(this.buffer);
-          this.buffer = '';
-          break;
-        }
-        if (idx > 0) onToken(this.buffer.slice(0, idx));
-        this.buffer = this.buffer.slice(idx + openTag.length);
-        this.inThinkBlock = true;
+        if (this.handleOutsideThink(openTag, onToken)) break;
       } else {
-        const idx = this.buffer.indexOf(closeTag);
-        if (idx === -1) {
-          const partial = this.partialSuffix(this.buffer, closeTag);
-          if (partial > 0) {
-            onReasoning(this.buffer.slice(0, this.buffer.length - partial));
-            this.buffer = this.buffer.slice(this.buffer.length - partial);
-            break;
-          }
-          onReasoning(this.buffer);
-          this.buffer = '';
-          break;
-        }
-        if (idx > 0) onReasoning(this.buffer.slice(0, idx));
-        this.buffer = this.buffer.slice(idx + closeTag.length);
-        this.inThinkBlock = false;
+        if (this.handleInsideThink(closeTag, onReasoning)) break;
       }
     }
   }
@@ -170,9 +192,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
   }
 
   async loadModel(modelId: string): Promise<void> {
-    logger.log('[OpenAIProvider] loadModel called:', { modelId, currentEndpoint: this.config.endpoint || '(empty)' });
     this.config.modelId = modelId;
-    logger.log('[OpenAIProvider] After loadModel, config:', { modelId: this.config.modelId, endpoint: this.config.endpoint });
 
     // For remote providers, "loading" just means setting the model ID
     // The actual model selection happens on the server
@@ -210,6 +230,28 @@ export class OpenAICompatibleProvider implements LLMProvider {
     return this.config.modelId || null;
   }
 
+  /**
+   * Build the request body for the /v1/chat/completions endpoint.
+   */
+  private buildRequestBody(
+    openaiMessages: OpenAIChatMessage[],
+    options: GenerationOptions,
+    thinkingEnabled: boolean
+  ): Record<string, unknown> {
+    return {
+      model: this.config.modelId,
+      messages: openaiMessages,
+      stream: true,
+      ...(options.temperature !== undefined && { temperature: options.temperature }),
+      ...(options.maxTokens !== undefined && { max_tokens: options.maxTokens }),
+      ...(options.topP !== undefined && { top_p: options.topP }),
+      ...(options.tools && options.tools.length > 0 && { tools: options.tools, tool_choice: 'auto' }),
+      // LM Studio only: control Qwen3 thinking per-request via chat_template_kwargs.
+      // Sent only to LM Studio endpoints (port 1234) — other servers may reject unknown fields.
+      ...(isLMStudioEndpoint(this.config.endpoint) && { chat_template_kwargs: { enable_thinking: thinkingEnabled } }),
+    };
+  }
+
   async generate(
     messages: Message[],
     options: GenerationOptions,
@@ -237,18 +279,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
         return this.generateOllamaChat(openaiMessages, options, callbacks, signal);
       }
 
-      const requestBody: Record<string, unknown> = {
-        model: this.config.modelId,
-        messages: openaiMessages,
-        stream: true,
-        ...(options.temperature !== undefined && { temperature: options.temperature }),
-        ...(options.maxTokens !== undefined && { max_tokens: options.maxTokens }),
-        ...(options.topP !== undefined && { top_p: options.topP }),
-        ...(options.tools && options.tools.length > 0 && { tools: options.tools, tool_choice: 'auto' }),
-        // LM Studio: control Qwen3 thinking per-request
-        chat_template_kwargs: { enable_thinking: thinkingEnabled },
-      };
-      logger.log('[OpenAIProvider] Request body tools count:', options.tools?.length ?? 0, '| tool_choice included:', !!(options.tools && options.tools.length > 0), '| thinking:', thinkingEnabled);
+      const requestBody = this.buildRequestBody(openaiMessages, options, thinkingEnabled);
 
       // Build headers
       const headers: Record<string, string> = {
@@ -263,7 +294,6 @@ export class OpenAICompatibleProvider implements LLMProvider {
       let baseUrl = this.config.endpoint;
       while (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
       const url = `${baseUrl}/v1/chat/completions`;
-      logger.log('[OpenAIProvider] Making request to:', url, 'with model:', this.config.modelId);
 
       let fullContent = '';
       let fullReasoningContent = '';
@@ -302,9 +332,6 @@ export class OpenAICompatibleProvider implements LLMProvider {
             const delta = choice.delta;
 
             if (delta) {
-              if (fullContent === '' && fullReasoningContent === '') {
-                logger.log(`[OpenAIProvider] First delta keys: ${Object.keys(delta).join(', ')} | sample:`, JSON.stringify(delta).substring(0, 200));
-              }
               // Text content — run through ThinkTagParser to extract embedded <think> blocks
               if (delta.content) {
                 thinkTagParser.process(
@@ -420,7 +447,6 @@ export class OpenAICompatibleProvider implements LLMProvider {
     signal: AbortSignal
   ): Promise<void> {
     const thinkingEnabled = options.enableThinking !== false;
-    logger.log(`[OpenAIProvider] Ollama /api/chat — think: ${thinkingEnabled}`);
 
     // Convert to Ollama message format (plain string content)
     const ollamaMessages = openaiMessages.map(m => {
@@ -451,7 +477,6 @@ export class OpenAICompatibleProvider implements LLMProvider {
     let baseUrl = this.config.endpoint;
     while (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
     const url = `${baseUrl}/api/chat`;
-    logger.log('[OpenAIProvider] Ollama request to:', url);
 
     let fullContent = '';
     let fullReasoningContent = '';
@@ -462,7 +487,6 @@ export class OpenAICompatibleProvider implements LLMProvider {
       await createNDJSONStreamingRequest(
         url,
         requestBody,
-        {},
         (line) => {
           if (signal.aborted) return;
 
@@ -500,6 +524,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
             });
           }
         },
+        {},
         300000,
         signal
       );
@@ -639,13 +664,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
   }
 
   async isReady(): Promise<boolean> {
-    const ready = !!this.config.modelId && !!this.config.endpoint;
-    logger.log('[OpenAIProvider] isReady check:', {
-      ready,
-      modelId: this.config.modelId || '(empty)',
-      endpoint: this.config.endpoint || '(empty)',
-    });
-    return ready;
+    return !!this.config.modelId && !!this.config.endpoint;
   }
 
   async dispose(): Promise<void> {

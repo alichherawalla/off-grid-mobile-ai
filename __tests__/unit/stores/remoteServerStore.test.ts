@@ -803,29 +803,29 @@ describe('remoteServerStore', () => {
     });
   });
 
+  async function discoverWithModels(modelIds: string[]) {
+    const mockFetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        object: 'list',
+        data: modelIds.map(id => ({ id })),
+      }),
+    });
+    (global as any).fetch = mockFetch;
+
+    let serverId = '';
+    act(() => {
+      serverId = useRemoteServerStore.getState().addServer({
+        name: 'Test Server',
+        endpoint: 'http://test:11434', // NOSONAR
+        providerType: 'openai-compatible',
+      });
+    });
+
+    return useRemoteServerStore.getState().discoverModels(serverId);
+  }
+
   describe('isGenerativeModel filter', () => {
-    async function discoverWithModels(modelIds: string[]) {
-      const mockFetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          object: 'list',
-          data: modelIds.map(id => ({ id })),
-        }),
-      });
-      (global as any).fetch = mockFetch;
-
-      let serverId = '';
-      act(() => {
-        serverId = useRemoteServerStore.getState().addServer({
-          name: 'Test Server',
-          endpoint: 'http://test:11434', // NOSONAR
-          providerType: 'openai-compatible',
-        });
-      });
-
-      return useRemoteServerStore.getState().discoverModels(serverId);
-    }
-
     it('filters out embedding models by "embed" pattern', async () => {
       const models = await discoverWithModels(['llama3', 'nomic-embed-text', 'text-embedding-ada-002']);
       const ids = models.map(m => m.id);

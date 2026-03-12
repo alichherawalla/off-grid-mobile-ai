@@ -338,11 +338,15 @@ export const RemoteServersScreen: React.FC = () => {
             {servers.map((server) => {
               const isTesting = testingId === server.id;
               const health = serverHealth[server.id];
-              const statusColor = health?.isHealthy
-                ? styles.statusDotActive
-                : health?.isHealthy === false
-                  ? styles.statusDotInactive
-                  : styles.statusDotUnknown;
+
+              let statusColor = styles.statusDotUnknown;
+              if (health?.isHealthy === true) statusColor = styles.statusDotActive;
+              else if (health?.isHealthy === false) statusColor = styles.statusDotInactive;
+
+              let statusText = 'Unknown';
+              if (isTesting) statusText = 'Testing...';
+              else if (health?.isHealthy === true) statusText = 'Connected';
+              else if (health?.isHealthy === false) statusText = 'Offline';
 
               return (
                 <View key={server.id} style={styles.serverItem}>
@@ -355,15 +359,7 @@ export const RemoteServersScreen: React.FC = () => {
 
                   <View style={styles.statusContainer}>
                     <View style={[styles.statusDot, statusColor]} />
-                    <Text style={styles.statusText}>
-                      {isTesting
-                        ? 'Testing...'
-                        : health?.isHealthy
-                          ? 'Connected'
-                          : health?.isHealthy === false
-                            ? 'Offline'
-                            : 'Unknown'}
-                    </Text>
+                    <Text style={styles.statusText}>{statusText}</Text>
                   </View>
 
                   <View style={styles.serverActions}>

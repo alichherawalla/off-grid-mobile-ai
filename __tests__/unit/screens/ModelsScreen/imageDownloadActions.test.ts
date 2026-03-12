@@ -744,7 +744,7 @@ describe('imageDownloadActions', () => {
 
     it('cleanupDownloadState skips setBackgroundDownload when downloadId is null', () => {
       const deps = makeDeps();
-      cleanupDownloadState(deps, 'model-1', undefined);
+      cleanupDownloadState(deps, 'model-1');
 
       expect(deps.removeImageModelDownloading).toHaveBeenCalledWith('model-1');
       expect(deps.setBackgroundDownload).not.toHaveBeenCalled();

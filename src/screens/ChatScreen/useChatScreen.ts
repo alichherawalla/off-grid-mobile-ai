@@ -286,8 +286,7 @@ export const useChatScreen = () => {
       await activeModelService.unloadTextModel();
     }
     await initiateModelLoad(modelDeps, false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeModelInfo.modelId, activeModelInfo.isRemote, settings]);
+  }, [activeModelInfo.modelId, activeModelInfo.isRemote, modelDeps]);
 
   return {
     isModelLoading, loadingModel, supportsVision,

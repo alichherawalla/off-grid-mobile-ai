@@ -2337,4 +2337,82 @@ describe('ModelManager', () => {
       expect((modelManager as any).backgroundDownloadMetadataCallback).toBe(callback);
     });
   });
+
+  describe('importLocalModel — Android content:// URI handling', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.spyOn(require('react-native'), 'Platform', 'get').mockReturnValue({ OS: 'android' } as any);
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('copies content:// URI to temp cache on Android and cleans up after import', async () => {
+      mockedRNFS.exists
+        .mockResolvedValueOnce(true)   // modelsDir
+        .mockResolvedValueOnce(true)   // imageModelsDir
+        .mockResolvedValueOnce(false); // destExists = false
+
+      mockedRNFS.stat.mockResolvedValue({ size: 2000000000, isFile: () => true } as any);
+      (mockedRNFS as any).copyFile.mockResolvedValue(undefined);
+      mockedRNFS.unlink.mockResolvedValue(undefined);
+      mockedAsyncStorage.getItem.mockResolvedValue('[]');
+
+      const result = await modelManager.importLocalModel(
+        'content://com.android.provider/document/model.gguf',
+        'model-Q4_K_M.gguf'
+      );
+
+      // copyFile should have been called for the content:// URI
+      expect((mockedRNFS as any).copyFile).toHaveBeenCalledWith(
+        'content://com.android.provider/document/model.gguf',
+        expect.stringContaining('model-Q4_K_M.gguf')
+      );
+      // unlink should have been called for the temp cache file
+      expect(mockedRNFS.unlink).toHaveBeenCalled();
+      expect(result.id).toBe('local_import/model-Q4_K_M.gguf');
+    });
+  });
+
+  describe('copyFileWithProgress — poll interval callback', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.spyOn(require('react-native'), 'Platform', 'get').mockReturnValue({ OS: 'ios' } as any);
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('fires progress callback via setInterval poll during copy', async () => {
+      mockedRNFS.exists
+        .mockResolvedValueOnce(true)   // modelsDir
+        .mockResolvedValueOnce(true)   // imageModelsDir
+        .mockResolvedValueOnce(false)  // destExists = false (importLocalModel check)
+        .mockResolvedValue(true);      // dest exists during poll
+
+      // stat for totalBytes (source file) and during poll
+      mockedRNFS.stat
+        .mockResolvedValueOnce({ size: 2000000000, isFile: () => true } as any) // source stat
+        .mockResolvedValue({ size: 1000000000, isFile: () => true } as any); // poll + final stat
+
+      (mockedRNFS as any).copyFile.mockImplementation(async () => {
+        // Advance timers to trigger poll interval during copy
+        jest.advanceTimersByTime(600);
+        await Promise.resolve();
+      });
+      mockedAsyncStorage.getItem.mockResolvedValue('[]');
+
+      const onProgress = jest.fn();
+      await modelManager.importLocalModel(
+        '/source/model-Q4_K_M.gguf',
+        'model-Q4_K_M.gguf',
+        onProgress
+      );
+
+      // progress callback should have been called
+      expect(onProgress).toHaveBeenCalled();
+    });
+  });
 });

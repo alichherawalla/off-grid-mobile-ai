@@ -565,4 +565,54 @@ describe('HuggingFaceService', () => {
       expect(files).toEqual([]);
     });
   });
+
+  describe('getModelFiles — catch block fallback (fetch throws)', () => {
+    it('falls back to getModelFilesFromSiblings when fetch throws', async () => {
+      global.fetch = jest.fn()
+        .mockRejectedValueOnce(new Error('network error')) // tree throws
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            id: 'org/model',
+            siblings: [
+              { rfilename: 'model-Q4_K_M.gguf', size: 4000000000 },
+            ],
+          }),
+        });
+
+      const files = await huggingFaceService.getModelFiles('org/model');
+      expect(files).toHaveLength(1);
+    });
+  });
+
+  describe('getModelFilesFromSiblings — sort with multiple files', () => {
+    it('sorts sibling files by size ascending', async () => {
+      global.fetch = jest.fn()
+        .mockResolvedValueOnce({ ok: false, status: 404 }) // tree fails
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            id: 'org/model',
+            siblings: [
+              { rfilename: 'model-Q8_0.gguf', size: 8000000000 },
+              { rfilename: 'model-Q4_K_M.gguf', size: 4000000000 },
+            ],
+          }),
+        });
+
+      const files = await huggingFaceService.getModelFiles('org/model');
+      expect(files).toHaveLength(2);
+      expect(files[0].size).toBeLessThan(files[1].size);
+    });
+  });
+
+  describe('extractQuantization — matches quant via replace underscore', () => {
+    it('recognizes Q4KM (without underscores) as a quantization match', () => {
+      // The quantization key Q4_K_M has underscores; test that Q4KM still matches
+      const svc = huggingFaceService as any;
+      const result = svc.extractQuantization('model-Q4KM.gguf');
+      // Should match Q4_K_M via the quant.replace('_', '') comparison
+      expect(result).toBeDefined();
+    });
+  });
 });

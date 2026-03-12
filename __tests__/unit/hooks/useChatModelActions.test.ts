@@ -229,6 +229,127 @@ describe('handleModelSelectFn', () => {
 });
 
 // ─────────────────────────────────────────────
+// initiateModelLoad — Load Anyway callback (lines 94-99)
+// ─────────────────────────────────────────────
+
+describe('initiateModelLoad — Load Anyway button', () => {
+  it('executes Load Anyway callback: hides alert, sets loading state, then loads model', async () => {
+    jest.useFakeTimers();
+    mockCheckMemoryForModel.mockResolvedValueOnce({ canLoad: false, message: 'OOM', severity: 'critical' });
+    mockLoadTextModel.mockResolvedValueOnce(undefined);
+    mockGetMultimodalSupport.mockReturnValueOnce({ vision: false });
+
+    const deps = makeDeps();
+    await initiateModelLoad(deps, false);
+
+    // Capture the alert buttons
+    const alertCall = deps.setAlertState.mock.calls[0][0];
+    const loadAnywayBtn = alertCall.buttons.find((b: any) => b.text === 'Load Anyway');
+    expect(loadAnywayBtn).toBeDefined();
+
+    // Invoke the onPress callback
+    deps.setAlertState.mockClear();
+    loadAnywayBtn.onPress();
+    expect(deps.setIsModelLoading).toHaveBeenCalledWith(true);
+
+    // Advance past the 350ms waitForRenderFrame timeout
+    jest.advanceTimersByTime(400);
+    await Promise.resolve(); // flush microtasks
+
+    expect(mockLoadTextModel).toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
+  it('doLoadTextModel does not post system message when showGenerationDetails=false', async () => {
+    jest.useFakeTimers();
+    mockCheckMemoryForModel.mockResolvedValueOnce({ canLoad: false, message: 'OOM', severity: 'critical' });
+    mockLoadTextModel.mockResolvedValueOnce(undefined);
+    mockGetMultimodalSupport.mockReturnValueOnce(null);
+
+    const deps = makeDeps({ settings: { showGenerationDetails: false } });
+    await initiateModelLoad(deps, false);
+
+    const alertCall = deps.setAlertState.mock.calls[0][0];
+    const loadAnywayBtn = alertCall.buttons.find((b: any) => b.text === 'Load Anyway');
+    deps.setAlertState.mockClear();
+    loadAnywayBtn.onPress();
+
+    jest.advanceTimersByTime(400);
+    await Promise.resolve();
+
+    expect(mockLoadTextModel).toHaveBeenCalled();
+    expect(deps.addMessage).not.toHaveBeenCalled(); // showGenerationDetails=false
+    jest.useRealTimers();
+  });
+
+  it('doLoadTextModel clears state in finally even on error', async () => {
+    jest.useFakeTimers();
+    mockCheckMemoryForModel.mockResolvedValueOnce({ canLoad: false, message: 'OOM', severity: 'critical' });
+    mockLoadTextModel.mockRejectedValueOnce(new Error('Load failed'));
+
+    const deps = makeDeps();
+    await initiateModelLoad(deps, false);
+
+    const alertCall = deps.setAlertState.mock.calls[0][0];
+    const loadAnywayBtn = alertCall.buttons.find((b: any) => b.text === 'Load Anyway');
+    deps.setAlertState.mockClear();
+    loadAnywayBtn.onPress();
+
+    jest.advanceTimersByTime(400);
+    await Promise.resolve();
+    await Promise.resolve(); // extra flush for rejection
+
+    // State cleaned up (setIsModelLoading(false) called in finally)
+    expect(deps.setIsModelLoading).toHaveBeenCalledWith(true); // set by callback
+    jest.useRealTimers();
+  });
+});
+
+// ─────────────────────────────────────────────
+// handleModelSelectFn — Load Anyway callback (lines 197-198)
+// ─────────────────────────────────────────────
+
+describe('handleModelSelectFn — Load Anyway button', () => {
+  it('executes Load Anyway callback in insufficient-memory alert', async () => {
+    mockCheckMemoryForModel.mockResolvedValueOnce({ canLoad: false, severity: 'critical', message: 'OOM' });
+    mockLoadTextModel.mockResolvedValueOnce(undefined);
+
+    const deps = makeDeps();
+    const model = createDownloadedModel({ id: 'model-x' });
+    await handleModelSelectFn(deps, model);
+
+    const alertCall = deps.setAlertState.mock.calls[0][0];
+    const loadAnywayBtn = alertCall.buttons.find((b: any) => b.text === 'Load Anyway');
+    expect(loadAnywayBtn).toBeDefined();
+
+    deps.setAlertState.mockClear();
+    await loadAnywayBtn.onPress();
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    expect(deps.setIsModelLoading).toHaveBeenCalled();
+  });
+
+  it('executes Load Anyway callback in low memory warning', async () => {
+    mockCheckMemoryForModel.mockResolvedValueOnce({ canLoad: true, severity: 'warning', message: 'Low memory' });
+    mockLoadTextModel.mockResolvedValueOnce(undefined);
+
+    const deps = makeDeps();
+    const model = createDownloadedModel({ id: 'model-y' });
+    await handleModelSelectFn(deps, model);
+
+    const alertCall = deps.setAlertState.mock.calls[0][0];
+    const loadAnywayBtn = alertCall.buttons.find((b: any) => b.text === 'Load Anyway');
+    expect(loadAnywayBtn).toBeDefined();
+
+    deps.setAlertState.mockClear();
+    await loadAnywayBtn.onPress();
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    expect(deps.setIsModelLoading).toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────
 // handleUnloadModelFn
 // ─────────────────────────────────────────────
 

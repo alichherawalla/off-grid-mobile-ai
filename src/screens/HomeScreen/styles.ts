@@ -50,6 +50,7 @@ const createModelCardStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
   modelCardName: {
     ...TYPOGRAPHY.h3,
     color: colors.text,
+    flex: 1,
   },
   modelCardNameRow: {
     flexDirection: 'row' as const,

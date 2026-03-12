@@ -18,7 +18,9 @@ import {
   regenerateResponseFn,
   handleSendFn,
   handleStopFn,
+  handleSelectProjectFn,
 } from '../../../src/screens/ChatScreen/useChatGenerationActions';
+import { useRemoteServerStore } from '../../../src/stores/remoteServerStore';
 import { createDownloadedModel } from '../../utils/factories';
 
 // ─────────────────────────────────────────────
@@ -83,6 +85,14 @@ jest.mock('../../../src/services/rag/embedding', () => ({
   },
 }));
 
+jest.mock('../../../src/services/contextCompaction', () => ({
+  contextCompactionService: {
+    isContextFullError: jest.fn(() => false),
+    compact: jest.fn(),
+    clearSummary: jest.fn(),
+  },
+}));
+
 // Get mock references after hoisting
 const { intentClassifier } = require('../../../src/services/intentClassifier');
 const { generationService } = require('../../../src/services/generationService');
@@ -112,16 +122,6 @@ const mockSearchProject = ragService.searchProject as jest.Mock;
 const mockGetDocsByProject = ragService.getDocumentsByProject as jest.Mock;
 const mockFormatForPrompt = retrievalService.formatForPrompt as jest.Mock;
 
-const mockSetHasSeenCacheTypeNudge = jest.fn();
-
-jest.mock('../../../src/stores/appStore', () => ({
-  useAppStore: {
-    getState: jest.fn(() => ({
-      hasSeenCacheTypeNudge: true,
-      setHasSeenCacheTypeNudge: mockSetHasSeenCacheTypeNudge,
-    })),
-  },
-}));
 
 const mockChatStoreGetState = jest.fn(() => ({ conversations: [] as any[], updateCompactionState: jest.fn() }));
 jest.mock('../../../src/stores/chatStore', () => ({
@@ -147,6 +147,8 @@ jest.mock('../../../src/constants', () => ({
 // ─────────────────────────────────────────────
 
 beforeEach(() => {
+  // Reset remote server store to default (no active server)
+  useRemoteServerStore.setState({ activeServerId: null, activeRemoteTextModelId: null });
   mockClassifyIntent.mockResolvedValue('text');
   mockGenerateResponse.mockResolvedValue(undefined);
   mockGenerateWithTools.mockResolvedValue(undefined);
@@ -542,92 +544,6 @@ describe('startGenerationFn', () => {
   });
 });
 
-// ─────────────────────────────────────────────
-// cache type nudge
-// ─────────────────────────────────────────────
-
-const { useAppStore: mockAppStore } = require('../../../src/stores/appStore');
-const { showAlert: mockShowAlert } = require('../../../src/components');
-
-describe('cache type nudge after generation', () => {
-  it('shows nudge when hasSeenCacheTypeNudge=false and cacheType=q8_0', async () => {
-    (mockAppStore.getState as jest.Mock).mockReturnValue({
-      hasSeenCacheTypeNudge: false,
-      setHasSeenCacheTypeNudge: mockSetHasSeenCacheTypeNudge,
-    });
-    const deps = makeGenerationDeps({ settings: { ...makeGenerationDeps().settings, cacheType: 'q8_0' } });
-    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'Hello' });
-
-    expect(deps.setAlertState).toHaveBeenCalledWith(expect.objectContaining({ title: 'Improve Output Quality', visible: true }));
-    expect(mockSetHasSeenCacheTypeNudge).toHaveBeenCalledWith(true);
-  });
-
-  it('does NOT show nudge when hasSeenCacheTypeNudge is already true', async () => {
-    (mockAppStore.getState as jest.Mock).mockReturnValue({
-      hasSeenCacheTypeNudge: true,
-      setHasSeenCacheTypeNudge: mockSetHasSeenCacheTypeNudge,
-    });
-    const deps = makeGenerationDeps({ settings: { ...makeGenerationDeps().settings, cacheType: 'q8_0' } });
-    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'Hello' });
-
-    expect(mockSetHasSeenCacheTypeNudge).not.toHaveBeenCalled();
-    expect(deps.setAlertState).not.toHaveBeenCalled();
-  });
-
-  it('does NOT show nudge when cacheType is f16', async () => {
-    (mockAppStore.getState as jest.Mock).mockReturnValue({
-      hasSeenCacheTypeNudge: false,
-      setHasSeenCacheTypeNudge: mockSetHasSeenCacheTypeNudge,
-    });
-    const deps = makeGenerationDeps({ settings: { ...makeGenerationDeps().settings, cacheType: 'f16' } });
-    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'Hello' });
-
-    expect(mockSetHasSeenCacheTypeNudge).not.toHaveBeenCalled();
-    expect(deps.setAlertState).not.toHaveBeenCalled();
-  });
-
-  it('does NOT show nudge on generation error', async () => {
-    (mockAppStore.getState as jest.Mock).mockReturnValue({
-      hasSeenCacheTypeNudge: false,
-      setHasSeenCacheTypeNudge: mockSetHasSeenCacheTypeNudge,
-    });
-    mockGenerateResponse.mockRejectedValueOnce(new Error('fail'));
-    const deps = makeGenerationDeps({ settings: { ...makeGenerationDeps().settings, cacheType: 'q8_0' } });
-    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'Hello' });
-
-    expect(deps.setAlertState).toHaveBeenCalledWith(expect.objectContaining({ title: 'Generation Error' }));
-    expect(mockSetHasSeenCacheTypeNudge).not.toHaveBeenCalled();
-  });
-
-  it('"Go to Settings" opens the in-chat settings panel', async () => {
-    (mockAppStore.getState as jest.Mock).mockReturnValue({
-      hasSeenCacheTypeNudge: false,
-      setHasSeenCacheTypeNudge: mockSetHasSeenCacheTypeNudge,
-    });
-    const setShowSettingsPanel = jest.fn();
-    const deps = makeGenerationDeps({ settings: { ...makeGenerationDeps().settings, cacheType: 'q8_0' }, setShowSettingsPanel });
-    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'Hello' });
-
-    const alertCall = (mockShowAlert as jest.Mock).mock.calls.find((args: any[]) => args[0] === 'Improve Output Quality');
-    const goToSettings = alertCall![2].find((b: any) => b.text === 'Go to Settings');
-    goToSettings.onPress();
-    expect(deps.setAlertState).toHaveBeenCalledWith(expect.objectContaining({ visible: false }));
-    expect(setShowSettingsPanel).toHaveBeenCalledWith(true);
-  });
-
-  it('"Got it" button has cancel style', async () => {
-    (mockAppStore.getState as jest.Mock).mockReturnValue({
-      hasSeenCacheTypeNudge: false,
-      setHasSeenCacheTypeNudge: mockSetHasSeenCacheTypeNudge,
-    });
-    const deps = makeGenerationDeps({ settings: { ...makeGenerationDeps().settings, cacheType: 'q8_0' } });
-    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'Hello' });
-
-    const alertCall = (mockShowAlert as jest.Mock).mock.calls.find((args: any[]) => args[0] === 'Improve Output Quality');
-    const gotIt = alertCall![2].find((b: any) => b.text === 'Got it');
-    expect(gotIt.style).toBe('cancel');
-  });
-});
 
 // ─────────────────────────────────────────────
 // RAG context injection
@@ -816,5 +732,262 @@ describe('embedding model warmup in injectRagContext', () => {
     await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'hello' });
 
     expect(mockEmbeddingLoad).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────
+// handleSelectProjectFn
+// ─────────────────────────────────────────────
+
+describe('handleSelectProjectFn', () => {
+  it('sets conversation project when activeConversationId is set', () => {
+    const setConversationProject = jest.fn();
+    const setShowProjectSelector = jest.fn();
+    const deps = { activeConversationId: 'conv-1', setConversationProject, setShowProjectSelector };
+    handleSelectProjectFn(deps, { id: 'proj-1', name: 'Test' } as any);
+    expect(setConversationProject).toHaveBeenCalledWith('conv-1', 'proj-1');
+    expect(setShowProjectSelector).toHaveBeenCalledWith(false);
+  });
+
+  it('clears project when project is null', () => {
+    const setConversationProject = jest.fn();
+    const setShowProjectSelector = jest.fn();
+    const deps = { activeConversationId: 'conv-1', setConversationProject, setShowProjectSelector };
+    handleSelectProjectFn(deps, null);
+    expect(setConversationProject).toHaveBeenCalledWith('conv-1', null);
+  });
+
+  it('skips setConversationProject when no activeConversationId', () => {
+    const setConversationProject = jest.fn();
+    const setShowProjectSelector = jest.fn();
+    const deps = { activeConversationId: null, setConversationProject, setShowProjectSelector };
+    handleSelectProjectFn(deps, { id: 'proj-1', name: 'Test' } as any);
+    expect(setConversationProject).not.toHaveBeenCalled();
+    expect(setShowProjectSelector).toHaveBeenCalledWith(false);
+  });
+});
+
+// ─────────────────────────────────────────────
+// handleSendFn — additional branches
+// ─────────────────────────────────────────────
+
+describe('handleSendFn — additional branches', () => {
+  it('appends document attachment content to message text', async () => {
+    const startGeneration = jest.fn(() => Promise.resolve());
+    const deps = makeGenerationDeps();
+    await handleSendFn(deps, {
+      text: 'analyze this',
+      attachments: [{ type: 'document', fileName: 'report.pdf', textContent: 'page content' } as any],
+      imageMode: 'auto',
+      startGeneration,
+      setDebugInfo: jest.fn(),
+    });
+    expect(startGeneration).toHaveBeenCalledWith('conv-1', expect.stringContaining('page content'));
+    expect(startGeneration).toHaveBeenCalledWith('conv-1', expect.stringContaining('report.pdf'));
+  });
+
+  it('ignores attachments without textContent', async () => {
+    const startGeneration = jest.fn(() => Promise.resolve());
+    const deps = makeGenerationDeps();
+    await handleSendFn(deps, {
+      text: 'look at this',
+      attachments: [{ type: 'image', fileName: 'photo.jpg' } as any],
+      imageMode: 'auto',
+      startGeneration,
+      setDebugInfo: jest.fn(),
+    });
+    expect(startGeneration).toHaveBeenCalledWith('conv-1', 'look at this');
+  });
+
+  it('enqueues message when generation is already in progress', async () => {
+    mockGetGenerationState.mockReturnValue({ isGenerating: true });
+    const startGeneration = jest.fn(() => Promise.resolve());
+    const deps = makeGenerationDeps();
+    await handleSendFn(deps, {
+      text: 'queued message',
+      imageMode: 'auto',
+      startGeneration,
+      setDebugInfo: jest.fn(),
+    });
+    expect(mockEnqueueMessage).toHaveBeenCalled();
+    expect(startGeneration).not.toHaveBeenCalled();
+  });
+
+  it('prefixes message when shouldGenerateImage=true but no image model loaded', async () => {
+    mockClassifyIntent.mockResolvedValue('image');
+    const startGeneration = jest.fn(() => Promise.resolve());
+    const deps = makeGenerationDeps({
+      imageModelLoaded: true,
+      activeImageModel: null, // no image model
+    });
+    await handleSendFn(deps, {
+      text: 'draw a cat',
+      imageMode: 'auto',
+      startGeneration,
+      setDebugInfo: jest.fn(),
+    });
+    expect(startGeneration).toHaveBeenCalledWith('conv-1', expect.stringContaining('[User wanted an image'));
+  });
+});
+
+// ─────────────────────────────────────────────
+// startGenerationFn — remote model path
+// ─────────────────────────────────────────────
+
+describe('startGenerationFn — remote model path', () => {
+  it('skips local model loading for remote models', async () => {
+    const deps = makeGenerationDeps({
+      activeModelInfo: { isRemote: true, model: null, modelId: 'remote-gpt4', modelName: 'GPT-4' },
+      activeModel: null,
+    });
+    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'hello' });
+    expect(deps.ensureModelLoaded).not.toHaveBeenCalled();
+    expect(mockGenerateResponse).toHaveBeenCalled();
+  });
+
+  it('uses all tools when remote server is active (bypasses heuristic)', async () => {
+    useRemoteServerStore.setState({ activeServerId: 'srv-1', activeRemoteTextModelId: 'gpt-4' });
+    (llmService.supportsToolCalling as jest.Mock).mockReturnValue(false);
+    const deps = makeGenerationDeps({
+      activeModelInfo: { isRemote: true, model: null, modelId: 'gpt-4', modelName: 'GPT-4' },
+      activeModel: null,
+      settings: { ...makeGenerationDeps().settings, enabledTools: ['get_current_datetime'] },
+    });
+    const conv = { id: 'conv-1', messages: [{ id: 'm1', role: 'user', content: 'Hi', timestamp: 0 }] };
+    mockChatStoreGetState.mockReturnValue({ conversations: [conv], updateCompactionState: jest.fn() });
+    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'Hi' });
+    // Remote: isRemote=true → all tools used regardless of heuristic
+    expect(mockGenerateWithTools).toHaveBeenCalledWith('conv-1', expect.any(Array), expect.objectContaining({ enabledToolIds: ['get_current_datetime'] }));
+  });
+});
+
+// ─────────────────────────────────────────────
+// regenerateResponseFn — model not loaded
+// ─────────────────────────────────────────────
+
+describe('regenerateResponseFn — model not loaded', () => {
+  it('returns early when local model is not loaded', async () => {
+    mockIsModelLoaded.mockReturnValue(false);
+    const userMsg = { id: 'm1', role: 'user' as const, content: 'hello', timestamp: 0 };
+    const deps = makeGenerationDeps({
+      activeModelInfo: { isRemote: false, model: baseModel, modelId: 'model-1', modelName: 'Test' },
+    });
+    await regenerateResponseFn(deps, { setDebugInfo: jest.fn(), userMessage: userMsg });
+    expect(mockGenerateResponse).not.toHaveBeenCalled();
+  });
+
+  it('does not return early for remote models even if local model is not loaded', async () => {
+    mockIsModelLoaded.mockReturnValue(false);
+    useRemoteServerStore.setState({ activeServerId: 'srv-1', activeRemoteTextModelId: 'gpt-4' });
+    const userMsg = { id: 'm1', role: 'user' as const, content: 'hello', timestamp: 0 };
+    const conv = { id: 'conv-1', messages: [userMsg] };
+    mockChatStoreGetState.mockReturnValue({ conversations: [conv], updateCompactionState: jest.fn() });
+    const deps = makeGenerationDeps({
+      activeModelInfo: { isRemote: true, model: null, modelId: 'gpt-4', modelName: 'GPT-4' },
+    });
+    await regenerateResponseFn(deps, { setDebugInfo: jest.fn(), userMessage: userMsg });
+    expect(mockGenerateResponse).toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────
+// generateWithCompactionRetry — context full error
+// ─────────────────────────────────────────────
+
+describe('generateWithCompactionRetry — context full error path', () => {
+  const { contextCompactionService } = require('../../../src/services/contextCompaction');
+  const mockIsContextFullError = contextCompactionService.isContextFullError as jest.Mock;
+  const mockCompact = contextCompactionService.compact as jest.Mock;
+
+  beforeEach(() => {
+    mockIsContextFullError.mockReturnValue(false);
+    mockCompact.mockResolvedValue([]);
+  });
+
+  it('rethrows non-context-full errors', async () => {
+    mockGenerateResponse.mockRejectedValueOnce(new Error('GPU crashed'));
+    mockIsContextFullError.mockReturnValue(false);
+    const deps = makeGenerationDeps();
+    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'hi' });
+    expect(deps.setAlertState).toHaveBeenCalledWith(expect.objectContaining({ title: 'Generation Error' }));
+  });
+
+  it('retries with compacted messages on context full error', async () => {
+    const compactedMsgs = [{ id: 'system', role: 'system', content: 'summary', timestamp: 0 }];
+    mockGenerateResponse
+      .mockRejectedValueOnce(new Error('context full'))
+      .mockResolvedValueOnce(undefined);
+    mockIsContextFullError.mockReturnValue(true);
+    mockCompact.mockResolvedValue(compactedMsgs);
+    (llmService.stopGeneration as jest.Mock).mockResolvedValue(undefined);
+
+    const conv = { id: 'conv-1', messages: [{ id: 'm1', role: 'user', content: 'hi', timestamp: 0 }] };
+    mockChatStoreGetState.mockReturnValue({ conversations: [conv], updateCompactionState: jest.fn() });
+    const deps = makeGenerationDeps();
+    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'hi' });
+    // Second call should be with the compacted messages
+    expect(mockGenerateResponse).toHaveBeenCalledTimes(2);
+    expect(mockIsContextFullError).toHaveBeenCalled();
+  });
+
+  it('falls back to recent messages when compact throws', async () => {
+    mockGenerateResponse
+      .mockRejectedValueOnce(new Error('context full'))
+      .mockResolvedValueOnce(undefined);
+    mockIsContextFullError.mockReturnValue(true);
+    mockCompact.mockRejectedValue(new Error('compact failed'));
+    (llmService.stopGeneration as jest.Mock).mockResolvedValue(undefined);
+    mockClearKVCache.mockResolvedValue(undefined);
+
+    const conv = { id: 'conv-1', messages: [
+      { id: 'm1', role: 'user', content: 'old', timestamp: 0 },
+      { id: 'm2', role: 'assistant', content: 'reply', timestamp: 0 },
+    ]};
+    mockChatStoreGetState.mockReturnValue({ conversations: [conv], updateCompactionState: jest.fn() });
+    const deps = makeGenerationDeps();
+    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'hi' });
+    expect(mockClearKVCache).toHaveBeenCalledWith(true);
+    expect(mockGenerateResponse).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ─────────────────────────────────────────────
+// applyCompactionPrefix — compaction branches
+// ─────────────────────────────────────────────
+
+describe('applyCompactionPrefix — compaction state', () => {
+  it('uses compaction prefix and filters messages after cutoff', async () => {
+    const msgs = [
+      { id: 'm1', role: 'user', content: 'old message', timestamp: 0 },
+      { id: 'm2', role: 'assistant', content: 'old reply', timestamp: 0 },
+      { id: 'm3', role: 'user', content: 'new message', timestamp: 0 },
+    ];
+    const conv = {
+      id: 'conv-1',
+      compactionSummary: 'Summary of old messages',
+      compactionCutoffMessageId: 'm2',
+      messages: msgs,
+    };
+    mockChatStoreGetState.mockReturnValue({ conversations: [conv], updateCompactionState: jest.fn() });
+    const deps = makeGenerationDeps();
+    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'new message' });
+    // Should have included compaction summary in messages
+    expect(mockGenerateResponse).toHaveBeenCalledWith('conv-1', expect.arrayContaining([
+      expect.objectContaining({ id: 'compaction-summary' }),
+    ]));
+  });
+
+  it('includes all messages when cutoffMessageId is not found', async () => {
+    const msgs = [{ id: 'm1', role: 'user', content: 'hi', timestamp: 0 }];
+    const conv = {
+      id: 'conv-1',
+      compactionSummary: 'Some summary',
+      compactionCutoffMessageId: 'non-existent-id',
+      messages: msgs,
+    };
+    mockChatStoreGetState.mockReturnValue({ conversations: [conv], updateCompactionState: jest.fn() });
+    const deps = makeGenerationDeps();
+    await startGenerationFn(deps, { setDebugInfo: jest.fn(), targetConversationId: 'conv-1', messageText: 'hi' });
+    expect(mockGenerateResponse).toHaveBeenCalled();
   });
 });

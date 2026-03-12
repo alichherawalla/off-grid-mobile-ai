@@ -28,6 +28,7 @@ interface GenerationSettingsModalProps {
   onDeleteConversation?: () => void;
   conversationImageCount?: number;
   activeProjectName?: string | null;
+  isRemote?: boolean;
 }
 
 export const GenerationSettingsModal: React.FC<GenerationSettingsModalProps> = ({
@@ -38,6 +39,7 @@ export const GenerationSettingsModal: React.FC<GenerationSettingsModalProps> = (
   onDeleteConversation,
   conversationImageCount = 0,
   activeProjectName,
+  isRemote,
 }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -128,7 +130,19 @@ export const GenerationSettingsModal: React.FC<GenerationSettingsModalProps> = (
             color={colors.textMuted}
           />
         </TouchableOpacity>
-        {textSettingsOpen && <TextGenerationSection />}
+        {textSettingsOpen && (
+          <>
+            {isRemote && (
+              <View style={styles.remoteNotice}>
+                <Icon name="info" size={13} color={colors.textMuted} />
+                <Text style={styles.remoteNoticeText}>
+                  These settings only apply to local models and won't affect the current remote session.
+                </Text>
+              </View>
+            )}
+            <TextGenerationSection />
+          </>
+        )}
 
         <TouchableOpacity style={styles.resetButton} onPress={handleResetDefaults}>
           <Text style={styles.resetButtonText}>Reset to Defaults</Text>

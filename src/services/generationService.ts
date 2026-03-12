@@ -46,27 +46,34 @@ class GenerationService {
   // Token batching — collect tokens and flush to UI at a controlled rate
   private tokenBuffer: string = '';
   private reasoningBuffer: string = '';
+  private totalReasoningLength: number = 0;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly FLUSH_INTERVAL_MS = 50; // ~20 updates/sec
 
   /** Get the current provider (local or remote) */
   private getCurrentProvider() {
     const activeServerId = useRemoteServerStore.getState().activeServerId;
-    logger.log('[GenerationService] getCurrentProvider - activeServerId:', activeServerId);
     if (activeServerId) {
-      const provider = providerRegistry.getProvider(activeServerId);
-      logger.log('[GenerationService] Provider found:', !!provider, 'id:', activeServerId);
-      return provider;
+      return providerRegistry.getProvider(activeServerId);
     }
     return providerRegistry.getProvider('local');
   }
 
   /** Check if using a remote provider */
   private isUsingRemoteProvider(): boolean {
-    const activeServerId = useRemoteServerStore.getState().activeServerId;
-    const isRemote = activeServerId !== null;
-    logger.log('[GenerationService] isUsingRemoteProvider:', isRemote, 'activeServerId:', activeServerId);
-    return isRemote;
+    const { activeServerId } = useRemoteServerStore.getState();
+    const hasProvider = activeServerId ? providerRegistry.hasProvider(activeServerId) : false;
+    const localLoaded = llmService.isModelLoaded();
+    if (!activeServerId) return false;
+    // Provider must be registered (not just persisted from a previous session)
+    if (!hasProvider) return false;
+    // If a local model is loaded, prefer it over the remote server.
+    // Log a warning so this is diagnosable if a user selects remote but gets local responses.
+    if (localLoaded) {
+      logger.warn('[GenerationService] Local model is loaded — preferring local over active remote server:', activeServerId);
+      return false;
+    }
+    return true;
   }
 
   private flushTokenBuffer(): void {
@@ -125,11 +132,15 @@ class GenerationService {
         if (this.abortRequested) return;
         const chunk = this.normalizeStreamChunk(data);
         if (chunk.content) {
+          if (!this.state.streamingContent && this.remoteTimeToFirstToken === undefined) {
+            this.remoteTimeToFirstToken = this.state.startTime ? (Date.now() - this.state.startTime) / 1000 : undefined;
+          }
           this.state.streamingContent += chunk.content;
           this.tokenBuffer += chunk.content;
         }
         if (chunk.reasoningContent) {
           this.reasoningBuffer += chunk.reasoningContent;
+          this.totalReasoningLength += chunk.reasoningContent.length;
         }
         if (!this.flushTimer) {
           this.flushTimer = setTimeout(
@@ -157,8 +168,8 @@ class GenerationService {
       const activeServer = remoteStore.getActiveServer();
       const _modelId = providerRegistry.getActiveProvider().getLoadedModelId();
 
-      // Estimate token count from streaming content (roughly 4 chars per token)
-      const contentLength = this.state.streamingContent.length;
+      // Estimate token count from streaming content (roughly 4 chars per token), including reasoning tokens
+      const contentLength = this.state.streamingContent.length + this.totalReasoningLength;
       const estimatedTokens = Math.ceil(contentLength / 4);
       const generationTime = this.state.startTime ? (Date.now() - this.state.startTime) / 1000 : 0;
       const tokensPerSecond = generationTime > 0 ? estimatedTokens / generationTime : undefined;
@@ -191,7 +202,6 @@ class GenerationService {
   /** Shared pre-generation setup: guard, state init, drain pending stop, validate provider. */
   private async prepareGeneration(conversationId: string): Promise<boolean> {
     if (this.state.isGenerating) {
-      logger.log('[GenerationService] Already generating, ignoring request');
       return false;
     }
     this.updateState({
@@ -207,16 +217,11 @@ class GenerationService {
     // Check provider readiness
     if (this.isUsingRemoteProvider()) {
       const provider = this.getCurrentProvider();
-      logger.log('[GenerationService] Checking remote provider:', {
-        hasProvider: !!provider,
-        activeServerId: useRemoteServerStore.getState().activeServerId,
-      });
       if (!provider) {
         this.resetState();
         throw new Error('Remote provider not found');
       }
       const ready = await provider.isReady();
-      logger.log('[GenerationService] Provider ready:', ready);
       if (!ready) {
         this.resetState();
         throw new Error('Remote provider not ready');
@@ -228,6 +233,8 @@ class GenerationService {
 
     this.tokenBuffer = '';
     this.reasoningBuffer = '';
+    this.totalReasoningLength = 0;
+    this.remoteTimeToFirstToken = undefined;
     return true;
   }
 
@@ -237,17 +244,13 @@ class GenerationService {
     messages: Message[],
     onFirstToken?: () => void
   ): Promise<void> {
-    logger.log('[GenerationService] generateResponse called, checking if remote...');
     // Route to remote provider if active
     if (this.isUsingRemoteProvider()) {
-      logger.log('[GenerationService] Routing to remote provider');
       return this.generateRemoteResponse(conversationId, messages, onFirstToken);
     }
 
-    logger.log('[GenerationService] Using local provider');
     if (!(await this.prepareGeneration(conversationId))) return;
     const chatStore = useChatStore.getState();
-    logger.log('[GenerationService] Starting text generation');
     let firstTokenReceived = false;
 
     try {
@@ -276,7 +279,6 @@ class GenerationService {
           }
         },
         () => {
-          logger.log('[GenerationService] Text generation completed');
           // If aborted, stopGeneration() already handled cleanup — don't clobber new generation state.
           if (this.abortRequested) return;
           this.forceFlushTokens();
@@ -316,7 +318,6 @@ class GenerationService {
     if (this.isUsingRemoteProvider()) {
       return this.generateRemoteWithTools(conversationId, messages, options);
     }
-
     // Local generation with tools
     const { enabledToolIds, projectId, ...callbacks } = options;
     if (!(await this.prepareGeneration(conversationId))) return;
@@ -359,6 +360,8 @@ class GenerationService {
     if (!this.state.isGenerating) {
       // Stop both local and remote
       await llmService.stopGeneration().catch(() => {});
+      const provider = this.getCurrentProvider();
+      if (provider) provider.stopGeneration().catch(() => {});
       if (this.currentRemoteAbortController) {
         this.currentRemoteAbortController.abort();
         this.currentRemoteAbortController = null;
@@ -386,6 +389,9 @@ class GenerationService {
 
     // Stop both local and remote
     if (this.isUsingRemoteProvider()) {
+      // Abort the provider's XHR so the server connection is closed immediately
+      const provider = this.getCurrentProvider();
+      if (provider) provider.stopGeneration().catch(() => {});
       if (this.currentRemoteAbortController) {
         this.currentRemoteAbortController.abort();
         this.currentRemoteAbortController = null;
@@ -409,7 +415,6 @@ class GenerationService {
     messages: Message[],
     onFirstToken?: () => void
   ): Promise<void> {
-    logger.log('[GenerationService] generateRemoteResponse called');
     if (!(await this.prepareGeneration(conversationId))) return;
     const chatStore = useChatStore.getState();
     const provider = this.getCurrentProvider();
@@ -418,20 +423,21 @@ class GenerationService {
       this.resetState();
       throw new Error('No remote provider available');
     }
-
-    logger.log('[GenerationService] Using provider:', provider.id, 'model:', provider.getLoadedModelId());
-
-    logger.log('[GenerationService] Starting remote text generation');
     let firstTokenReceived = false;
     this.remoteTimeToFirstToken = undefined;
 
     this.currentRemoteAbortController = new AbortController();
+    // Capture signal per-generation so callbacks stay guarded even after
+    // abortRequested is reset by the next generation's prepareGeneration().
+    const { signal: generationSignal } = this.currentRemoteAbortController;
 
+    const { temperature, maxTokens, topP, thinkingEnabled } = useAppStore.getState().settings;
     const options: GenerationOptions = {
-      temperature: useAppStore.getState().settings.temperature,
-      maxTokens: useAppStore.getState().settings.maxTokens,
-      topP: useAppStore.getState().settings.topP,
+      temperature,
+      maxTokens,
+      topP,
       stopSequences: [],
+      enableThinking: thinkingEnabled,
     };
 
     try {
@@ -440,10 +446,10 @@ class GenerationService {
         options,
         {
           onToken: (token: string) => {
-            if (this.abortRequested) return;
+            if (generationSignal.aborted) return;
             if (!firstTokenReceived) {
               firstTokenReceived = true;
-              this.remoteTimeToFirstToken = this.state.startTime ? Date.now() - this.state.startTime : undefined;
+              this.remoteTimeToFirstToken = this.state.startTime ? (Date.now() - this.state.startTime) / 1000 : undefined;
               this.updateState({ isThinking: false });
               onFirstToken?.();
             }
@@ -457,8 +463,9 @@ class GenerationService {
             }
           },
           onReasoning: (content: string) => {
-            if (this.abortRequested) return;
+            if (generationSignal.aborted) return;
             this.reasoningBuffer += content;
+            this.totalReasoningLength += content.length;
             if (!this.flushTimer) {
               this.flushTimer = setTimeout(
                 () => this.flushTokenBuffer(),
@@ -467,8 +474,7 @@ class GenerationService {
             }
           },
           onComplete: (_result: CompletionResult) => {
-            if (this.abortRequested) return;
-            logger.log('[GenerationService] Remote text generation completed');
+            if (generationSignal.aborted) return;
             this.forceFlushTokens();
             const generationTime = this.state.startTime ? Date.now() - this.state.startTime : undefined;
             chatStore.finalizeStreamingMessage(conversationId, generationTime, this.buildGenerationMeta());
@@ -476,7 +482,7 @@ class GenerationService {
             this.resetState();
           },
           onError: (error: Error) => {
-            if (this.abortRequested) return;
+            if (generationSignal.aborted) return;
             logger.error('[GenerationService] Remote generation error:', error);
             if (this.flushTimer) {
               clearTimeout(this.flushTimer);
@@ -490,8 +496,13 @@ class GenerationService {
         }
       );
     } catch (error) {
-      if (this.abortRequested) return;
+      if (generationSignal.aborted) return;
       logger.error('[GenerationService] Remote generation error:', error);
+      // Mark server as offline so the Remote Servers screen reflects the failure
+      const failedServerId = useRemoteServerStore.getState().activeServerId;
+      if (failedServerId) {
+        useRemoteServerStore.getState().updateServerHealth(failedServerId, false);
+      }
       if (this.flushTimer) {
         clearTimeout(this.flushTimer);
         this.flushTimer = null;
@@ -529,7 +540,6 @@ class GenerationService {
       throw new Error('No remote provider available');
     }
 
-    logger.log('[GenerationService] Starting remote generation with tools');
     const { enabledToolIds, projectId, ...callbacks } = options;
 
     // Use the same tool loop but with remote provider
@@ -546,12 +556,7 @@ class GenerationService {
     if (!this.abortRequested) {
       this.forceFlushTokens();
       const generationTime = this.state.startTime ? Date.now() - this.state.startTime : undefined;
-      const meta: GenerationMeta = {
-        gpu: false,
-        gpuBackend: 'Remote',
-        modelName: provider.getLoadedModelId() || 'Remote Model',
-      };
-      useChatStore.getState().finalizeStreamingMessage(conversationId, generationTime, meta);
+      useChatStore.getState().finalizeStreamingMessage(conversationId, generationTime, this.buildGenerationMeta());
       this.checkSharePrompt();
       this.resetState();
     }
@@ -593,6 +598,8 @@ class GenerationService {
     }
     this.tokenBuffer = '';
     this.reasoningBuffer = '';
+    this.totalReasoningLength = 0;
+    this.remoteTimeToFirstToken = undefined;
     this.updateState({
       isGenerating: false,
       isThinking: false,

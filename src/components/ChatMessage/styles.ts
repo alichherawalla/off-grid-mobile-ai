@@ -22,6 +22,11 @@ const createBubbleStyles = (colors: ThemeColors) => ({
     color: colors.textMuted,
     textAlign: 'center' as const,
   },
+  toolCallPreText: {
+    alignSelf: 'flex-start' as const,
+    paddingBottom: 6,
+    width: '100%' as any,
+  },
   toolStatusRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,

@@ -2219,4 +2219,223 @@ describe('LLMService', () => {
       );
     });
   });
+
+  // ========================================================================
+  // generateWithMaxTokens
+  // ========================================================================
+  describe('generateWithMaxTokens', () => {
+    it('throws when no model loaded', async () => {
+      await expect(
+        llmService.generateWithMaxTokens([{ id: '1', role: 'user', content: 'Hi', timestamp: 0 }], 100)
+      ).rejects.toThrow('No model loaded');
+    });
+
+    it('throws when already generating', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext();
+      mockedInitLlama.mockResolvedValue(ctx as any);
+      await llmService.loadModel('/models/test.gguf');
+
+      (llmService as any).isGenerating = true;
+      await expect(
+        llmService.generateWithMaxTokens([{ id: '1', role: 'user', content: 'Hi', timestamp: 0 }], 100)
+      ).rejects.toThrow('Generation already in progress');
+      (llmService as any).isGenerating = false;
+    });
+
+    it('returns accumulated token text', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const tokens = ['Hello', ' ', 'world'];
+      const ctx = createMockLlamaContext({
+        completion: jest.fn().mockImplementation((_params, cb) => {
+          tokens.forEach(t => cb({ token: t }));
+          return Promise.resolve({ timings: {} });
+        }),
+      });
+      mockedInitLlama.mockResolvedValue(ctx as any);
+      await llmService.loadModel('/models/test.gguf');
+
+      const result = await llmService.generateWithMaxTokens(
+        [{ id: '1', role: 'user', content: 'Say hello', timestamp: 0 }],
+        50
+      );
+      expect(result).toBe('Hello world');
+    });
+  });
+
+  // ========================================================================
+  // generateResponse — context_full detection
+  // ========================================================================
+  describe('generateResponse — context_full', () => {
+    it('throws "Context is full" when completionResult has context_full=true', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext({
+        completion: jest.fn().mockResolvedValue({ context_full: true, content: '', timings: {} }),
+      });
+      mockedInitLlama.mockResolvedValue(ctx as any);
+      await llmService.loadModel('/models/test.gguf');
+
+      await expect(
+        llmService.generateResponse([{ id: '1', role: 'user', content: 'Hi', timestamp: 0 }])
+      ).rejects.toThrow('Context is full');
+    });
+  });
+
+  // ========================================================================
+  // detectToolCallingSupport — jinja branches
+  // ========================================================================
+  describe('detectToolCallingSupport — jinja branches', () => {
+    it('detects tool calling via defaultCaps.toolCalls', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext({
+        model: { chatTemplates: { jinja: { defaultCaps: { toolCalls: true } } } },
+      });
+      mockedInitLlama.mockResolvedValue(ctx as any);
+      await llmService.loadModel('/models/test.gguf');
+
+      expect(llmService.supportsToolCalling()).toBe(true);
+    });
+
+    it('detects tool calling via toolUseCaps.toolCalls', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext({
+        model: { chatTemplates: { jinja: { toolUseCaps: { toolCalls: true } } } },
+      });
+      mockedInitLlama.mockResolvedValue(ctx as any);
+      await llmService.loadModel('/models/test.gguf');
+
+      expect(llmService.supportsToolCalling()).toBe(true);
+    });
+
+    it('detects tool calling via jinja.toolUse', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext({
+        model: { chatTemplates: { jinja: { toolUse: 'some-template' } } },
+      });
+      mockedInitLlama.mockResolvedValue(ctx as any);
+      await llmService.loadModel('/models/test.gguf');
+
+      expect(llmService.supportsToolCalling()).toBe(true);
+    });
+
+    it('returns false when jinja throws', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext({
+        model: {
+          get chatTemplates() { throw new Error('boom'); },
+        },
+      });
+      mockedInitLlama.mockResolvedValue(ctx as any);
+      await llmService.loadModel('/models/test.gguf');
+
+      expect(llmService.supportsToolCalling()).toBe(false);
+    });
+  });
+
+  // ========================================================================
+  // loadModel — mmProjPath not found
+  // ========================================================================
+  describe('loadModel — mmProjPath not found', () => {
+    it('logs warning and disables vision when mmProj file is missing', async () => {
+      // Main model exists, mmProj does not
+      mockedRNFS.exists.mockImplementation(async (path: string) => {
+        if (path.includes('mmproj')) return false;
+        return true;
+      });
+      const ctx = createMockLlamaContext();
+      mockedInitLlama.mockResolvedValue(ctx as any);
+
+      // Should not throw — just skip multimodal
+      await llmService.loadModel('/models/test.gguf', '/models/mmproj.bin');
+
+      expect(llmService.supportsVision()).toBe(false);
+    });
+  });
+
+  // ========================================================================
+  // unloadModel — while generating
+  // ========================================================================
+  describe('unloadModel — stopCompletion during unload', () => {
+    it('stops active completion before releasing context', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const stopCompletion = jest.fn().mockResolvedValue(undefined);
+      const release = jest.fn().mockResolvedValue(undefined);
+      const ctx = createMockLlamaContext({ stopCompletion, release });
+      mockedInitLlama.mockResolvedValue(ctx as any);
+      await llmService.loadModel('/models/test.gguf');
+
+      // Simulate active generation
+      (llmService as any).isGenerating = true;
+      await llmService.unloadModel();
+
+      expect(stopCompletion).toHaveBeenCalled();
+      expect(release).toHaveBeenCalled();
+    });
+  });
+
+  // ========================================================================
+  // generateResponseWithTools — uses context.completion with tools
+  // ========================================================================
+  describe('generateResponseWithTools', () => {
+    it('returns fullResponse and empty toolCalls on successful completion', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext();
+      mockedInitLlama.mockResolvedValue(ctx as any);
+      await llmService.loadModel('/models/test.gguf');
+
+      const result = await llmService.generateResponseWithTools(
+        [{ id: '1', role: 'user', content: 'Use a tool', timestamp: 0 }],
+        { tools: [{ type: 'function', function: { name: 'web_search' } }] },
+      );
+
+      expect(result).toHaveProperty('fullResponse');
+      expect(result).toHaveProperty('toolCalls');
+      expect(Array.isArray(result.toolCalls)).toBe(true);
+    });
+
+    it('sets and clears activeCompletionPromise during generation', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext();
+      mockedInitLlama.mockResolvedValue(ctx as any);
+      await llmService.loadModel('/models/test.gguf');
+
+      let promiseDuringGeneration: any = 'not-set';
+      (ctx as any).completion.mockImplementation(async (..._args: any[]) => {
+        promiseDuringGeneration = (llmService as any).activeCompletionPromise;
+        return { text: 'response', tokens_predicted: 5, timings: {} };
+      });
+
+      await llmService.generateResponseWithTools(
+        [{ id: '1', role: 'user', content: 'Hi', timestamp: 0 }],
+        { tools: [] },
+      );
+
+      // activeCompletionPromise should be null after completion
+      expect((llmService as any).activeCompletionPromise).toBeNull();
+      // During generation it should have been set
+      expect(promiseDuringGeneration).not.toBe('not-set');
+    });
+  });
+
+  // ========================================================================
+  // stopGeneration — drains activeCompletionPromise when set
+  // ========================================================================
+  describe('stopGeneration — drains activeCompletionPromise', () => {
+    it('awaits activeCompletionPromise and clears it during stopGeneration', async () => {
+      mockedRNFS.exists.mockResolvedValue(true);
+      const ctx = createMockLlamaContext();
+      mockedInitLlama.mockResolvedValue(ctx as any);
+      await llmService.loadModel('/models/test.gguf');
+
+      let resolvePromise: () => void;
+      const pendingPromise = new Promise<void>(resolve => { resolvePromise = resolve; });
+      (llmService as any).activeCompletionPromise = pendingPromise;
+
+      // Resolve the promise before calling stopGeneration
+      resolvePromise!();
+      await llmService.stopGeneration();
+
+      expect((llmService as any).activeCompletionPromise).toBeNull();
+    });
+  });
 });

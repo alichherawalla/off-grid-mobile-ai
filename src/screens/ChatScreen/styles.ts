@@ -27,8 +27,11 @@ const createHeaderStyles = (colors: ThemeColors) => ({
   backButton: { padding: SPACING.xs },
   headerLeft: { flex: 1, marginRight: 12 },
   headerTitle: { ...TYPOGRAPHY.h2, color: colors.text, marginBottom: 2 },
-  headerSubtitle: { ...TYPOGRAPHY.h3, color: colors.textMuted },
-  modelSelector: { flexDirection: 'row' as const, alignItems: 'center' as const },
+  headerSubtitleRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, overflow: 'hidden' as const },
+  headerSubtitleDivider: { ...TYPOGRAPHY.meta, color: colors.textMuted, flexShrink: 0 },
+  headerProjectRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 3, flexShrink: 0 },
+  headerSubtitle: { ...TYPOGRAPHY.h3, color: colors.textMuted, flexShrink: 1 },
+  modelSelector: { flexDirection: 'row' as const, alignItems: 'center' as const, flexShrink: 1, overflow: 'hidden' as const },
   remoteIcon: { marginRight: 4 },
   modelSelectorArrow: { ...TYPOGRAPHY.meta, color: colors.textMuted, marginLeft: SPACING.xs },
   headerImageBadge: {
@@ -59,7 +62,6 @@ const createHeaderStyles = (colors: ThemeColors) => ({
 const createScrollStyles = (colors: ThemeColors) => ({
   scrollToBottomContainer: {
     position: 'absolute' as const,
-    bottom: 130,
     right: 16,
     zIndex: 10,
   },
@@ -166,7 +168,7 @@ const createIndicatorStyles = (colors: ThemeColors) => ({
     borderTopColor: colors.border,
     backgroundColor: colors.surfaceLight,
   },
-  pendingSettingsText: { ...TYPOGRAPHY.meta, color: colors.warning },
+  pendingSettingsText: { ...TYPOGRAPHY.meta, color: colors.warning, flex: 1 },
   imageProgressContainer: {
     paddingHorizontal: 12,
     paddingTop: 8,

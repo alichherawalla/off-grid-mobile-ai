@@ -183,15 +183,20 @@ const ToolCallWithThinking: React.FC<{
   message: Message; showThinking: boolean; onToggle: () => void; styles: any; colors: any;
 }> = ({ message, showThinking, onToggle, styles, colors }) => {
   const tc = message.content ? parseThinkingContent(stripControlTokens(message.content)) : null;
-  if (tc?.thinking) {
-    return (
-      <View style={styles.systemInfoContainer}>
+  const hasText = !!tc?.response?.trim();
+  return (
+    <View style={styles.systemInfoContainer}>
+      {!!tc?.thinking && (
         <ThinkingBlock parsedContent={tc} showThinking={showThinking} onToggle={onToggle} styles={styles} />
-        <ToolCallMessage message={message} styles={styles} colors={colors} />
-      </View>
-    );
-  }
-  return <ToolCallMessage message={message} styles={styles} colors={colors} />;
+      )}
+      {hasText && (
+        <View testID="tool-call-pre-text" style={styles.toolCallPreText}>
+          <MarkdownText>{tc!.response}</MarkdownText>
+        </View>
+      )}
+      <ToolCallMessage message={message} styles={styles} colors={colors} />
+    </View>
+  );
 };
 
 export const ChatMessage: React.FC<ChatMessageProps> = ({

@@ -38,6 +38,7 @@ type ChatModalSectionProps = {
   viewerImageUri: string | null;
   setViewerImageUri: (v: string | null) => void;
   handleSaveImage: () => void;
+  isRemote?: boolean;
 };
 
 export const ChatModalSection: React.FC<ChatModalSectionProps> = ({
@@ -49,7 +50,7 @@ export const ChatModalSection: React.FC<ChatModalSectionProps> = ({
   debugInfo, activeProject, activeConversation, settings, projects,
   handleSelectProject, handleModelSelect, handleUnloadModel, handleDeleteConversation,
   isModelLoading, imageCount, activeConversationId, navigation,
-  viewerImageUri, setViewerImageUri, handleSaveImage,
+  viewerImageUri, setViewerImageUri, handleSaveImage, isRemote,
 }) => (
   <>
     <ProjectSelectorSheet
@@ -83,6 +84,7 @@ export const ChatModalSection: React.FC<ChatModalSectionProps> = ({
       onDeleteConversation={activeConversation ? handleDeleteConversation : undefined}
       conversationImageCount={imageCount}
       activeProjectName={activeProject?.name || null}
+      isRemote={isRemote}
     />
     <ImageViewerModal
       styles={styles} colors={colors}

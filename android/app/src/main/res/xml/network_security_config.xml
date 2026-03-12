@@ -6,8 +6,14 @@
         <domain includeSubdomains="false">localhost</domain>
         <domain includeSubdomains="false">10.0.2.2</domain>
     </domain-config>
-    <!-- All other domains require HTTPS (default for Android 9+) -->
-    <base-config cleartextTrafficPermitted="false">
+    <!-- Allow cleartext (HTTP) to local network LLM servers (Ollama :11434, LM Studio :1234, LocalAI :8080).
+         NOTE: Android network_security_config.xml has no IP-range wildcard support — <domain> only
+         matches exact hostnames or IPs, not CIDR ranges. The base-config is therefore the only
+         practical mechanism to allow HTTP to user-configured LAN servers with arbitrary IPs
+         (192.168.x.x, 10.x.x.x, 172.16-31.x.x). All outbound connections to the public internet
+         remain HTTPS-only because those servers redirect HTTP → HTTPS; this config only permits
+         plain HTTP but does not downgrade secure connections. -->
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>

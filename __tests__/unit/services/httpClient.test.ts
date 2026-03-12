@@ -1005,5 +1005,110 @@ describe('httpClient', () => {
         () => {}
       )).rejects.toThrow('Send failed');
     });
+
+    it('should abort XHR when signal fires', async () => {
+      const controller = new AbortController();
+      const promise = createStreamingRequest(
+        TEST_ENDPOINT,
+        { model: 'test' },
+        {},
+        (e) => streamEvents.push(e),
+        300000,
+        controller.signal,
+      );
+
+      controller.abort();
+      await expect(promise).resolves.toBeUndefined();
+      expect(mockXHR.abort).toHaveBeenCalled();
+    });
+
+    it('should not process final data when responseText equals processed length', async () => {
+      const promise = startStream();
+
+      // First simulate progress that processes some data
+      simulateProgress('data: first\n\n');
+      expect(streamEvents).toHaveLength(1);
+
+      // Now complete with exact same text (nothing new)
+      mockXHR.responseText = 'data: first\n\n'; // same length, nothing new
+      mockXHR.status = 200;
+      mockXHR.readyState = 4;
+      if (onReadyStateChange) onReadyStateChange();
+
+      await promise;
+      // Still only 1 event (no duplicate from final readyState)
+      expect(streamEvents).toHaveLength(1);
+    });
+  });
+
+  // ─── detectServerType — additional branches ─────────────────────────────────
+
+  describe('detectServerType — additional branches', () => {
+    beforeEach(() => {
+      global.fetch = jest.fn();
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('returns null when JSON parse throws for /v1/models response', async () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({
+          ok: true,
+          headers: { get: () => null }, // not Ollama
+          json: () => Promise.reject(new Error('JSON parse error')),
+        })
+        .mockResolvedValueOnce({ ok: false, status: 404 }) // /api/tags fails
+        .mockResolvedValueOnce({ ok: false, status: 404 }); // LM Studio fails
+
+      const result = await detectServerType('http://localhost:8080', 5000);
+
+      expect(result).toBeNull();
+    });
+
+    it('returns null when LM Studio response has no gguf models', async () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({ ok: false, status: 404 }) // /v1/models fails
+        .mockResolvedValueOnce({ ok: false, status: 404 }) // /api/tags fails
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            data: [{ id: 'some-model' }, { id: 'other-model' }], // no .gguf
+          }),
+        });
+
+      const result = await detectServerType('http://localhost:1234', 5000);
+
+      expect(result).toBeNull();
+    });
+
+    it('handles generic OpenAI-compatible via Array.isArray(data.data) branch', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        headers: { get: () => null },
+        json: () => Promise.resolve({ data: [{ id: 'gpt-4' }] }), // object not 'list' but data is array
+      });
+
+      const result = await detectServerType('http://localhost:8080', 5000);
+
+      expect(result).toEqual({ type: 'openai-compatible' });
+    });
+  });
+
+  // ─── parseAnthropicMessage — additional branch ────────────────────────────
+
+  describe('parseAnthropicMessage — non-string data', () => {
+    it('returns null for non-string data', () => {
+      const event = { data: { type: 'event' } as any };
+      const result = parseAnthropicMessage(event);
+      expect(result).toBeNull();
+    });
+
+    it('returns null for invalid JSON', () => {
+      const event = { data: 'not json here' };
+      const result = parseAnthropicMessage(event);
+      expect(result).toBeNull();
+    });
   });
 });

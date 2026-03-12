@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -31,7 +32,9 @@
       android:supportsRtl="true"
       android:largeHeap="true"
       android:hardwareAccelerated="true"
-      android:extractNativeLibs="true">
+      android:extractNativeLibs="true"
+      android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+      tools:replace="android:appComponentFactory">
 
       <!-- GPU-accelerated LLM inference on Qualcomm SoCs -->
       <uses-native-library android:name="libOpenCL.so" android:required="false" />

@@ -701,8 +701,8 @@ describe('ChatScreen', () => {
 
     it('shows project hint with "Default" when no project assigned', () => {
       setupFullChat();
-      const { getByText } = renderChatScreen();
-      expect(getByText(/Default/)).toBeTruthy();
+      const { getAllByText } = renderChatScreen();
+      expect(getAllByText(/Default/).length).toBeGreaterThan(0);
     });
 
     it('shows project name when project is assigned', () => {
@@ -719,8 +719,8 @@ describe('ChatScreen', () => {
       });
       mockRoute.params = { conversationId };
 
-      const { getByText } = renderChatScreen();
-      expect(getByText(/Code Helper/)).toBeTruthy();
+      const { getAllByText } = renderChatScreen();
+      expect(getAllByText(/Code Helper/).length).toBeGreaterThan(0);
     });
   });
 
@@ -1212,8 +1212,8 @@ describe('ChatScreen', () => {
 
     it('shows "Default" when no project assigned', () => {
       setupFullChat();
-      const { getByText } = renderChatScreen();
-      expect(getByText(/Default/)).toBeTruthy();
+      const { getAllByText } = renderChatScreen();
+      expect(getAllByText(/Default/).length).toBeGreaterThan(0);
     });
 
     it('shows project name in settings modal when project is assigned', () => {
@@ -3002,11 +3002,11 @@ describe('ChatScreen', () => {
       (llmService.isModelLoaded as jest.Mock).mockReturnValue(true);
       (llmService.getLoadedModelPath as jest.Mock).mockReturnValue(model.filePath);
 
-      const { getByText } = renderChatScreen();
+      const { getAllByText } = renderChatScreen();
       await act(async () => {});
 
       // Should show project name
-      expect(getByText(/My Project/)).toBeTruthy();
+      expect(getAllByText(/My Project/).length).toBeGreaterThan(0);
     });
   });
 

@@ -802,4 +802,103 @@ describe('remoteServerStore', () => {
       expect(models).toHaveLength(0);
     });
   });
+
+  async function discoverWithModels(modelIds: string[]) {
+    const mockFetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        object: 'list',
+        data: modelIds.map(id => ({ id })),
+      }),
+    });
+    (global as any).fetch = mockFetch;
+
+    let serverId = '';
+    act(() => {
+      serverId = useRemoteServerStore.getState().addServer({
+        name: 'Test Server',
+        endpoint: 'http://test:11434', // NOSONAR
+        providerType: 'openai-compatible',
+      });
+    });
+
+    return useRemoteServerStore.getState().discoverModels(serverId);
+  }
+
+  describe('isGenerativeModel filter', () => {
+    it('filters out embedding models by "embed" pattern', async () => {
+      const models = await discoverWithModels(['llama3', 'nomic-embed-text', 'text-embedding-ada-002']);
+      const ids = models.map(m => m.id);
+      expect(ids).toContain('llama3');
+      expect(ids).not.toContain('nomic-embed-text');
+      expect(ids).not.toContain('text-embedding-ada-002');
+    });
+
+    it('filters out reranker models', async () => {
+      const models = await discoverWithModels(['llama3', 'bge-reranker-v2', 'cross-encoder-rerank']);
+      const ids = models.map(m => m.id);
+      expect(ids).toContain('llama3');
+      expect(ids).not.toContain('bge-reranker-v2');
+      expect(ids).not.toContain('cross-encoder-rerank');
+    });
+
+    it('filters out known embedding model prefixes (bge-, e5-, gte-, minilm)', async () => {
+      const models = await discoverWithModels([
+        'mistral', 'bge-small-en', 'e5-large-v2', 'gte-base', 'all-minilm-l6', 'arctic-embed-m',
+      ]);
+      const ids = models.map(m => m.id);
+      expect(ids).toContain('mistral');
+      expect(ids).not.toContain('bge-small-en');
+      expect(ids).not.toContain('e5-large-v2');
+      expect(ids).not.toContain('gte-base');
+      expect(ids).not.toContain('all-minilm-l6');
+      expect(ids).not.toContain('arctic-embed-m');
+    });
+
+    it('keeps text generation models like llama, mistral, qwen', async () => {
+      const models = await discoverWithModels(['llama3:8b', 'mistral:7b', 'qwen2:1.5b', 'phi-3:mini']);
+      expect(models).toHaveLength(4);
+    });
+
+    it('filters classifier models', async () => {
+      const models = await discoverWithModels(['llama3', 'zero-shot-classifier']);
+      const ids = models.map(m => m.id);
+      expect(ids).toContain('llama3');
+      expect(ids).not.toContain('zero-shot-classifier');
+    });
+
+    it('applies filter to Ollama /api/tags format', async () => {
+      let _callCount = 0;
+      const mockFetch = jest.fn().mockImplementation((url: string) => {
+        _callCount++;
+        if (url.includes('/v1/models')) {
+          return Promise.resolve({ ok: false, json: async () => ({}) });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            models: [
+              { name: 'llama3' },
+              { name: 'nomic-embed-text' },
+            ],
+          }),
+        });
+      });
+      (global as any).fetch = mockFetch;
+
+      let serverId = '';
+      act(() => {
+        serverId = useRemoteServerStore.getState().addServer({
+          name: 'Ollama',
+          endpoint: 'http://test:11434', // NOSONAR
+          providerType: 'openai-compatible',
+        });
+      });
+
+      const models = await useRemoteServerStore.getState().discoverModels(serverId);
+      const ids = models.map(m => m.id);
+      expect(ids).toContain('llama3');
+      expect(ids).not.toContain('nomic-embed-text');
+    });
+  });
 });

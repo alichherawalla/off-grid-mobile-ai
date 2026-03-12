@@ -214,5 +214,40 @@ describe('RagDatabase', () => {
       (ragDatabase as any).db = null;
       expect(() => ragDatabase.insertDocument({ projectId: 'p', name: 'n', path: 'path', size: 0 })).toThrow('not initialized');
     });
+
+    it('rolls back insertChunks transaction on error', async () => {
+      await ragDatabase.ensureReady();
+      let callCount = 0;
+      mockExecuteSync.mockImplementation((sql: string) => {
+        if (sql.includes('INSERT INTO rag_chunks')) {
+          callCount++;
+          if (callCount === 1) throw new Error('insert failed');
+        }
+        return { insertId: 1, rowsAffected: 1, rows: [] };
+      });
+
+      expect(() => ragDatabase.insertChunks(42, [
+        { content: 'chunk', position: 0 },
+      ])).toThrow('insert failed');
+
+      const rollbackCall = mockExecuteSync.mock.calls.find((c: any[]) => c[0] === 'ROLLBACK');
+      expect(rollbackCall).toBeDefined();
+    });
+
+    it('rolls back insertEmbeddingsBatch transaction on error', async () => {
+      await ragDatabase.ensureReady();
+      mockExecuteSync.mockImplementation((sql: string) => {
+        if (sql.includes('INSERT INTO rag_embeddings')) throw new Error('embed failed');
+        return { insertId: 1, rowsAffected: 1, rows: [] };
+      });
+
+      expect(() => ragDatabase.insertEmbeddingsBatch([
+        { chunkRowid: 1, docId: 42, embedding: [0.1, 0.2] },
+      ])).toThrow('embed failed');
+
+      const rollbackCall = mockExecuteSync.mock.calls.find((c: any[]) => c[0] === 'ROLLBACK');
+      expect(rollbackCall).toBeDefined();
+    });
+
   });
 });

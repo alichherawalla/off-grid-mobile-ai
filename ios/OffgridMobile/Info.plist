@@ -26,6 +26,19 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Off Grid scans your local network to automatically discover LLM servers such as Ollama and LM Studio.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>This app needs access to your camera to take photos and attach them to conversations.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app needs access to your microphone for voice-to-text transcription using Whisper.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

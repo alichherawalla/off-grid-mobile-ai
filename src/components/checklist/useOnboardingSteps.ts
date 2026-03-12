@@ -2,6 +2,7 @@ import { useMemo, useEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { useChatStore } from '../../stores/chatStore';
 import { useProjectStore } from '../../stores/projectStore';
+import { useRemoteServerStore } from '../../stores/remoteServerStore';
 import { useTheme } from '../../theme';
 import type { OnboardingStep, ChecklistTheme } from './types';
 
@@ -11,15 +12,20 @@ export function useOnboardingSteps() {
   const onboardingChecklist = useAppStore(s => s.onboardingChecklist);
   const conversations = useChatStore(s => s.conversations);
   const projects = useProjectStore(s => s.projects);
+  const remoteServers = useRemoteServerStore(s => s.servers);
+  const activeRemoteTextModelId = useRemoteServerStore(s => s.activeRemoteTextModelId);
+
+  const hasAnyModel = downloadedModels.length > 0 || remoteServers.length > 0;
+  const hasActiveModel = activeModelId !== null || activeRemoteTextModelId !== null;
 
   const steps: OnboardingStep[] = useMemo(() => [
-    { id: 'downloadedModel', title: 'Download a model', subtitle: 'Browse and download an AI model', completed: downloadedModels.length > 0 },
-    { id: 'loadedModel', title: 'Load a model', subtitle: 'Select a model to activate it', completed: activeModelId !== null },
+    { id: 'downloadedModel', title: 'Download a model', subtitle: 'Browse and download an AI model', completed: hasAnyModel },
+    { id: 'loadedModel', title: 'Load a model', subtitle: 'Select a model to activate it', completed: hasActiveModel },
     { id: 'sentMessage', title: 'Send your first message', subtitle: 'Start a conversation with AI', completed: conversations.some(c => c.messages.length > 0) },
     { id: 'triedImageGen', title: 'Try image generation', subtitle: 'Generate your first image', completed: onboardingChecklist.triedImageGen, disabled: activeModelId === null },
     { id: 'exploredSettings', title: 'Explore settings', subtitle: 'Configure your experience', completed: onboardingChecklist.exploredSettings },
     { id: 'createdProject', title: 'Create a project', subtitle: 'Organize chats by topic', completed: projects.length > 4 },
-  ], [downloadedModels.length, activeModelId, conversations, onboardingChecklist.exploredSettings, onboardingChecklist.triedImageGen, projects.length]);
+  ], [hasAnyModel, hasActiveModel, conversations, onboardingChecklist.exploredSettings, onboardingChecklist.triedImageGen, projects.length]);
 
   const completedCount = steps.filter(s => s.completed).length;
 

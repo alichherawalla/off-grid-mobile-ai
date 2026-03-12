@@ -78,13 +78,18 @@ function createStyles(colors: ThemeColors, _shadows: ThemeShadows) {
       color: colors.textMuted,
       marginTop: 4,
     },
+    buttonRow: {
+      flexDirection: 'row' as const,
+      gap: 10,
+      marginTop: 16,
+    },
     testButton: {
+      flex: 1,
       backgroundColor: colors.primary,
       borderRadius: 12,
       paddingVertical: 14,
-      paddingHorizontal: 20,
+      paddingHorizontal: 12,
       alignItems: 'center' as const,
-      marginTop: 24,
       flexDirection: 'row' as const,
       justifyContent: 'center' as const,
     },
@@ -93,54 +98,54 @@ function createStyles(colors: ThemeColors, _shadows: ThemeShadows) {
     },
     testButtonText: {
       color: colors.background,
-      fontSize: 16,
+      fontSize: 15,
       fontWeight: '600' as const,
     },
     testButtonTextDisabled: {
       color: colors.textMuted,
     },
     saveButton: {
+      flex: 1,
       backgroundColor: colors.primary,
       borderRadius: 12,
       paddingVertical: 14,
-      paddingHorizontal: 20,
+      paddingHorizontal: 12,
       alignItems: 'center' as const,
-      marginTop: 12,
+      justifyContent: 'center' as const,
     },
     saveButtonDisabled: {
       backgroundColor: colors.surfaceLight,
     },
     saveButtonText: {
       color: colors.background,
-      fontSize: 16,
+      fontSize: 15,
       fontWeight: '600' as const,
     },
     saveButtonTextDisabled: {
       color: colors.textMuted,
     },
     modelList: {
-      marginTop: 16,
+      marginTop: 8,
+    },
+    modelScroll: {
+      maxHeight: 81,
     },
     modelItem: {
       backgroundColor: colors.surfaceLight,
-      borderRadius: 8,
-      padding: 12,
-      marginBottom: 8,
+      borderRadius: 6,
+      paddingVertical: 4,
+      paddingHorizontal: 8,
+      marginBottom: 3,
     },
     modelName: {
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: '500' as const,
       color: colors.text,
-    },
-    modelCapabilities: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      marginTop: 4,
     },
     statusContainer: {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
-      marginTop: 12,
+      marginTop: 8,
     },
     statusDot: {
       width: 8,
@@ -184,7 +189,6 @@ export const RemoteServerModal: React.FC<RemoteServerModalProps> = ({
   // Form state
   const [name, setName] = useState('');
   const [endpoint, setEndpoint] = useState('');
-  const [apiKey, setApiKey] = useState('');
   const [notes, setNotes] = useState('');
 
   // Validation state
@@ -204,7 +208,6 @@ export const RemoteServerModal: React.FC<RemoteServerModalProps> = ({
       // Reset form for new server
       setName('');
       setEndpoint('');
-      setApiKey('');
       setNotes('');
     }
     setErrors({});
@@ -242,7 +245,7 @@ export const RemoteServerModal: React.FC<RemoteServerModalProps> = ({
     setDiscoveredModels([]);
 
     try {
-      const result = await remoteServerManager.testConnectionByEndpoint(endpoint, apiKey || undefined);
+      const result = await remoteServerManager.testConnectionByEndpoint(endpoint);
 
       if (result.success) {
         setTestResult({ success: true, message: `Connected (${result.latency}ms)` });
@@ -260,7 +263,7 @@ export const RemoteServerModal: React.FC<RemoteServerModalProps> = ({
     } finally {
       setIsTesting(false);
     }
-  }, [endpoint, apiKey, validateForm]);
+  }, [endpoint, validateForm]);
 
   const handleSave = useCallback(async () => {
     if (!validateForm()) return;
@@ -289,7 +292,6 @@ export const RemoteServerModal: React.FC<RemoteServerModalProps> = ({
           name,
           endpoint,
           notes,
-          ...(apiKey ? { apiKey } : {}),
         });
         // Save discovered models to store
         if (discoveredModels.length > 0) {
@@ -301,7 +303,6 @@ export const RemoteServerModal: React.FC<RemoteServerModalProps> = ({
         const newServer = await remoteServerManager.addServer({
           name,
           endpoint,
-          apiKey: apiKey || undefined,
           providerType: 'openai-compatible',
           notes: notes || undefined,
         });
@@ -309,6 +310,8 @@ export const RemoteServerModal: React.FC<RemoteServerModalProps> = ({
         if (discoveredModels.length > 0) {
           useRemoteServerStore.getState().setDiscoveredModels(newServer.id, discoveredModels);
         }
+        // Silently probe health so status shows immediately instead of "Unknown"
+        remoteServerManager.testConnection(newServer.id).catch(() => {});
         onSave?.(newServer);
       }
       onClose();
@@ -318,7 +321,7 @@ export const RemoteServerModal: React.FC<RemoteServerModalProps> = ({
         error instanceof Error ? error.message : 'Failed to save server'
       );
     }
-  }, [server, name, endpoint, apiKey, notes, discoveredModels, onSave, onClose]);
+  }, [server, name, endpoint, notes, discoveredModels, onSave, onClose]);
 
   const isPublicNetwork = endpoint && !isPrivateNetworkEndpoint(endpoint);
 
@@ -365,21 +368,6 @@ export const RemoteServerModal: React.FC<RemoteServerModalProps> = ({
           Enter the base URL of your LLM server (Ollama, LM Studio, etc.)
         </Text>
 
-        <Text style={styles.label}>API Key (Optional)</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Leave empty for local servers"
-          placeholderTextColor={theme.colors.textMuted}
-          value={apiKey}
-          onChangeText={setApiKey}
-          autoCapitalize="none"
-          autoCorrect={false}
-          secureTextEntry
-        />
-        <Text style={styles.helperText}>
-          Required for servers that need authentication
-        </Text>
-
         <Text style={styles.label}>Notes (Optional)</Text>
         <TextInput
           style={[styles.input, styles.notesInput]}
@@ -390,20 +378,6 @@ export const RemoteServerModal: React.FC<RemoteServerModalProps> = ({
           multiline
           numberOfLines={3}
         />
-
-        <TouchableOpacity
-          style={[styles.testButton, isTesting && styles.testButtonDisabled]}
-          onPress={handleTestConnection}
-          disabled={isTesting}
-        >
-          {isTesting ? (
-            <ActivityIndicator size="small" color={theme.colors.background} />
-          ) : (
-            <Text style={[styles.testButtonText, isTesting && styles.testButtonTextDisabled]}>
-              Test Connection
-            </Text>
-          )}
-        </TouchableOpacity>
 
         {testResult && (
           <View style={styles.statusContainer}>
@@ -420,28 +394,41 @@ export const RemoteServerModal: React.FC<RemoteServerModalProps> = ({
         {discoveredModels.length > 0 && (
           <View style={styles.modelList}>
             <Text style={styles.sectionHeader}>Discovered Models</Text>
-            {discoveredModels.map((model) => (
-              <View key={model.id} style={styles.modelItem}>
-                <Text style={styles.modelName}>{model.name}</Text>
-                <Text style={styles.modelCapabilities}>
-                  {model.capabilities.supportsVision ? '📷 Vision ' : ''}
-                  {model.capabilities.supportsToolCalling ? '🔧 Tools ' : ''}
-                  {model.capabilities.supportsThinking ? '💭 Thinking ' : ''}
-                </Text>
-              </View>
-            ))}
+            <ScrollView style={styles.modelScroll} nestedScrollEnabled>
+              {discoveredModels.map((model) => (
+                <View key={model.id} style={styles.modelItem}>
+                  <Text style={styles.modelName}>{model.name}</Text>
+                </View>
+              ))}
+            </ScrollView>
           </View>
         )}
 
-        <TouchableOpacity
-          style={[styles.saveButton, !testResult?.success && styles.saveButtonDisabled]}
-          onPress={handleSave}
-          disabled={!testResult?.success}
-        >
-          <Text style={[styles.saveButtonText, !testResult?.success && styles.saveButtonTextDisabled]}>
-            {server ? 'Update Server' : 'Add Server'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[styles.testButton, isTesting && styles.testButtonDisabled]}
+            onPress={handleTestConnection}
+            disabled={isTesting}
+          >
+            {isTesting ? (
+              <ActivityIndicator size="small" color={theme.colors.background} />
+            ) : (
+              <Text style={[styles.testButtonText, isTesting && styles.testButtonTextDisabled]}>
+                Test Connection
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.saveButton, !testResult?.success && styles.saveButtonDisabled]}
+            onPress={handleSave}
+            disabled={!testResult?.success}
+          >
+            <Text style={[styles.saveButtonText, !testResult?.success && styles.saveButtonTextDisabled]}>
+              {server ? 'Update Server' : 'Add Server'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </AppSheet>
   );

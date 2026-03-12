@@ -401,6 +401,16 @@ async function testEndpointAndGetModels(
   }
 }
 
+/** Returns true for models that generate text/images — filters out embedding, reranker, etc. */
+function isGenerativeModel(modelId: string): boolean {
+  const id = modelId.toLowerCase();
+  const nonGenerativePatterns = [
+    'embed', 'embedding', 'rerank', 'reranker', 'classifier',
+    'bge-', 'e5-', 'gte-', 'minilm', 'arctic-embed',
+  ];
+  return !nonGenerativePatterns.some(p => id.includes(p));
+}
+
 async function fetchModelsFromServer(server: RemoteServer): Promise<RemoteModel[]> {
   let url = server.endpoint;
   while (url.endsWith('/')) url = url.slice(0, -1);
@@ -431,34 +441,37 @@ async function fetchModelsFromServer(server: RemoteServer): Promise<RemoteModel[
 
       // OpenAI format: { object: "list", data: [{ id, object, owned_by, ... }] }
       if (data?.object === 'list' && Array.isArray(data.data)) {
-        return data.data.map((model: { id: string; owned_by?: string }) => ({
-          id: model.id,
-          name: model.id,
-          serverId: server.id,
-          capabilities: {
-            // Default capabilities - will be detected during usage
-            supportsVision: false,
-            supportsToolCalling: false,
-            supportsThinking: false,
-          },
-          lastUpdated: new Date().toISOString(),
-        }));
+        return data.data
+          .filter((model: { id: string }) => isGenerativeModel(model.id))
+          .map((model: { id: string; owned_by?: string }) => ({
+            id: model.id,
+            name: model.id,
+            serverId: server.id,
+            capabilities: {
+              supportsVision: false,
+              supportsToolCalling: false,
+              supportsThinking: false,
+            },
+            lastUpdated: new Date().toISOString(),
+          }));
       }
 
       // Ollama format: { models: [{ name, ... }] }
       if (Array.isArray(data.models)) {
-        return data.models.map((model: { name: string; details?: Record<string, unknown> }) => ({
-          id: model.name,
-          name: model.name,
-          serverId: server.id,
-          capabilities: {
-            supportsVision: false,
-            supportsToolCalling: false,
-            supportsThinking: false,
-          },
-          details: model.details,
-          lastUpdated: new Date().toISOString(),
-        }));
+        return data.models
+          .filter((model: { name: string }) => isGenerativeModel(model.name))
+          .map((model: { name: string; details?: Record<string, unknown> }) => ({
+            id: model.name,
+            name: model.name,
+            serverId: server.id,
+            capabilities: {
+              supportsVision: false,
+              supportsToolCalling: false,
+              supportsThinking: false,
+            },
+            details: model.details,
+            lastUpdated: new Date().toISOString(),
+          }));
       }
     }
   } catch (error) {
@@ -482,18 +495,20 @@ async function fetchModelsFromServer(server: RemoteServer): Promise<RemoteModel[
       const data = await response.json();
 
       if (Array.isArray(data.models)) {
-        return data.models.map((model: { name: string; details?: Record<string, unknown> }) => ({
-          id: model.name,
-          name: model.name,
-          serverId: server.id,
-          capabilities: {
-            supportsVision: false,
-            supportsToolCalling: false,
-            supportsThinking: false,
-          },
-          details: model.details,
-          lastUpdated: new Date().toISOString(),
-        }));
+        return data.models
+          .filter((model: { name: string }) => isGenerativeModel(model.name))
+          .map((model: { name: string; details?: Record<string, unknown> }) => ({
+            id: model.name,
+            name: model.name,
+            serverId: server.id,
+            capabilities: {
+              supportsVision: false,
+              supportsToolCalling: false,
+              supportsThinking: false,
+            },
+            details: model.details,
+            lastUpdated: new Date().toISOString(),
+          }));
       }
     }
   } catch (error) {

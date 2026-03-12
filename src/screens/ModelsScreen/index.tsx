@@ -1,7 +1,8 @@
 import React, { useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRoute, RouteProp } from '@react-navigation/native';
+import { MainTabParamList } from '../../navigation/types';
 import Icon from 'react-native-vector-icons/Feather';
 import { AttachStep } from 'react-native-spotlight-tour';
 import { CustomAlert, hideAlert } from '../../components/CustomAlert';
@@ -16,6 +17,7 @@ export const ModelsScreen: React.FC = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const vm = useModelsScreen();
+  const route = useRoute<RouteProp<MainTabParamList, 'ModelsTab'>>();
 
   // Reset to model list view when tab loses focus (e.g. user switches away)
   // vm.setSelectedModel / vm.setModelFiles are useState setters — stable across renders.
@@ -23,12 +25,16 @@ export const ModelsScreen: React.FC = () => {
   // cause the cleanup to fire on every re-render and immediately undo model selection.
   useFocusEffect(
     useCallback(() => {
+      const initialTab = route.params?.initialTab;
+      if (initialTab) {
+        vm.setActiveTab(initialTab);
+      }
       return () => {
         vm.setSelectedModel(null);
         vm.setModelFiles([]);
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []),
+    }, [route.params?.initialTab]),
   );
 
   const isShowingDetail = vm.activeTab === 'text' && vm.selectedModel !== null;

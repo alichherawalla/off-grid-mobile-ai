@@ -163,6 +163,20 @@ const createActionStyles = (colors: ThemeColors) => ({
     ...TYPOGRAPHY.body,
     color: colors.textSecondary,
   },
+  remoteNotice: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: 6,
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  remoteNoticeText: {
+    ...TYPOGRAPHY.meta,
+    color: colors.textMuted,
+    flex: 1,
+  },
 });
 
 const createModelPickerStyles = (colors: ThemeColors) => ({

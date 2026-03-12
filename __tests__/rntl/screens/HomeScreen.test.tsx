@@ -455,7 +455,7 @@ describe('HomeScreen', () => {
       const { getByTestId } = renderHomeScreen();
       fireEvent.press(getByTestId('browse-models-button'));
 
-      expect(mockNavigate).toHaveBeenCalledWith('ModelsTab');
+      expect(mockNavigate).toHaveBeenCalledWith('ModelsTab', { initialTab: 'text' });
     });
   });
 
@@ -944,7 +944,7 @@ describe('HomeScreen', () => {
       fireEvent.press(getByText('Tap to select'));
       fireEvent.press(getByText('Browse more models'));
 
-      expect(mockNavigate).toHaveBeenCalledWith('ModelsTab');
+      expect(mockNavigate).toHaveBeenCalledWith('ModelsTab', { initialTab: 'text' });
     });
 
     it('shows memory estimate per model in picker', () => {
@@ -1666,7 +1666,7 @@ describe('HomeScreen', () => {
       // The second one should be in the picker
       fireEvent.press(browseButtons[browseButtons.length - 1]);
 
-      expect(mockNavigate).toHaveBeenCalledWith('ModelsTab');
+      expect(mockNavigate).toHaveBeenCalledWith('ModelsTab', { initialTab: 'text' });
     });
 
     it('navigates to ModelsTab from empty image picker Browse Models button', () => {
@@ -1680,7 +1680,7 @@ describe('HomeScreen', () => {
       const browseButtons = getAllByText('Browse Models');
       fireEvent.press(browseButtons[browseButtons.length - 1]);
 
-      expect(mockNavigate).toHaveBeenCalledWith('ModelsTab');
+      expect(mockNavigate).toHaveBeenCalledWith('ModelsTab', { initialTab: 'image' });
     });
   });
 

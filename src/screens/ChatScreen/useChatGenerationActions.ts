@@ -8,7 +8,6 @@ import {
   hideAlert,
 } from '../../components';
 import { APP_CONFIG } from '../../constants';
-import { useAppStore } from '../../stores/appStore';
 import {
   llmService,
   intentClassifier,
@@ -22,7 +21,7 @@ import {
   retrievalService,
 } from '../../services';
 import { embeddingService } from '../../services/rag/embedding';
-import { useChatStore, useProjectStore } from '../../stores';
+import { useChatStore, useProjectStore, useRemoteServerStore } from '../../stores';
 import { Message, MediaAttachment, Project, DownloadedModel, RemoteModel, ModelLoadingStrategy, CacheType } from '../../types';
 import logger from '../../utils/logger';
 import { shouldUseToolsForMessage } from './toolUsage';
@@ -224,24 +223,18 @@ async function injectRagContext(projectId: string | undefined, query: string, pr
 }
 function resolveToolsAndPrompt(deps: GenerationDeps, conversation: any): { enabledTools: string[]; rawPrompt: string } {
   const project = conversation?.projectId ? useProjectStore.getState().getProject(conversation.projectId) : null;
-  let enabledTools = llmService.supportsToolCalling() ? (deps.settings.enabledTools || []) : [];
-  if (conversation?.projectId && llmService.supportsToolCalling() && !enabledTools.includes('search_knowledge_base')) {
+  const { activeServerId, activeRemoteTextModelId } = useRemoteServerStore.getState();
+  const localToolCalling = llmService.supportsToolCalling();
+  const isRemoteActive = !!(activeServerId && activeRemoteTextModelId);
+  const canUseTools = localToolCalling || isRemoteActive;
+  let enabledTools = canUseTools ? (deps.settings.enabledTools || []) : [];
+  if (conversation?.projectId && canUseTools && !enabledTools.includes('search_knowledge_base')) {
     enabledTools = [...enabledTools, 'search_knowledge_base'];
   }
   const rawPrompt = project?.systemPrompt || deps.settings.systemPrompt || APP_CONFIG.defaultSystemPrompt;
   return { enabledTools, rawPrompt };
 }
-function maybeCacheTypeNudge(deps: GenerationDeps): void {
-  const appState = useAppStore.getState();
-  if (!appState.hasSeenCacheTypeNudge && deps.settings.cacheType === 'q8_0') {
-    appState.setHasSeenCacheTypeNudge(true);
-    deps.setAlertState(showAlert(
-      'Improve Output Quality',
-      'You can improve response quality by changing the KV cache type to f16 in Model Settings. This uses more memory but produces better outputs. Requires a model reload.',
-      [{ text: 'Go to Settings', onPress: () => { deps.setAlertState(hideAlert()); deps.setShowSettingsPanel?.(true); } }, { text: 'Got it', style: 'cancel' }],
-    ));
-  }
-}
+
 export async function startGenerationFn(deps: GenerationDeps, call: StartGenerationCall): Promise<void> {
   const { setDebugInfo, targetConversationId, messageText } = call;
   if (!deps.hasActiveModel) return;
@@ -257,8 +250,11 @@ export async function startGenerationFn(deps: GenerationDeps, call: StartGenerat
   const conversation = useChatStore.getState().conversations.find(c => c.id === targetConversationId);
   const { enabledTools, rawPrompt } = resolveToolsAndPrompt(deps, conversation);
   const basePrompt = await injectRagContext(conversation?.projectId, messageText, rawPrompt);
-  const activeTools = shouldUseToolsForMessage(messageText, enabledTools) ? enabledTools : [];
-  const systemPrompt = activeTools.length > 0 ? `${basePrompt}${buildToolSystemPromptHint(activeTools)}` : basePrompt;
+  // Remote models use native tool_choice: 'auto' — skip heuristic gate and always pass enabled tools
+  const isRemote = !!useRemoteServerStore.getState().activeRemoteTextModelId;
+  const heuristicMatch = shouldUseToolsForMessage(messageText, enabledTools);
+  const activeTools = (isRemote || heuristicMatch) ? enabledTools : [];
+  const systemPrompt = (!isRemote && activeTools.length > 0) ? `${basePrompt}${buildToolSystemPromptHint(activeTools)}` : basePrompt;
   const messagesForContext = buildMessagesForContext(targetConversationId, messageText, systemPrompt);
   await prepareContext(setDebugInfo, systemPrompt, messagesForContext);
   try {
@@ -271,7 +267,6 @@ export async function startGenerationFn(deps: GenerationDeps, call: StartGenerat
     return;
   }
   deps.generatingForConversationRef.current = null;
-  maybeCacheTypeNudge(deps);
 }
 export type SendCall = { text: string; attachments?: MediaAttachment[]; imageMode?: 'auto' | 'force' | 'disabled'; startGeneration: (convId: string, text: string) => Promise<void>; setDebugInfo: SetState<any> };
 export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promise<void> {
@@ -336,9 +331,10 @@ export async function regenerateResponseFn(deps: GenerationDeps, call: Regenerat
   const messages = (conversation?.messages || []).filter((m: Message) => !m.isSystemInfo);
   const messagesUpToUser = messages.slice(0, messages.findIndex((m: Message) => m.id === userMessage.id) + 1);
   const { enabledTools, rawPrompt } = resolveToolsAndPrompt(deps, conversation);
-  const activeTools = shouldUseToolsForMessage(userMessage.content, enabledTools) ? enabledTools : [];
+  const isRemote = !!useRemoteServerStore.getState().activeRemoteTextModelId;
+  const activeTools = (isRemote || shouldUseToolsForMessage(userMessage.content, enabledTools)) ? enabledTools : [];
   const basePrompt = await injectRagContext(conversation?.projectId, userMessage.content, rawPrompt);
-  const systemPrompt = activeTools.length > 0 ? `${basePrompt}${buildToolSystemPromptHint(activeTools)}` : basePrompt;
+  const systemPrompt = (!isRemote && activeTools.length > 0) ? `${basePrompt}${buildToolSystemPromptHint(activeTools)}` : basePrompt;
   const { prefix, filtered } = applyCompactionPrefix(conversation, systemPrompt, messagesUpToUser);
   try {
     await generateWithCompactionRetry({ id: targetConversationId, prompt: systemPrompt, messages: [...prefix, ...filtered] }, activeTools, conversation?.projectId);

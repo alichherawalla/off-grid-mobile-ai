@@ -31,7 +31,7 @@ export const ConversationActionsSection: React.FC<ConversationActionsSectionProp
 
   const handleOpenProject = () => {
     onClose();
-    setTimeout(onOpenProject!, 200);
+    setTimeout(onOpenProject!, 350);
   };
 
   const handleOpenGallery = () => {

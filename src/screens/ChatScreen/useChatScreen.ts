@@ -1,4 +1,4 @@
-/* eslint-disable max-lines-per-function */
+/* eslint-disable max-lines-per-function, max-lines */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { AlertState, showAlert, initialAlertState } from '../../components';
@@ -11,7 +11,7 @@ import {
 } from '../../services';
 import { Message, MediaAttachment, Project, DownloadedModel, DebugInfo, RemoteModel } from '../../types';
 import { RootStackParamList } from '../../navigation/types';
-import { ensureModelLoadedFn, handleModelSelectFn, handleUnloadModelFn } from './useChatModelActions';
+import { ensureModelLoadedFn, handleModelSelectFn, handleUnloadModelFn, initiateModelLoad } from './useChatModelActions';
 import {
   startGenerationFn, handleSendFn, handleStopFn, executeDeleteConversationFn,
   regenerateResponseFn, handleImageGenerationFn, handleSelectProjectFn,
@@ -229,10 +229,22 @@ export const useChatScreen = () => {
   }, [activeModel?.mmProjPath]);
 
   useEffect(() => {
-    const loaded = llmService.isModelLoaded();
-    setSupportsToolCalling(loaded ? llmService.supportsToolCalling() : false);
-    setSupportsThinking(loaded ? llmService.supportsThinking() : false);
-  }, [activeModelId, isModelLoading]);
+    if (activeRemoteTextModelId) {
+      // Remote models always support tool calling via OpenAI-compatible API
+      setSupportsToolCalling(true);
+      setSupportsThinking(true);
+    } else {
+      const loaded = llmService.isModelLoaded();
+      if (loaded) {
+        const tc = llmService.supportsToolCalling();
+        setSupportsToolCalling(tc);
+        setSupportsThinking(llmService.supportsThinking());
+      } else {
+        setSupportsToolCalling(false);
+        setSupportsThinking(false);
+      }
+    }
+  }, [activeModelId, isModelLoading, activeRemoteTextModelId]);
 
   const displayMessages = getDisplayMessages(activeConversation?.messages || [], { isThinking, streamingMessage, streamingReasoningContent, isStreamingForThisConversation });
 
@@ -254,9 +266,7 @@ export const useChatScreen = () => {
   };
   // Check if there are pending settings that require model reload
   const hasPendingSettings = (() => {
-    // No pending settings if no model is loaded
     if (!loadedSettings) return false;
-    // Compare settings that require reload
     return (
       settings.nThreads !== loadedSettings.nThreads ||
       settings.nBatch !== loadedSettings.nBatch ||
@@ -267,6 +277,17 @@ export const useChatScreen = () => {
       settings.cacheType !== loadedSettings.cacheType
     );
   })();
+
+  const handleReloadTextModel = useCallback(async () => {
+    if (!activeModelInfo.modelId || activeModelInfo.isRemote) return;
+    // Must unload first — loadTextModel skips if the same model ID is already loaded,
+    // which means setLoadedSettings would never run and the banner would persist.
+    if (llmService.isModelLoaded()) {
+      await activeModelService.unloadTextModel();
+    }
+    await initiateModelLoad(modelDeps, false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeModelInfo.modelId, activeModelInfo.isRemote, settings]);
 
   return {
     isModelLoading, loadingModel, supportsVision,
@@ -286,7 +307,7 @@ export const useChatScreen = () => {
     imageGenerationProgress: imageGenState.progress,
     imageGenerationStatus: imageGenState.status,
     imagePreviewPath: imageGenState.previewPath,
-    isStreaming, isThinking, isCompacting, hasPendingSettings, displayMessages, downloadedModels, projects, settings,
+    isStreaming, isThinking, isCompacting, hasPendingSettings, handleReloadTextModel, displayMessages, downloadedModels, projects, settings,
     navigation, hardwareService,
     handleSend: (text: string, attachments?: MediaAttachment[], imageMode?: 'auto' | 'force' | 'disabled') =>
       handleSendFn(genDeps, { text, attachments, imageMode, startGeneration, setDebugInfo }),

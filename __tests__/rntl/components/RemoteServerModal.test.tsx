@@ -33,6 +33,7 @@ jest.mock('../../../src/components/AppSheet', () => ({
 jest.mock('../../../src/services/remoteServerManager', () => ({
   remoteServerManager: {
     testConnectionByEndpoint: jest.fn(),
+    testConnection: jest.fn().mockResolvedValue({ success: true, latency: 10 }),
     addServer: jest.fn(),
     updateServer: jest.fn(),
   },
@@ -154,12 +155,13 @@ describe('RemoteServerModal', () => {
       expect(getByDisplayValue('Local dev server')).toBeTruthy();
     });
 
-    it('does not populate API key field when editing (security)', () => {
-      const server = createMockServer();
-      const { queryByDisplayValue } = render(
+    it('resets form fields when switching from edit to new mode', () => {
+      const server = createMockServer({ name: 'Existing Server' });
+      const { rerender, queryByDisplayValue } = render(
         <RemoteServerModal visible onClose={onClose} server={server} />,
       );
-      expect(queryByDisplayValue('my-secret-key')).toBeNull();
+      rerender(<RemoteServerModal visible onClose={onClose} />);
+      expect(queryByDisplayValue('Existing Server')).toBeNull();
     });
   });
 

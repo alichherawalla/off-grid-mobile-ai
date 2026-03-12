@@ -84,8 +84,7 @@ interface AppState {
   removeGeneratedImage: (imageId: string) => void;
   removeImagesByConversationId: (conversationId: string) => string[];
   clearGeneratedImages: () => void;
-  hasSeenCacheTypeNudge: boolean;
-  setHasSeenCacheTypeNudge: (v: boolean) => void;
+
   shownSpotlights: Record<string, boolean>;
   markSpotlightShown: (key: string) => void;
   resetShownSpotlights: () => void;
@@ -281,9 +280,7 @@ export const useAppStore = create<AppState>()(
       clearGeneratedImages: () =>
         set({ generatedImages: [] }),
 
-      // Cache type nudge
-      hasSeenCacheTypeNudge: false,
-      setHasSeenCacheTypeNudge: (v) => set({ hasSeenCacheTypeNudge: v }),
+
       // Reactive spotlight tracking
       shownSpotlights: {},
       markSpotlightShown: (key) =>
@@ -347,9 +344,10 @@ export const useAppStore = create<AppState>()(
         imageModelDownloadIds: state.imageModelDownloadIds,
         generatedImages: state.generatedImages,
         shownSpotlights: state.shownSpotlights,
-        hasSeenCacheTypeNudge: state.hasSeenCacheTypeNudge,
+
         textGenerationCount: state.textGenerationCount, imageGenerationCount: state.imageGenerationCount,
         hasEngagedSharePrompt: state.hasEngagedSharePrompt,
+        loadedSettings: state.loadedSettings,
       }),
     }
   )

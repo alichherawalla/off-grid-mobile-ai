@@ -749,4 +749,77 @@ describe('LocalDreamGeneratorService', () => {
       expect(result).toEqual([]);
     });
   });
+
+  describe('loadModel — cpuOnly and attentionVariant opts', () => {
+    let service: any;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      jest.isolateModules(() => {
+        const { Platform: P } = require('react-native');
+        P.select = (opts: any) => opts.android;
+        P.OS = 'android';
+        service = require('../../../src/services/localDreamGenerator').localDreamGeneratorService;
+      });
+    });
+
+    it('passes cpuOnly param when opts.cpuOnly is true', async () => {
+      mockLocalDreamModule.loadModel.mockResolvedValue(true);
+      await service.loadModel('/path/model', 4, { cpuOnly: true });
+      expect(mockLocalDreamModule.loadModel).toHaveBeenCalledWith(
+        expect.objectContaining({ cpuOnly: true }),
+      );
+    });
+
+    it('passes attentionVariant param when provided', async () => {
+      mockLocalDreamModule.loadModel.mockResolvedValue(true);
+      await service.loadModel('/path/model', 4, { attentionVariant: 'split_einsum' });
+      expect(mockLocalDreamModule.loadModel).toHaveBeenCalledWith(
+        expect.objectContaining({ attentionVariant: 'split_einsum' }),
+      );
+    });
+  });
+
+  describe('isGenerating method', () => {
+    let service: any;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      jest.isolateModules(() => {
+        const { Platform: P } = require('react-native');
+        P.select = (opts: any) => opts.android;
+        P.OS = 'android';
+        service = require('../../../src/services/localDreamGenerator').localDreamGeneratorService;
+      });
+    });
+
+    it('returns false when not generating', async () => {
+      const result = await service.isGenerating();
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('clearOpenCLCache and hasKernelCache on non-android', () => {
+    let service: any;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      jest.isolateModules(() => {
+        const { Platform: P } = require('react-native');
+        P.select = (opts: any) => opts.ios;
+        P.OS = 'ios';
+        service = require('../../../src/services/localDreamGenerator').localDreamGeneratorService;
+      });
+    });
+
+    it('clearOpenCLCache returns 0 on non-android', async () => {
+      const result = await service.clearOpenCLCache('/path/model');
+      expect(result).toBe(0);
+    });
+
+    it('hasKernelCache returns true on non-android', async () => {
+      const result = await service.hasKernelCache('/path/model');
+      expect(result).toBe(true);
+    });
+  });
 });

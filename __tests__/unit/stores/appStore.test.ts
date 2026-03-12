@@ -1549,23 +1549,4 @@ describe('appStore', () => {
     });
   });
 
-  // ============================================================================
-  // Cache Type Nudge
-  // ============================================================================
-  describe('cacheTypeNudge', () => {
-    it('defaults to false', () => {
-      expect(getAppState().hasSeenCacheTypeNudge).toBe(false);
-    });
-
-    it('setHasSeenCacheTypeNudge(true) updates state', () => {
-      useAppStore.getState().setHasSeenCacheTypeNudge(true);
-      expect(getAppState().hasSeenCacheTypeNudge).toBe(true);
-    });
-
-    it('can be reset back to false', () => {
-      useAppStore.getState().setHasSeenCacheTypeNudge(true);
-      useAppStore.getState().setHasSeenCacheTypeNudge(false);
-      expect(getAppState().hasSeenCacheTypeNudge).toBe(false);
-    });
-  });
 });

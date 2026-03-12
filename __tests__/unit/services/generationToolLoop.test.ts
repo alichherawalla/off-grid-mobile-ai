@@ -49,7 +49,15 @@ jest.mock('../../../src/services/llm', () => ({
     generateResponseWithTools: jest.fn(),
     supportsThinking: jest.fn(() => false),
     isThinkingEnabled: jest.fn(() => false),
-    stopGeneration: jest.fn(),
+    stopGeneration: jest.fn().mockResolvedValue(undefined),
+    isModelLoaded: jest.fn(() => true),
+  },
+}));
+
+jest.mock('../../../src/services/providers', () => ({
+  providerRegistry: {
+    hasProvider: jest.fn(() => false),
+    getProvider: jest.fn(() => null),
   },
 }));
 
@@ -696,6 +704,53 @@ describe('runToolLoop', () => {
       expect(mockAddMessage).toHaveBeenCalledTimes(4);
     });
   });
+
+  // ==========================================================================
+  // Remote provider path (forceRemote)
+  // ==========================================================================
+  describe('remote provider path via forceRemote', () => {
+    it('throws "No remote provider active" when forceRemote=true and activeServerId is null', async () => {
+      // activeServerId is null in the mock, so callRemoteLLMWithTools throws
+      const ctx = createContext({ forceRemote: true } as any);
+      await expect(runToolLoop(ctx)).rejects.toThrow('No remote provider active');
+    });
+
+    it('covers useRemote calculation — providerRegistry.hasProvider branch', async () => {
+      const { providerRegistry } = require('../../../src/services/providers');
+      // hasProvider returns true but no local model loaded → useRemote=true path
+      (providerRegistry.hasProvider as jest.Mock).mockReturnValueOnce(true);
+      const { useRemoteServerStore } = require('../../../src/stores');
+      useRemoteServerStore.getState = () => ({ activeServerId: 'srv-1' });
+
+      const ctx = createContext();
+      // callRemoteLLMWithTools will throw since getProvider returns null
+      await expect(runToolLoop(ctx)).rejects.toThrow();
+
+      // Restore
+      useRemoteServerStore.getState = () => ({ activeServerId: null });
+      (providerRegistry.hasProvider as jest.Mock).mockReturnValue(false);
+    });
+  });
+
+  // ==========================================================================
+  // isNonRetryableError paths
+  // ==========================================================================
+  describe('non-retryable errors skip retry', () => {
+    it('fails immediately on "No model loaded" error without retry', async () => {
+      mockedGenerateResponseWithTools.mockRejectedValue(new Error('No model loaded: context missing'));
+      const ctx = createContext();
+      await expect(runToolLoop(ctx)).rejects.toThrow('No model loaded');
+      // Should only be called once (no retry)
+      expect(mockedGenerateResponseWithTools).toHaveBeenCalledTimes(1);
+    });
+
+    it('fails immediately on "aborted" error without retry', async () => {
+      mockedGenerateResponseWithTools.mockRejectedValue(new Error('Request aborted by user'));
+      const ctx = createContext();
+      await expect(runToolLoop(ctx)).rejects.toThrow('aborted');
+      expect(mockedGenerateResponseWithTools).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 // ===========================================================================
@@ -1044,6 +1099,264 @@ describe('runToolLoop – token streaming', () => {
 
     expect(ctx.callbacks?.onFirstToken).toHaveBeenCalledTimes(1);
     expect(ctx.onThinkingDone).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ==========================================================================
+// resolveToolCalls – <tool_call> tag parsing
+// ==========================================================================
+describe('runToolLoop – resolveToolCalls via embedded tool_call tags', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetToolsAsOpenAISchema.mockReturnValue([
+      { type: 'function', function: { name: 'web_search' } },
+    ]);
+  });
+
+  it('parses and executes tool calls embedded in response text', async () => {
+    const embeddedResponse = '<tool_call>{"name":"web_search","arguments":{"query":"test"}}</tool_call>';
+    let callCount = 0;
+    mockedGenerateResponseWithTools.mockImplementation(async () => {
+      callCount++;
+      if (callCount === 1) {
+        return { fullResponse: embeddedResponse, toolCalls: [] };
+      }
+      return { fullResponse: 'Final answer', toolCalls: [] };
+    });
+    mockExecuteToolCall.mockResolvedValue({
+      toolCallId: 'tc-1', name: 'web_search', content: 'results', durationMs: 10,
+    });
+
+    const ctx = createContext();
+    await runToolLoop(ctx);
+
+    expect(mockExecuteToolCall).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'web_search' }),
+    );
+    expect(ctx.onFinalResponse).toHaveBeenCalledWith('Final answer');
+  });
+
+  it('returns response as-is when <tool_call> tags parse to no valid calls', async () => {
+    mockedGenerateResponseWithTools.mockResolvedValue({
+      fullResponse: '<tool_call>{invalid json here}</tool_call>',
+      toolCalls: [],
+    });
+
+    const ctx = createContext();
+    await runToolLoop(ctx);
+
+    // No tools executed, response passed through
+    expect(mockExecuteToolCall).not.toHaveBeenCalled();
+    expect(ctx.onFinalResponse).toHaveBeenCalledWith('<tool_call>{invalid json here}</tool_call>');
+  });
+});
+
+// ==========================================================================
+// callLLMWithRetry – retry logic
+// ==========================================================================
+describe('runToolLoop – retry on transient errors', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetToolsAsOpenAISchema.mockReturnValue([
+      { type: 'function', function: { name: 'web_search' } },
+    ]);
+  });
+
+  it('retries on transient error and succeeds', async () => {
+    jest.useFakeTimers();
+    let callCount = 0;
+    mockedGenerateResponseWithTools.mockImplementation(async () => {
+      callCount++;
+      if (callCount === 1) throw new Error('Context busy');
+      return { fullResponse: 'Recovered', toolCalls: [] };
+    });
+
+    const ctx = createContext();
+    const promise = runToolLoop(ctx);
+    await jest.runAllTimersAsync();
+    await promise;
+
+    expect(mockedGenerateResponseWithTools).toHaveBeenCalledTimes(2);
+    expect(llmService.stopGeneration).toHaveBeenCalled();
+    expect(ctx.onFinalResponse).toHaveBeenCalledWith('Recovered');
+    jest.useRealTimers();
+  });
+
+  it('fails immediately on non-retryable error (No model loaded)', async () => {
+    mockedGenerateResponseWithTools.mockRejectedValue(new Error('No model loaded'));
+
+    const ctx = createContext();
+    await expect(runToolLoop(ctx)).rejects.toThrow('No model loaded');
+    expect(mockedGenerateResponseWithTools).toHaveBeenCalledTimes(1);
+    expect(llmService.stopGeneration).not.toHaveBeenCalled();
+  });
+});
+
+// ==========================================================================
+// getLastUserQuery – empty fallback
+// ==========================================================================
+describe('runToolLoop – web_search empty query fallback', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetToolsAsOpenAISchema.mockReturnValue([
+      { type: 'function', function: { name: 'web_search' } },
+    ]);
+  });
+
+  it('uses empty string fallback when no user message exists', async () => {
+    let callCount = 0;
+    mockedGenerateResponseWithTools.mockImplementation(async () => {
+      callCount++;
+      if (callCount === 1) {
+        return { fullResponse: '', toolCalls: [{ id: 'tc-1', name: 'web_search', arguments: { query: '' } }] };
+      }
+      return { fullResponse: 'Done', toolCalls: [] };
+    });
+    mockExecuteToolCall.mockResolvedValue({
+      toolCallId: 'tc-1', name: 'web_search', content: 'results', durationMs: 5,
+    });
+
+    // Only assistant messages – getLastUserQuery returns ''
+    const ctx = createContext({
+      messages: [makeMessage({ role: 'assistant', content: 'Previous response' })],
+    });
+    await runToolLoop(ctx);
+
+    // Tool was still called (empty query fallback – no user message to replace with)
+    expect(mockExecuteToolCall).toHaveBeenCalled();
+  });
+
+  describe('isAborted — abort at loop start', () => {
+    it('returns immediately without calling LLM when already aborted', async () => {
+      let aborted = true;
+      const ctx = createContext({ isAborted: () => aborted });
+      await runToolLoop(ctx);
+      expect(mockedGenerateResponseWithTools).not.toHaveBeenCalled();
+    });
+
+    it('aborts mid-loop when isAborted becomes true after first iteration', async () => {
+      let callCount = 0;
+      mockedGenerateResponseWithTools.mockImplementation(async () => {
+        callCount++;
+        return {
+          fullResponse: '',
+          toolCalls: [{ id: `tc-${callCount}`, name: 'web_search', arguments: { query: 'test' } }],
+        };
+      });
+      mockExecuteToolCall.mockResolvedValue({ toolCallId: 'tc-1', name: 'web_search', content: 'result', durationMs: 5 });
+
+      let aborted = false;
+      const ctx = createContext({
+        isAborted: () => {
+          // Abort before the second iteration
+          if (callCount >= 1) aborted = true;
+          return aborted;
+        },
+      });
+      await runToolLoop(ctx);
+      // Only one LLM call should have happened before abort
+      expect(mockedGenerateResponseWithTools).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
+// ===========================================================================
+// callRemoteLLMWithTools — provider generate callbacks
+// ===========================================================================
+
+describe('callRemoteLLMWithTools via forceRemote', () => {
+  const { providerRegistry } = require('../../../src/services/providers');
+  const { useRemoteServerStore } = require('../../../src/stores');
+
+  let mockProvider: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockProvider = {
+      generate: jest.fn(),
+    };
+    (providerRegistry.getProvider as jest.Mock).mockReturnValue(mockProvider);
+    useRemoteServerStore.getState = () => ({ activeServerId: 'srv-remote' });
+    mockGetToolsAsOpenAISchema.mockReturnValue([{ type: 'function', function: { name: 'web_search' } }]);
+  });
+
+  afterEach(() => {
+    useRemoteServerStore.getState = () => ({ activeServerId: null });
+    (providerRegistry.getProvider as jest.Mock).mockReturnValue(null);
+  });
+
+  it('resolves with fullResponse and empty toolCalls when onComplete fires without toolCalls', async () => {
+    mockProvider.generate.mockImplementation((_msgs: any, _opts: any, callbacks: any) => {
+      callbacks.onToken('hello ');
+      callbacks.onToken('world');
+      callbacks.onComplete({ content: 'hello world', toolCalls: undefined });
+    });
+
+    const ctx = createContext({ forceRemote: true });
+    await runToolLoop(ctx);
+
+    expect(ctx.onFinalResponse).toHaveBeenCalledWith('hello world');
+  });
+
+  it('accumulates streaming tokens via onToken and fires onStream', async () => {
+    const onStream = jest.fn();
+    mockProvider.generate.mockImplementation((_msgs: any, _opts: any, callbacks: any) => {
+      callbacks.onToken('chunk1');
+      callbacks.onReasoning('reasoning text');
+      callbacks.onComplete({ content: 'chunk1', toolCalls: [] });
+    });
+
+    const ctx = createContext({ forceRemote: true, onStream });
+    await runToolLoop(ctx);
+
+    expect(onStream).toHaveBeenCalledWith(expect.objectContaining({ content: 'chunk1' }));
+    expect(onStream).toHaveBeenCalledWith(expect.objectContaining({ reasoningContent: 'reasoning text' }));
+  });
+
+  it('rejects when onError callback fires', async () => {
+    mockProvider.generate.mockImplementation((_msgs: any, _opts: any, callbacks: any) => {
+      callbacks.onError(new Error('remote failure'));
+    });
+
+    const ctx = createContext({ forceRemote: true });
+    await expect(runToolLoop(ctx)).rejects.toThrow('remote failure');
+  });
+
+  it('resolves toolCalls with string arguments parsed as JSON', async () => {
+    mockProvider.generate.mockImplementation((_msgs: any, _opts: any, callbacks: any) => {
+      callbacks.onComplete({
+        content: '',
+        toolCalls: [{ id: 'tc-1', name: 'web_search', arguments: '{"query":"test"}' }],
+      });
+    });
+    mockExecuteToolCall.mockResolvedValue({ toolCallId: 'tc-1', name: 'web_search', content: 'result', durationMs: 5 });
+    mockedGenerateResponseWithTools.mockResolvedValue({ fullResponse: 'final', toolCalls: [] });
+
+    // Second call (after tool execution) returns final response
+    let callCount = 0;
+    mockProvider.generate.mockImplementation((_msgs: any, _opts: any, callbacks: any) => {
+      callCount++;
+      if (callCount === 1) {
+        callbacks.onComplete({
+          content: '',
+          toolCalls: [{ id: 'tc-1', name: 'web_search', arguments: '{"query":"test"}' }],
+        });
+      } else {
+        callbacks.onComplete({ content: 'final answer', toolCalls: [] });
+      }
+    });
+
+    const ctx = createContext({ forceRemote: true });
+    await runToolLoop(ctx);
+
+    expect(mockExecuteToolCall).toHaveBeenCalled();
+  });
+
+  it('throws Remote provider not found when getProvider returns null', async () => {
+    (providerRegistry.getProvider as jest.Mock).mockReturnValue(null);
+
+    const ctx = createContext({ forceRemote: true });
+    await expect(runToolLoop(ctx)).rejects.toThrow('Remote provider not found');
   });
 });
 

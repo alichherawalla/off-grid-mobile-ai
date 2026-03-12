@@ -187,6 +187,99 @@ describe('LocalProvider', () => {
       expect(onError).toHaveBeenCalledWith(expect.any(Error));
       expect(onError.mock.calls[0][0].message).toBe('No model loaded');
     });
+
+    it('calls onReasoning during simple generation when callback provided', async () => {
+      (llmService.isModelLoaded as jest.Mock).mockReturnValue(true);
+      (llmService.generateResponse as jest.Mock).mockImplementation(
+        async (_msgs, onStream, onComplete) => {
+          onStream?.({ content: 'token', reasoningContent: 'thinking...' });
+          onComplete?.({ content: 'token', reasoningContent: 'thinking...' });
+        }
+      );
+      (llmService.getGpuInfo as jest.Mock).mockReturnValue({ gpu: false, gpuBackend: 'CPU', gpuLayers: 0 });
+      (llmService.getPerformanceStats as jest.Mock).mockReturnValue({ lastTokensPerSecond: 1, lastDecodeTokensPerSecond: 1, lastTimeToFirstToken: 0, lastGenerationTime: 0, lastTokenCount: 1 });
+
+      const onReasoning = jest.fn();
+      await localProvider.generate([], {}, { onToken: jest.fn(), onComplete: jest.fn(), onError: jest.fn(), onReasoning });
+
+      expect(onReasoning).toHaveBeenCalledWith('thinking...');
+    });
+
+    it('calls onReasoning during tool generation when callback provided', async () => {
+      (llmService.isModelLoaded as jest.Mock).mockReturnValue(true);
+      (llmService.generateResponseWithTools as jest.Mock).mockImplementation(
+        async (_msgs, opts) => {
+          opts.onStream?.({ content: '', reasoningContent: 'deep thought' });
+          return { fullResponse: 'done', toolCalls: [] };
+        }
+      );
+      (llmService.getGpuInfo as jest.Mock).mockReturnValue({ gpu: false, gpuBackend: 'CPU', gpuLayers: 0 });
+      (llmService.getPerformanceStats as jest.Mock).mockReturnValue({ lastTokensPerSecond: 1, lastDecodeTokensPerSecond: 1, lastTimeToFirstToken: 0, lastGenerationTime: 0, lastTokenCount: 1 });
+
+      const tools = [{ type: 'function' as const, function: { name: 'test', description: 'd', parameters: { type: 'object', properties: {} } } }];
+      const onReasoning = jest.fn();
+      await localProvider.generate([], { tools }, { onToken: jest.fn(), onComplete: jest.fn(), onError: jest.fn(), onReasoning });
+
+      expect(onReasoning).toHaveBeenCalledWith('deep thought');
+    });
+
+    it('passes string tool arguments through unchanged', async () => {
+      (llmService.isModelLoaded as jest.Mock).mockReturnValue(true);
+      (llmService.generateResponseWithTools as jest.Mock).mockResolvedValue({
+        fullResponse: 'ok',
+        toolCalls: [{ id: 'tc1', name: 'web_search', arguments: '{"query":"test"}' }],
+      });
+      (llmService.getGpuInfo as jest.Mock).mockReturnValue({ gpu: false, gpuBackend: 'CPU', gpuLayers: 0 });
+      (llmService.getPerformanceStats as jest.Mock).mockReturnValue({ lastTokensPerSecond: 1, lastDecodeTokensPerSecond: 1, lastTimeToFirstToken: 0, lastGenerationTime: 0, lastTokenCount: 1 });
+
+      const tools = [{ type: 'function' as const, function: { name: 'web_search', description: 'd', parameters: { type: 'object', properties: {} } } }];
+      const onComplete = jest.fn();
+      await localProvider.generate([], { tools }, { onToken: jest.fn(), onComplete, onError: jest.fn() });
+
+      expect(onComplete.mock.calls[0][0].toolCalls[0].arguments).toBe('{"query":"test"}');
+    });
+
+    it('serializes object tool arguments to JSON string', async () => {
+      (llmService.isModelLoaded as jest.Mock).mockReturnValue(true);
+      (llmService.generateResponseWithTools as jest.Mock).mockResolvedValue({
+        fullResponse: 'ok',
+        toolCalls: [{ id: 'tc1', name: 'web_search', arguments: { query: 'test' } }],
+      });
+      (llmService.getGpuInfo as jest.Mock).mockReturnValue({ gpu: false, gpuBackend: 'CPU', gpuLayers: 0 });
+      (llmService.getPerformanceStats as jest.Mock).mockReturnValue({ lastTokensPerSecond: 1, lastDecodeTokensPerSecond: 1, lastTimeToFirstToken: 0, lastGenerationTime: 0, lastTokenCount: 1 });
+
+      const tools = [{ type: 'function' as const, function: { name: 'web_search', description: 'd', parameters: { type: 'object', properties: {} } } }];
+      const onComplete = jest.fn();
+      await localProvider.generate([], { tools }, { onToken: jest.fn(), onComplete, onError: jest.fn() });
+
+      expect(onComplete.mock.calls[0][0].toolCalls[0].arguments).toBe('{"query":"test"}');
+    });
+
+    it('calls onError for non-Error exceptions thrown during generation', async () => {
+      (llmService.isModelLoaded as jest.Mock).mockReturnValue(true);
+      (llmService.generateResponse as jest.Mock).mockRejectedValue('string error');
+      (llmService.getGpuInfo as jest.Mock).mockReturnValue({ gpu: false, gpuBackend: 'CPU', gpuLayers: 0 });
+      (llmService.getPerformanceStats as jest.Mock).mockReturnValue({ lastTokensPerSecond: 1, lastDecodeTokensPerSecond: 1, lastTimeToFirstToken: 0, lastGenerationTime: 0, lastTokenCount: 1 });
+
+      const onError = jest.fn();
+      await localProvider.generate([], {}, { onToken: jest.fn(), onComplete: jest.fn(), onError });
+
+      expect(onError).toHaveBeenCalledWith(expect.any(Error));
+    });
+  });
+
+  describe('dispose', () => {
+    it('unloads model and clears loadedModelId', async () => {
+      (llmService.unloadModel as jest.Mock).mockResolvedValue(undefined);
+      (llmService.loadModel as jest.Mock).mockResolvedValue(undefined);
+
+      await localProvider.loadModel('/some/model.gguf');
+      expect(localProvider.getLoadedModelId()).toBe('/some/model.gguf');
+
+      await (localProvider as any).dispose();
+      expect(llmService.unloadModel).toHaveBeenCalled();
+      expect(localProvider.getLoadedModelId()).toBeNull();
+    });
   });
 
   describe('stopGeneration', () => {

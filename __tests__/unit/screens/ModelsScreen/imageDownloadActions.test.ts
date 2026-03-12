@@ -685,4 +685,69 @@ describe('imageDownloadActions', () => {
       }));
     });
   });
+
+  // ==========================================================================
+  // Additional branch coverage
+  // ==========================================================================
+  describe('additional branch coverage', () => {
+    it('proceedWithDownload resolves coreML model dir for coreml backend on completion', async () => {
+      const { resolveCoreMLModelDir } = require('../../../../src/utils/coreMLModelUtils');
+      resolveCoreMLModelDir.mockResolvedValueOnce('/resolved/coreml/dir');
+      const deps = makeDeps();
+      const coremlZipModel = makeZipModelInfo({ backend: 'coreml' });
+      await proceedWithDownload(coremlZipModel, deps);
+
+      await mockOnCompleteCallbacks[0]();
+
+      expect(resolveCoreMLModelDir).toHaveBeenCalled();
+      expect(mockAddDownloadedImageModel).toHaveBeenCalledWith(
+        expect.objectContaining({ modelPath: '/resolved/coreml/dir' }),
+      );
+    });
+
+    it('proceedWithDownload creates dirs when they do not exist', async () => {
+      const RNFS = require('react-native-fs');
+      RNFS.exists.mockResolvedValue(false); // All dirs missing
+
+      const deps = makeDeps();
+      await proceedWithDownload(makeZipModelInfo(), deps);
+      await mockOnCompleteCallbacks[0]();
+
+      expect(RNFS.mkdir).toHaveBeenCalled();
+    });
+
+    it('downloadCoreMLMultiFile returns early when coremlFiles is null', async () => {
+      const deps = makeDeps();
+      const model = makeCoreMLModelInfo({ coremlFiles: null as any });
+      await downloadCoreMLMultiFile(model, deps);
+
+      expect(deps.addImageModelDownloading).not.toHaveBeenCalled();
+    });
+
+    it('downloadHuggingFaceModel skips cleanup unlink when dir does not exist', async () => {
+      const RNFS = require('react-native-fs');
+      const { backgroundDownloadService } = require('../../../../src/services');
+      backgroundDownloadService.downloadFileTo.mockReturnValueOnce({
+        promise: Promise.reject(new Error('Network timeout')),
+      });
+      // Cleanup dir does not exist
+      RNFS.exists.mockResolvedValue(false);
+
+      const deps = makeDeps();
+      await downloadHuggingFaceModel(makeHFModelInfo(), deps);
+
+      expect(deps.setAlertState).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Download Failed' }),
+      );
+      expect(RNFS.unlink).not.toHaveBeenCalled();
+    });
+
+    it('cleanupDownloadState skips setBackgroundDownload when downloadId is null', () => {
+      const deps = makeDeps();
+      cleanupDownloadState(deps, 'model-1');
+
+      expect(deps.removeImageModelDownloading).toHaveBeenCalledWith('model-1');
+      expect(deps.setBackgroundDownload).not.toHaveBeenCalled();
+    });
+  });
 });

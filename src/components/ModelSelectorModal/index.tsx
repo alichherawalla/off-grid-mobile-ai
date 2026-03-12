@@ -389,6 +389,7 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
   const {
     servers,
     discoveredModels,
+    serverHealth,
     activeRemoteTextModelId,
     activeRemoteImageModelId,
     setActiveRemoteImageModelId,
@@ -402,23 +403,27 @@ export const ModelSelectorModal: React.FC<ModelSelectorModalProps> = ({
     if (visible) setActiveTab(initialTab);
   }, [visible, initialTab]);
 
-  // Group remote models by server for TextTab
+  // Group remote models by server for TextTab — exclude servers known to be offline
   const remoteTextModels = useMemo(() => {
-    return servers.map(server => ({
-      serverId: server.id,
-      serverName: server.name,
-      models: discoveredModels[server.id] || [],
-    })).filter(group => group.models.length > 0);
-  }, [servers, discoveredModels]);
+    return servers
+      .filter(server => serverHealth[server.id]?.isHealthy !== false)
+      .map(server => ({
+        serverId: server.id,
+        serverName: server.name,
+        models: discoveredModels[server.id] || [],
+      })).filter(group => group.models.length > 0);
+  }, [servers, discoveredModels, serverHealth]);
 
-  // Group remote vision models by server for ImageTab
+  // Group remote vision models by server for ImageTab — exclude servers known to be offline
   const remoteVisionModels = useMemo(() => {
-    return servers.map(server => ({
-      serverId: server.id,
-      serverName: server.name,
-      models: (discoveredModels[server.id] || []).filter(m => m.capabilities.supportsVision),
-    })).filter(group => group.models.length > 0);
-  }, [servers, discoveredModels]);
+    return servers
+      .filter(server => serverHealth[server.id]?.isHealthy !== false)
+      .map(server => ({
+        serverId: server.id,
+        serverName: server.name,
+        models: (discoveredModels[server.id] || []).filter(m => m.capabilities.supportsVision),
+      })).filter(group => group.models.length > 0);
+  }, [servers, discoveredModels, serverHealth]);
 
   const handleSelectImageModel = async (model: ONNXImageModel) => {
     if (activeImageModelId === model.id) return;

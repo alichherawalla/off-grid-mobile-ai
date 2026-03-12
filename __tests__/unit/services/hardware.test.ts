@@ -1090,5 +1090,92 @@ describe('HardwareService', () => {
       const second = await hardwareService.getImageModelRecommendation();
       expect(first).toBe(second);
     });
+
+    describe('Android Qualcomm 8gen1 and min variant recommendations', () => {
+      afterEach(() => {
+        Platform.OS = originalOS;
+        delete NativeModules.LocalDreamModule;
+      });
+
+      const setupQualcommDevice = async (socModel: string) => {
+        Platform.OS = 'android' as typeof Platform.OS;
+        NativeModules.LocalDreamModule = {
+          getSoCModel: jest.fn().mockResolvedValue(socModel),
+        };
+        mockedDeviceInfo.getTotalMemory.mockResolvedValue(8 * 1024 * 1024 * 1024);
+        mockedDeviceInfo.getUsedMemory.mockResolvedValue(2 * 1024 * 1024 * 1024);
+        mockedDeviceInfo.getModel.mockReturnValue('Test');
+        mockedDeviceInfo.getSystemName.mockReturnValue('Android');
+        mockedDeviceInfo.getSystemVersion.mockReturnValue('14');
+        mockedDeviceInfo.isEmulator.mockResolvedValue(false);
+        mockedDeviceInfo.getHardware.mockResolvedValue('qcom');
+        await hardwareService.getDeviceInfo();
+      };
+
+      it('returns qnn recommendation for 8gen1 Qualcomm device', async () => {
+        await setupQualcommDevice('SM8450-AB'); // 8gen1
+        const rec = await hardwareService.getImageModelRecommendation();
+        expect(rec.recommendedBackend).toBe('qnn');
+        expect(rec.qnnVariant).toBe('8gen1');
+        expect(rec.bannerText).toContain('NPU');
+      });
+
+      it('returns qnn recommendation for min (Snapdragon 888) Qualcomm device', async () => {
+        await setupQualcommDevice('SM8350-AC'); // min
+        const rec = await hardwareService.getImageModelRecommendation();
+        expect(rec.recommendedBackend).toBe('qnn');
+        expect(rec.qnnVariant).toBe('min');
+        expect(rec.bannerText).toContain('lightweight');
+      });
+    });
+  });
+
+  describe('getTotalMemoryGB — background fetch callbacks', () => {
+    it('updates cachedDeviceInfo.totalMemory in .then when cache is populated', async () => {
+      // Setup: populate cachedDeviceInfo first
+      mockedDeviceInfo.getTotalMemory.mockResolvedValue(8 * 1024 * 1024 * 1024);
+      mockedDeviceInfo.getUsedMemory.mockResolvedValue(2 * 1024 * 1024 * 1024);
+      mockedDeviceInfo.getModel.mockReturnValue('Test');
+      mockedDeviceInfo.getSystemName.mockReturnValue('Android');
+      mockedDeviceInfo.getSystemVersion.mockReturnValue('13');
+      mockedDeviceInfo.isEmulator.mockResolvedValue(false);
+      await hardwareService.getDeviceInfo();
+      // Clear cache to trigger background fetch path
+      (hardwareService as any).cachedDeviceInfo = null;
+      // Mock a new resolved value for the background fetch
+      mockedDeviceInfo.getTotalMemory.mockResolvedValue(16 * 1024 * 1024 * 1024);
+      // Call getTotalMemoryGB — triggers background fetch, returns default 4
+      const result = hardwareService.getTotalMemoryGB();
+      expect(result).toBe(4);
+      // Now populate cache before promise resolves (simulate race condition)
+      (hardwareService as any).cachedDeviceInfo = { totalMemory: 8 * 1024 * 1024 * 1024, availableMemory: 6 * 1024 * 1024 * 1024 };
+      await new Promise(resolve => setTimeout(resolve, 10));
+      // The .then callback should have updated totalMemory
+      expect((hardwareService as any).cachedDeviceInfo.totalMemory).toBe(16 * 1024 * 1024 * 1024);
+    });
+
+    it('logs warning when getTotalMemory rejects in getTotalMemoryGB background fetch', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      mockedDeviceInfo.getTotalMemory.mockRejectedValueOnce(new Error('memory error'));
+      hardwareService.getTotalMemoryGB();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to fetch total memory'),
+        expect.any(Error),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('logs warning when getTotalMemory rejects in getAvailableMemoryGB background fetch', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      mockedDeviceInfo.getTotalMemory.mockRejectedValueOnce(new Error('mem error'));
+      hardwareService.getAvailableMemoryGB();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to fetch available memory'),
+        expect.any(Error),
+      );
+      warnSpy.mockRestore();
+    });
   });
 });

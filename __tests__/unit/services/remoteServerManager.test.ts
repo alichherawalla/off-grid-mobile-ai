@@ -33,6 +33,7 @@ describe('remoteServerManager', () => {
       const mockGetServerById = jest.fn().mockReturnValue(mockServer);
 
       (useRemoteServerStore.getState as jest.Mock).mockReturnValue({
+        servers: [],
         addServer: mockAddServer,
         getServerById: mockGetServerById,
       });
@@ -55,6 +56,7 @@ describe('remoteServerManager', () => {
       const mockGetServerById = jest.fn().mockReturnValue(mockServer);
 
       (useRemoteServerStore.getState as jest.Mock).mockReturnValue({
+        servers: [],
         addServer: mockAddServer,
         getServerById: mockGetServerById,
       });
@@ -82,6 +84,7 @@ describe('remoteServerManager', () => {
       const mockGetServerById = jest.fn().mockReturnValue(null);
 
       (useRemoteServerStore.getState as jest.Mock).mockReturnValue({
+        servers: [],
         addServer: mockAddServer,
         getServerById: mockGetServerById,
       });

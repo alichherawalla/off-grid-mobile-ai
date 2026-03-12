@@ -16,6 +16,7 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import { useRemoteServerStore } from '../../../src/stores/remoteServerStore';
 import { remoteServerManager } from '../../../src/services/remoteServerManager';
+import { discoverLANServers } from '../../../src/services/networkDiscovery';
 import { RemoteServersScreen } from '../../../src/screens/RemoteServersScreen';
 
 // Mock navigation
@@ -66,8 +67,17 @@ jest.mock('../../../src/components/RemoteServerModal', () => ({
 jest.mock('../../../src/services/remoteServerManager', () => ({
   remoteServerManager: {
     removeServer: jest.fn().mockResolvedValue(undefined),
+    addServer: jest.fn().mockResolvedValue({ id: 'discovered-1' }),
+    testConnection: jest.fn().mockResolvedValue({ success: true, latency: 10 }),
   },
 }));
+
+// Mock networkDiscovery
+jest.mock('../../../src/services/networkDiscovery', () => ({
+  discoverLANServers: jest.fn().mockResolvedValue([]),
+}));
+
+const mockDiscoverLANServers = discoverLANServers as jest.Mock;
 
 // Mock Alert.alert
 const mockAlert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
@@ -144,16 +154,22 @@ describe('RemoteServersScreen', () => {
     });
 
     it('shows "Connected" status for healthy server', () => {
-      const server = createMockServer({ isHealthy: true });
-      useRemoteServerStore.setState({ servers: [server] });
+      const server = createMockServer();
+      useRemoteServerStore.setState({
+        servers: [server],
+        serverHealth: { [server.id]: { isHealthy: true, lastCheck: new Date().toISOString() } },
+      });
 
       const { getByText } = render(<RemoteServersScreen />);
       expect(getByText('Connected')).toBeTruthy();
     });
 
     it('shows "Offline" status for unhealthy server', () => {
-      const server = createMockServer({ isHealthy: false });
-      useRemoteServerStore.setState({ servers: [server] });
+      const server = createMockServer();
+      useRemoteServerStore.setState({
+        servers: [server],
+        serverHealth: { [server.id]: { isHealthy: false, lastCheck: new Date().toISOString() } },
+      });
 
       const { getByText } = render(<RemoteServersScreen />);
       expect(getByText('Offline')).toBeTruthy();
@@ -460,6 +476,68 @@ describe('RemoteServersScreen', () => {
     it('renders About Remote Servers info card', () => {
       const { getByText } = render(<RemoteServersScreen />);
       expect(getByText('About Remote Servers')).toBeTruthy();
+    });
+  });
+
+  // ==========================================================================
+  // Scan Network
+  // ==========================================================================
+  describe('scan network', () => {
+    it('renders Scan Network button in empty state', () => {
+      const { getByText } = render(<RemoteServersScreen />);
+      expect(getByText('Scan Network')).toBeTruthy();
+    });
+
+    it('renders Scan Network button when servers exist', () => {
+      const server = createMockServer();
+      useRemoteServerStore.setState({ servers: [server] });
+      const { getByText } = render(<RemoteServersScreen />);
+      expect(getByText('Scan Network')).toBeTruthy();
+    });
+
+    it('shows "No Servers Found" alert when scan finds nothing', async () => {
+      mockDiscoverLANServers.mockResolvedValue([]);
+      const { getByText } = render(<RemoteServersScreen />);
+      fireEvent.press(getByText('Scan Network'));
+      await waitFor(() => {
+        expect(mockAlert).toHaveBeenCalledWith('No Servers Found', expect.any(String));
+      });
+    });
+
+    it('adds discovered servers and shows summary alert', async () => {
+      mockDiscoverLANServers.mockResolvedValue([
+        { endpoint: 'http://192.168.1.10:11434', type: 'ollama', name: 'Ollama (192.168.1.10)' }, // NOSONAR
+      ]);
+      const { getByText } = render(<RemoteServersScreen />);
+      fireEvent.press(getByText('Scan Network'));
+      await waitFor(() => {
+        expect(remoteServerManager.addServer).toHaveBeenCalledWith(
+          expect.objectContaining({ endpoint: 'http://192.168.1.10:11434' }), // NOSONAR
+        );
+        expect(mockAlert).toHaveBeenCalledWith('Discovery Complete', expect.stringContaining('1 server'));
+      });
+    });
+
+    it('shows "Already Added" when all discovered servers already exist', async () => {
+      const server = createMockServer({ endpoint: 'http://192.168.1.10:11434' }); // NOSONAR
+      useRemoteServerStore.setState({ servers: [server] });
+      mockDiscoverLANServers.mockResolvedValue([
+        { endpoint: 'http://192.168.1.10:11434', type: 'ollama', name: 'Ollama (192.168.1.10)' }, // NOSONAR
+      ]);
+      const { getByText } = render(<RemoteServersScreen />);
+      fireEvent.press(getByText('Scan Network'));
+      await waitFor(() => {
+        expect(mockAlert).toHaveBeenCalledWith('Already Added', expect.any(String));
+      });
+    });
+
+    it('shows "Scan Failed" alert on error', async () => {
+      mockDiscoverLANServers.mockRejectedValue(new Error('Permission denied'));
+      const { getByText } = render(<RemoteServersScreen />);
+      fireEvent.press(getByText('Scan Network'));
+      await waitFor(() => {
+        expect(mockAlert).toHaveBeenCalledWith('Scan Failed', 'Permission denied');
+      });
     });
   });
 

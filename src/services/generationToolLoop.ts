@@ -217,6 +217,7 @@ async function callRemoteLLMWithTools(
     maxTokens: settings.maxTokens,
     topP: settings.topP,
     tools,
+    enableThinking: settings.thinkingEnabled,
   };
 
   let _fullContent = '';
@@ -250,27 +251,23 @@ async function callRemoteLLMWithTools(
   });
 }
 
-/** Call LLM with retry+backoff for transient native context errors. */
-async function callLLMWithRetry(
+async function callRemoteWithErrorHandling(
   messages: Message[],
   tools: any[],
   onStream?: (data: StreamToken) => void,
-  forceRemote?: boolean,
 ): Promise<{ fullResponse: string; toolCalls: ToolCall[] }> {
-  // Use remote provider if forced or if active server is set
-  const useRemote = forceRemote || useRemoteServerStore.getState().activeServerId !== null;
-
-  if (useRemote) {
-    // Remote providers don't retry in the same way - errors are network-related
-    try {
-      return await callRemoteLLMWithTools(messages, tools, onStream);
-    } catch (e: any) {
-      const errMsg = e?.message || String(e) || 'Remote LLM error';
-      throw new Error(errMsg);
-    }
+  try {
+    return await callRemoteLLMWithTools(messages, tools, onStream);
+  } catch (e: any) {
+    throw new Error(e?.message || String(e) || 'Remote LLM error');
   }
+}
 
-  // Local provider with retry logic
+async function callLocalWithRetry(
+  messages: Message[],
+  tools: any[],
+  onStream?: (data: StreamToken) => void,
+): Promise<{ fullResponse: string; toolCalls: ToolCall[] }> {
   let lastError: any;
   for (let attempt = 0; attempt < MAX_LLM_RETRIES; attempt++) {
     try {
@@ -278,21 +275,33 @@ async function callLLMWithRetry(
     } catch (e: any) {
       lastError = e;
       const msg = e?.message || String(e) || '';
-      // Fail fast on errors that won't resolve with a retry
       if (isNonRetryableError(msg) || attempt >= MAX_LLM_RETRIES - 1) {
         break;
       }
-      // Force-stop native context and reset isGenerating before retrying —
-      // the native context may be stuck in a busy state after an error
       logger.log(`[ToolLoop] Error: "${msg.substring(0, 120) || '(no message)'}", stopping context and retrying (attempt ${attempt + 1}/${MAX_LLM_RETRIES})`);
       await llmService.stopGeneration().catch(() => {});
-      const delayMs = (attempt + 1) * RETRY_BACKOFF_MS;
-      await new Promise<void>(resolve => setTimeout(resolve, delayMs));
+      await new Promise<void>(resolve => setTimeout(resolve, (attempt + 1) * RETRY_BACKOFF_MS));
     }
   }
-  // Preserve a meaningful error message for the UI
-  const errMsg = lastError?.message || String(lastError) || 'Unknown LLM error after tool execution';
-  throw new Error(errMsg);
+  throw new Error(lastError?.message || String(lastError) || 'Unknown LLM error after tool execution');
+}
+
+/** Call LLM with retry+backoff for transient native context errors. */
+async function callLLMWithRetry(
+  messages: Message[],
+  tools: any[],
+  onStream?: (data: StreamToken) => void,
+  forceRemote?: boolean,
+): Promise<{ fullResponse: string; toolCalls: ToolCall[] }> {
+  const activeServerId = useRemoteServerStore.getState().activeServerId;
+  const useRemote = forceRemote || (
+    !!activeServerId &&
+    providerRegistry.hasProvider(activeServerId) &&
+    !llmService.isModelLoaded()
+  );
+  return useRemote
+    ? callRemoteWithErrorHandling(messages, tools, onStream)
+    : callLocalWithRetry(messages, tools, onStream);
 }
 
 /** If no structured tool calls, try parsing <tool_call> tags from text. */
@@ -337,6 +346,7 @@ function emitFinalResponse(ctx: ToolLoopContext, displayResponse: string, stream
     ctx.callbacks?.onFirstToken?.();
     ctx.onFinalResponse(displayResponse);
   }
+  // If streamedContent is set, onThinkingDone was already called by buildStreamHandler on first token
 }
 
 /**
@@ -352,28 +362,41 @@ export async function runToolLoop(ctx: ToolLoopContext): Promise<void> {
 
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
     if (ctx.isAborted()) break;
+
+    // Hit iteration or total-call cap — force one final text-only generation (no tools)
+    if (iteration === MAX_TOOL_ITERATIONS - 1 || totalToolCalls >= MAX_TOTAL_TOOL_CALLS) {
+      logger.log(`[ToolLoop] Hit cap after ${totalToolCalls} calls — forcing final text response`);
+      state.streamedContent = '';
+      state.firstTokenFired = false;
+      const forcedOnStream = buildStreamHandler(ctx, state);
+      const { fullResponse: forcedResponse } = await callLLMWithRetry(loopMessages, [], forcedOnStream, ctx.forceRemote);
+      emitFinalResponse(ctx, forcedResponse, state.streamedContent);
+      return;
+    }
+
     state.streamedContent = '';
     logger.log(`[ToolLoop] Iteration ${iteration}, messages: ${loopMessages.length}, tools: ${toolSchemas.length}, totalCalls: ${totalToolCalls}`);
 
     const onStream = buildStreamHandler(ctx, state);
 
     const { fullResponse, toolCalls } = await callLLMWithRetry(loopMessages, toolSchemas, onStream, ctx.forceRemote);
-    logger.log(`[ToolLoop] Result: response=${fullResponse.length} chars, toolCalls=${toolCalls.length}`);
 
     const { effectiveToolCalls, displayResponse } = resolveToolCalls(fullResponse, toolCalls);
     const cappedToolCalls = effectiveToolCalls.slice(0, MAX_TOTAL_TOOL_CALLS - totalToolCalls);
     totalToolCalls += cappedToolCalls.length;
 
-    if (cappedToolCalls.length === 0 || iteration === MAX_TOOL_ITERATIONS - 1) {
+    // No tool calls → model gave a final text response
+    if (cappedToolCalls.length === 0) {
       emitFinalResponse(ctx, displayResponse, state.streamedContent);
       return;
     }
 
+    // Execute the tool calls
     if (state.streamedContent) { ctx.onStreamReset?.(); chatStore.setStreamingMessage(''); }
 
     const assistantMsg: Message = {
       id: `tool-assist-${Date.now()}-${iteration}`, role: 'assistant',
-      content: displayResponse || '', timestamp: Date.now(),
+      content: displayResponse || state.streamedContent || '', timestamp: Date.now(),
       toolCalls: cappedToolCalls.map(tc => ({ id: tc.id, name: tc.name, arguments: JSON.stringify(tc.arguments) })),
     };
     loopMessages.push(assistantMsg);
@@ -381,12 +404,7 @@ export async function runToolLoop(ctx: ToolLoopContext): Promise<void> {
 
     await executeToolCalls(ctx, cappedToolCalls, loopMessages);
 
-    // Show "Thinking..." indicator while waiting for the next LLM response
     chatStore.setIsThinking(true);
     await new Promise<void>(resolve => setTimeout(resolve, CONTEXT_RELEASE_PAUSE_MS));
-
-    if (totalToolCalls >= MAX_TOTAL_TOOL_CALLS) {
-      logger.log(`[ToolLoop] Hit total tool call cap (${MAX_TOTAL_TOOL_CALLS}), forcing final generation`);
-    }
   }
 }

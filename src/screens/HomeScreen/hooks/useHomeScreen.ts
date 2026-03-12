@@ -1,9 +1,10 @@
-/* eslint-disable max-lines-per-function */
+/* eslint-disable max-lines-per-function, max-lines */
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { InteractionManager } from 'react-native';
 import { AlertState, initialAlertState, showAlert, hideAlert } from '../../../components';
 import { useAppStore, useChatStore, useRemoteServerStore } from '../../../stores';
 import { modelManager, hardwareService, activeModelService, ResourceUsage, remoteServerManager } from '../../../services';
+import { discoverLANServers } from '../../../services/networkDiscovery';
 import { Conversation, RemoteModel } from '../../../types';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -27,6 +28,7 @@ export type LoadingState = {
 
 // Track if we've synced native state to avoid repeated calls
 let hasInitializedNativeSync = false;
+let hasRunLANDiscovery = false;
 
 export const useHomeScreen = (navigation: HomeScreenNavigationProp) => {
   const [pickerType, setPickerType] = useState<ModelPickerType>(null);
@@ -66,8 +68,8 @@ export const useHomeScreen = (navigation: HomeScreenNavigationProp) => {
   } = useRemoteServerStore();
 
   const {
-    handleSelectTextModel,
-    handleUnloadTextModel,
+    handleSelectTextModel: _handleSelectTextModel,
+    handleUnloadTextModel: _handleUnloadTextModel,
     handleSelectImageModel,
     handleUnloadImageModel,
   } = useModelLoading({
@@ -76,12 +78,33 @@ export const useHomeScreen = (navigation: HomeScreenNavigationProp) => {
     setAlertState,
   });
 
+  // Wrap local model handlers to clear any active remote server first
+  const handleSelectTextModel = useCallback(
+    (model: Parameters<typeof _handleSelectTextModel>[0]) => {
+      remoteServerManager.clearActiveRemoteModel();
+      return _handleSelectTextModel(model);
+    },
+    [_handleSelectTextModel],
+  );
+
+  const handleUnloadTextModel = useCallback(
+    () => {
+      remoteServerManager.clearActiveRemoteModel();
+      return _handleUnloadTextModel();
+    },
+    [_handleUnloadTextModel],
+  );
+
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
       loadData();
       if (!hasInitializedNativeSync) {
         hasInitializedNativeSync = true;
         activeModelService.syncWithNativeState();
+      }
+      if (!hasRunLANDiscovery) {
+        hasRunLANDiscovery = true;
+        runLANDiscovery();
       }
     });
     isFirstMount.current = false;
@@ -103,6 +126,91 @@ export const useHomeScreen = (navigation: HomeScreenNavigationProp) => {
     const unsubscribe = activeModelService.subscribe(() => { refreshMemoryInfo(); });
     return () => unsubscribe();
   }, [refreshMemoryInfo]);
+
+  const getPort = (endpoint: string): string | null => {
+    try { return new URL(endpoint).port; } catch { return null; }
+  };
+
+  const updateExistingServerAtNewIP = async (
+    store: ReturnType<typeof useRemoteServerStore.getState>,
+    samePortServer: NonNullable<ReturnType<typeof useRemoteServerStore.getState>['servers'][0]>,
+    discovered: { endpoint: string; name: string }
+  ) => {
+    logger.log('[HomeScreen] Server moved to new IP, updating:', samePortServer.name, '->', discovered.endpoint);
+    await remoteServerManager.updateServer(samePortServer.id, { endpoint: discovered.endpoint, name: discovered.name });
+    try { await useRemoteServerStore.getState().discoverModels(samePortServer.id); } catch { /* offline */ }
+    if (store.activeServerId === samePortServer.id && store.activeRemoteTextModelId) {
+      try {
+        await remoteServerManager.setActiveRemoteTextModel(samePortServer.id, store.activeRemoteTextModelId);
+      } catch { /* user can re-select */ }
+    }
+  };
+
+  const addNewServersAndNotify = async (
+    newServersToAdd: Awaited<ReturnType<typeof discoverLANServers>>
+  ) => {
+    for (const server of newServersToAdd) {
+      logger.log('[HomeScreen] Auto-adding discovered server:', server.name);
+      const added = await remoteServerManager.addServer({
+        name: server.name,
+        endpoint: server.endpoint,
+        providerType: 'openai-compatible',
+      });
+      remoteServerManager.testConnection(added.id).catch(() => {});
+    }
+
+    if (newServersToAdd.length === 0) return;
+
+    const names = newServersToAdd.map(s => s.name).join(', ');
+    const title = newServersToAdd.length === 1
+      ? 'LLM Server Found'
+      : `${newServersToAdd.length} LLM Servers Found`;
+    setAlertState(showAlert(
+      title,
+      `Discovered on your network: ${names}. You can select a model from the model picker.`,
+      [
+        { text: 'Dismiss', style: 'cancel' },
+        { text: 'View Servers', onPress: () => {
+          setAlertState(hideAlert());
+          navigation.navigate('RemoteServers');
+        }},
+      ],
+    ));
+  };
+
+  const runLANDiscovery = async () => {
+    let discovered: Awaited<ReturnType<typeof discoverLANServers>>;
+    try {
+      discovered = await discoverLANServers();
+    } catch (error) {
+      logger.warn('[HomeScreen] LAN discovery skipped:', (error as Error).message);
+      return;
+    }
+    if (discovered.length === 0) return;
+
+    const store = useRemoteServerStore.getState();
+    const existingServers = store.servers;
+    const existingEndpoints = new Set(existingServers.map(s => s.endpoint.replace(/\/$/, '')));
+
+    const newServersToAdd: typeof discovered = [];
+
+    for (const d of discovered) {
+      if (existingEndpoints.has(d.endpoint.replace(/\/$/, ''))) continue;
+
+      const dPort = getPort(d.endpoint);
+      const samePortServer = dPort
+        ? existingServers.find(s => getPort(s.endpoint) === dPort)
+        : null;
+
+      if (samePortServer) {
+        await updateExistingServerAtNewIP(store, samePortServer, d);
+      } else {
+        newServersToAdd.push(d);
+      }
+    }
+
+    await addNewServersAndNotify(newServersToAdd);
+  };
 
   const loadData = async () => {
     if (!deviceInfo) {
@@ -205,8 +313,8 @@ export const useHomeScreen = (navigation: HomeScreenNavigationProp) => {
     ? (remoteDiscoveredModels[activeServerId] || []).find((m) => m.id === activeRemoteImageModelId)
     : null;
 
-  const activeTextModel = downloadedModels.find((m) => m.id === activeModelId) || activeRemoteTextModel || null;
-  const activeImageModel = downloadedImageModels.find((m) => m.id === activeImageModelId) || activeRemoteImageModel || null;
+  const activeTextModel = activeRemoteTextModel || downloadedModels.find((m) => m.id === activeModelId) || null;
+  const activeImageModel = activeRemoteImageModel || downloadedImageModels.find((m) => m.id === activeImageModelId) || null;
   const recentConversations = conversations.slice(0, 4);
 
   // Get all remote text models (non-vision)
@@ -225,6 +333,10 @@ export const useHomeScreen = (navigation: HomeScreenNavigationProp) => {
     setPickerType(null);
     setLoadingState({ isLoading: true, type: 'text', modelName: model.name });
     try {
+      // Unload any active local model first — only one active model at a time
+      if (activeModelId) {
+        await activeModelService.unloadTextModel();
+      }
       await remoteServerManager.setActiveRemoteTextModel(model.serverId, model.id);
       logger.log('[useHomeScreen] Remote text model set successfully');
     } catch (_error) {
@@ -233,7 +345,7 @@ export const useHomeScreen = (navigation: HomeScreenNavigationProp) => {
     } finally {
       setLoadingState({ isLoading: false, type: null, modelName: null });
     }
-  }, [setPickerType, setLoadingState, setAlertState]);
+  }, [activeModelId, setPickerType, setLoadingState, setAlertState]);
 
   const handleUnloadRemoteTextModel = useCallback(async () => {
     setPickerType(null);

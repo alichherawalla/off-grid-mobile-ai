@@ -1450,4 +1450,75 @@ describe('Image Generation Flow Integration', () => {
       expect(imageGenerationService.getState().isGenerating).toBe(false);
     });
   });
+
+  describe('OpenCL kernel cache branches', () => {
+    it('logs warning and sets isFirstGpuRun=false when hasKernelCache throws', async () => {
+      const imageModel = setupImageModelState();
+      useAppStore.setState({
+        ...useAppStore.getState(),
+        settings: { ...useAppStore.getState().settings, imageUseOpenCL: true },
+      });
+
+      mockLocalDreamService.isModelLoaded.mockResolvedValue(true);
+      mockLocalDreamService.getLoadedModelPath.mockResolvedValue(imageModel.modelPath);
+      mockLocalDreamService.getLoadedThreads.mockReturnValue(4);
+      mockLocalDreamService.hasKernelCache.mockRejectedValueOnce(new Error('cache check failed'));
+
+      // Track status updates
+      const statusUpdates: (string | null)[] = [];
+      const unsub = imageGenerationService.subscribe(s => { if (s.status) statusUpdates.push(s.status); });
+
+      await imageGenerationService.generateImage({ prompt: 'test' });
+
+      unsub();
+      // When hasKernelCache throws, isFirstGpuRun=false, so regular status is used
+      expect(statusUpdates.some(s => s?.includes('Starting image generation'))).toBe(true);
+    });
+
+    it('uses regular progress status when kernel cache exists (isFirstGpuRun=false)', async () => {
+      const imageModel = setupImageModelState();
+      useAppStore.setState({
+        ...useAppStore.getState(),
+        settings: { ...useAppStore.getState().settings, imageUseOpenCL: true },
+      });
+
+      mockLocalDreamService.isModelLoaded.mockResolvedValue(true);
+      mockLocalDreamService.getLoadedModelPath.mockResolvedValue(imageModel.modelPath);
+      mockLocalDreamService.getLoadedThreads.mockReturnValue(4);
+      mockLocalDreamService.hasKernelCache.mockResolvedValue(true); // cache exists
+
+
+      mockLocalDreamService.generateImage.mockImplementation(async (_params, progressCb) => {
+        progressCb?.({ step: 5, totalSteps: 20, progress: 0.25 });
+        return {
+          id: 'img-1', prompt: 'test', imagePath: '/path/img.png',
+          width: 512, height: 512, steps: 20, seed: 1, modelId: 'img-model-1',
+          createdAt: new Date().toISOString(),
+        };
+      });
+
+      const statusUpdates: (string | null)[] = [];
+      const unsub = imageGenerationService.subscribe(s => { if (s.status) statusUpdates.push(s.status); });
+
+      await imageGenerationService.generateImage({ prompt: 'test' });
+      unsub();
+
+      // Should include the "Generating image (5/20)..." status from else branch
+      expect(statusUpdates.some(s => s?.includes('Generating image'))).toBe(true);
+    });
+  });
+
+  describe('_ensureImageModelLoaded with null activeImageModelId', () => {
+    it('returns false and sets error when activeImageModelId is null but model not loaded', async () => {
+      const fakeModel = { modelPath: '/different/path', name: 'FakeModel', id: 'fake' } as any;
+      mockLocalDreamService.isModelLoaded.mockResolvedValue(false);
+      mockLocalDreamService.getLoadedModelPath.mockResolvedValue(null);
+      mockLocalDreamService.getLoadedThreads.mockReturnValue(4);
+
+      const result = await (imageGenerationService as any)._ensureImageModelLoaded(null, fakeModel, 4);
+
+      expect(result).toBe(false);
+      expect(imageGenerationService.getState().error).toBe('No image model selected');
+    });
+  });
 });

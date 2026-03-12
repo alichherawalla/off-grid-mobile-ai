@@ -66,6 +66,8 @@ export interface GenerationOptions {
   tools?: ToolDefinition[];
   /** Stop sequences */
   stopSequences?: string[];
+  /** Whether to enable thinking/reasoning mode (Ollama: sends "think" param; others: parsed from response) */
+  enableThinking?: boolean;
 }
 
 /** Tool definition for function calling */

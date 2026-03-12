@@ -144,5 +144,17 @@ describe('Tool Registry', () => {
       expect(hint).not.toContain('get_current_datetime');
       expect(hint).not.toContain('get_device_info');
     });
+
+    it('includes read_url usage hint when read_url is enabled', () => {
+      const hint = buildToolSystemPromptHint(['read_url']);
+      expect(hint).toContain('read_url');
+      expect(hint).toContain('URL');
+    });
+
+    it('includes get_current_datetime usage hint when enabled', () => {
+      const hint = buildToolSystemPromptHint(['get_current_datetime']);
+      expect(hint).toContain('get_current_datetime');
+      expect(hint).toContain('time or date');
+    });
   });
 });

@@ -11,7 +11,6 @@ import {
   Dimensions,
   Platform,
   Keyboard,
-  KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, useThemedStyles } from '../theme';
@@ -105,6 +104,7 @@ export const AppSheet: React.FC<AppSheetProps> = ({
   const { bottom: bottomInset } = useSafeAreaInsets();
 
   const [modalVisible, setModalVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
@@ -212,6 +212,15 @@ export const AppSheet: React.FC<AppSheetProps> = ({
     }
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Track keyboard height so the sheet lifts above the keyboard
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => setKeyboardHeight(e.endCoordinates.height));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
+
   // Called by Modal when the Dialog is fully rendered and ready for touch
   const handleModalShow = useCallback(() => {
     if (pendingAnimateIn.current) {
@@ -255,10 +264,7 @@ export const AppSheet: React.FC<AppSheetProps> = ({
       statusBarTranslucent
       hardwareAccelerated
     >
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+      <View style={styles.container}>
         {/* Backdrop — gated by backdropEnabled ref so the long-press
             finger-up can't close the sheet during animate-in */}
         <TouchableWithoutFeedback onPress={handleBackdropPress}>
@@ -281,6 +287,7 @@ export const AppSheet: React.FC<AppSheetProps> = ({
               borderTopWidth: levelTokens.borderTopWidth,
               borderColor: levelTokens.borderColor,
               transform: [{ translateY }],
+              marginBottom: keyboardHeight,
             },
           ]}
         >
@@ -319,12 +326,12 @@ export const AppSheet: React.FC<AppSheetProps> = ({
           {/* Content */}
           {children}
 
-          {/* Bottom safe area spacer for edge-to-edge displays */}
-          {bottomInset > 0 && (
+          {/* Bottom safe area spacer — hidden when keyboard is up (keyboard height includes it) */}
+          {bottomInset > 0 && keyboardHeight === 0 && (
             <View testID="bottom-safe-area-spacer" style={{ height: bottomInset }} />
           )}
         </Animated.View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 };

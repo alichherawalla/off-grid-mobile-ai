@@ -61,9 +61,9 @@ describe('discoverLANServers', () => {
   });
 
   it.each([
-    ['ollama',   '192.168.1.10', 11434, 'Ollama (192.168.1.10)'],
-    ['lmstudio', '192.168.1.20', 1234,  'LM Studio (192.168.1.20)'],
-    ['localai',  '192.168.1.30', 8080,  'LocalAI (192.168.1.30)'],
+    ['ollama',   '192.168.1.10', 11434, 'Ollama (192.168.1.10)'],   // NOSONAR
+    ['lmstudio', '192.168.1.20', 1234,  'LM Studio (192.168.1.20)'], // NOSONAR
+    ['localai',  '192.168.1.30', 8080,  'LocalAI (192.168.1.30)'],  // NOSONAR
   ])('discovers a %s server', async (type, ip, port, name) => {
     mockGetIpAddress.mockResolvedValue('192.168.1.42'); // NOSONAR
     const probeUrl = `http://${ip}:${port}/v1/models`; // NOSONAR

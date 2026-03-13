@@ -341,12 +341,13 @@ function buildStreamHandler(
 }
 
 function emitFinalResponse(ctx: ToolLoopContext, displayResponse: string, streamedContent: string): void {
-  if (displayResponse && !streamedContent) {
+  if (!streamedContent) {
+    // No tokens were streamed — deliver the final response (may be empty after tool calls)
     ctx.onThinkingDone();
     ctx.callbacks?.onFirstToken?.();
-    ctx.onFinalResponse(displayResponse);
+    ctx.onFinalResponse(displayResponse || '_(No response)_');
   }
-  // If streamedContent is set, onThinkingDone was already called by buildStreamHandler on first token
+  // If streamedContent is set, content was already delivered via streaming and onThinkingDone was called on first token
 }
 
 /**

@@ -1,4 +1,3 @@
-/* eslint-disable max-lines, max-params */
 /**
  * Tool-calling generation loop.
  * Extracted to keep generationService.ts under the max-lines limit.
@@ -6,32 +5,24 @@
 
 import { llmService } from './llm';
 import type { StreamToken } from './llm';
-import { useChatStore, useRemoteServerStore } from '../stores';
+import { useChatStore, useRemoteServerStore, useAppStore } from '../stores';
 import { Message } from '../types';
 import { getToolsAsOpenAISchema, executeToolCall } from './tools';
 import type { ToolCall, ToolResult } from './tools/types';
 import { providerRegistry } from './providers';
 import type { GenerationOptions, CompletionResult } from './providers/types';
-import { useAppStore } from '../stores';
 import logger from '../utils/logger';
 
 const MAX_TOOL_ITERATIONS = 3;
 const MAX_TOTAL_TOOL_CALLS = 5;
 type StreamChunk = string | StreamToken;
 
-/**
- * Parse the XML-like tool call format that some models emit:
- *   <tool_call><function=NAME><parameter=KEY>VALUE<parameter=KEY2>VALUE2</tool_call>
- * or without a closing tag (model hits EOS):
- *   <tool_call><function=NAME><parameter=KEY>VALUE
- */
+/** Parse XML-like tool call: <tool_call><function=NAME><parameter=KEY>VALUE... */
 function parseXmlStyleToolCall(body: string, idSuffix: number): ToolCall | null {
   const funcMatch = body.match(/<function=(\w+)>/);
   if (!funcMatch) return null;
-
   const name = funcMatch[1];
   const args: Record<string, any> = {};
-
   // Extract all <parameter=KEY>VALUE pairs, stopping at next param, closing tags, or end
   const paramPattern = /<parameter=(\w+)>([\s\S]*?)(?=<parameter=|<\/|$)/g;
   let pm;
@@ -50,27 +41,14 @@ function parseXmlStyleToolCall(body: string, idSuffix: number): ToolCall | null 
 function parseToolCallBody(body: string, idSuffix: number): ToolCall | null {
   try {
     const parsed = JSON.parse(body);
-    if (parsed.name) {
-      return {
-        id: `text-tc-${Date.now()}-${idSuffix}`,
-        name: parsed.name,
-        arguments: parsed.arguments || parsed.parameters || {},
-      };
-    }
-  } catch {
-    // Not JSON — fall through to XML
-  }
+    if (parsed.name) return { id: `text-tc-${Date.now()}-${idSuffix}`, name: parsed.name, arguments: parsed.arguments || parsed.parameters || {} };
+  } catch { /* Not JSON — fall through to XML */ }
   return parseXmlStyleToolCall(body, idSuffix);
 }
 
 /**
- * Parse tool calls from text output (fallback for small models that emit
- * <tool_call> tags as text instead of using the structured tool calling format).
- *
- * Supports two formats:
- * 1. JSON: <tool_call>{"name":"web_search","arguments":{"query":"test"}}</tool_call>
- * 2. XML-like: <tool_call><function=web_search><parameter=query>test</tool_call>
- *    (closing tag optional — model may hit EOS first)
+ * Parse tool calls from text output (fallback for small models).
+ * Supports JSON and XML-like formats; closing tag is optional.
  */
 export function parseToolCallsFromText(text: string): { cleanText: string; toolCalls: ToolCall[] } {
   const toolCalls: ToolCall[] = [];
@@ -141,11 +119,8 @@ function normalizeStreamChunk(data: StreamChunk): StreamToken {
 
 /** Extract last user message from the loop messages for fallback context. */
 function getLastUserQuery(messages: Message[]): string {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === 'user' && messages[i].content.trim()) {
-      return messages[i].content.trim();
-    }
-  }
+  for (let i = messages.length - 1; i >= 0; i--)
+    if (messages[i].role === 'user' && messages[i].content.trim()) return messages[i].content.trim();
   return '';
 }
 
@@ -202,14 +177,10 @@ async function callRemoteLLMWithTools(
   onStream?: (data: StreamToken) => void,
 ): Promise<{ fullResponse: string; toolCalls: ToolCall[] }> {
   const activeServerId = useRemoteServerStore.getState().activeServerId;
-  if (!activeServerId) {
-    throw new Error('No remote provider active');
-  }
+  if (!activeServerId) throw new Error('No remote provider active');
 
   const provider = providerRegistry.getProvider(activeServerId);
-  if (!provider) {
-    throw new Error('Remote provider not found');
-  }
+  if (!provider) throw new Error('Remote provider not found');
 
   const settings = useAppStore.getState().settings;
   const options: GenerationOptions = {
@@ -225,13 +196,8 @@ async function callRemoteLLMWithTools(
 
   return new Promise((resolve, reject) => {
     provider.generate(messages, options, {
-      onToken: (token: string) => {
-        _fullContent += token;
-        onStream?.({ content: token });
-      },
-      onReasoning: (content: string) => {
-        onStream?.({ reasoningContent: content });
-      },
+      onToken: (token: string) => { _fullContent += token; onStream?.({ content: token }); },
+      onReasoning: (content: string) => { onStream?.({ reasoningContent: content }); },
       onComplete: (result: CompletionResult) => {
         if (result.toolCalls) {
           toolCalls = result.toolCalls.map(tc => ({
@@ -244,23 +210,9 @@ async function callRemoteLLMWithTools(
         }
         resolve({ fullResponse: result.content, toolCalls });
       },
-      onError: (error: Error) => {
-        reject(error);
-      },
+      onError: (error: Error) => { reject(error); },
     });
   });
-}
-
-async function callRemoteWithErrorHandling(
-  messages: Message[],
-  tools: any[],
-  onStream?: (data: StreamToken) => void,
-): Promise<{ fullResponse: string; toolCalls: ToolCall[] }> {
-  try {
-    return await callRemoteLLMWithTools(messages, tools, onStream);
-  } catch (e: any) {
-    throw new Error(e?.message || String(e) || 'Remote LLM error');
-  }
 }
 
 async function callLocalWithRetry(
@@ -275,40 +227,36 @@ async function callLocalWithRetry(
     } catch (e: any) {
       lastError = e;
       const msg = e?.message || String(e) || '';
-      if (isNonRetryableError(msg) || attempt >= MAX_LLM_RETRIES - 1) {
-        break;
-      }
+      if (isNonRetryableError(msg) || attempt >= MAX_LLM_RETRIES - 1) break;
       logger.log(`[ToolLoop] Error: "${msg.substring(0, 120) || '(no message)'}", stopping context and retrying (attempt ${attempt + 1}/${MAX_LLM_RETRIES})`);
-      await llmService.stopGeneration().catch(() => {});
+      await llmService.stopGeneration().catch(() => { });
       await new Promise<void>(resolve => setTimeout(resolve, (attempt + 1) * RETRY_BACKOFF_MS));
     }
   }
   throw new Error(lastError?.message || String(lastError) || 'Unknown LLM error after tool execution');
 }
 
+interface CallLLMOptions { onStream?: (data: StreamToken) => void; forceRemote?: boolean; }
+
 /** Call LLM with retry+backoff for transient native context errors. */
 async function callLLMWithRetry(
   messages: Message[],
   tools: any[],
-  onStream?: (data: StreamToken) => void,
-  forceRemote?: boolean,
+  { onStream, forceRemote }: CallLLMOptions = {},
 ): Promise<{ fullResponse: string; toolCalls: ToolCall[] }> {
   const activeServerId = useRemoteServerStore.getState().activeServerId;
-  const useRemote = forceRemote || (
-    !!activeServerId &&
-    providerRegistry.hasProvider(activeServerId) &&
-    !llmService.isModelLoaded()
-  );
-  return useRemote
-    ? callRemoteWithErrorHandling(messages, tools, onStream)
-    : callLocalWithRetry(messages, tools, onStream);
+  const useRemote = forceRemote || (!!activeServerId && providerRegistry.hasProvider(activeServerId) && !llmService.isModelLoaded());
+  if (useRemote) {
+    try { return await callRemoteLLMWithTools(messages, tools, onStream); }
+    catch (e: any) { throw new Error(e?.message || String(e) || 'Remote LLM error'); }
+  }
+  return callLocalWithRetry(messages, tools, onStream);
 }
 
 /** If no structured tool calls, try parsing <tool_call> tags from text. */
 function resolveToolCalls(fullResponse: string, toolCalls: ToolCall[]) {
-  if (toolCalls.length > 0 || !fullResponse.includes('<tool_call>')) {
+  if (toolCalls.length > 0 || !fullResponse.includes('<tool_call>'))
     return { effectiveToolCalls: toolCalls, displayResponse: fullResponse };
-  }
   const parsed = parseToolCallsFromText(fullResponse);
   if (parsed.toolCalls.length > 0) {
     logger.log(`[ToolLoop] Parsed ${parsed.toolCalls.length} tool call(s) from text output`);
@@ -317,37 +265,26 @@ function resolveToolCalls(fullResponse: string, toolCalls: ToolCall[]) {
   return { effectiveToolCalls: toolCalls, displayResponse: fullResponse };
 }
 
-interface ToolLoopState {
-  firstTokenFired: boolean;
-  streamedContent: string;
-}
+interface ToolLoopState { firstTokenFired: boolean; streamedContent: string; }
 
-function buildStreamHandler(
-  ctx: ToolLoopContext,
-  state: ToolLoopState,
-): ((data: StreamChunk) => void) | undefined {
+function buildStreamHandler(ctx: ToolLoopContext, state: ToolLoopState): ((data: StreamChunk) => void) | undefined {
   if (!ctx.onStream) return undefined;
   return (data: StreamChunk) => {
     if (ctx.isAborted()) return;
     const chunk = normalizeStreamChunk(data);
-    if (!state.firstTokenFired) {
-      state.firstTokenFired = true;
-      ctx.onThinkingDone();
-      ctx.callbacks?.onFirstToken?.();
-    }
+    if (!state.firstTokenFired) { state.firstTokenFired = true; ctx.onThinkingDone(); ctx.callbacks?.onFirstToken?.(); }
     if (chunk.content) state.streamedContent += chunk.content;
     ctx.onStream!(data);
   };
 }
 
 function emitFinalResponse(ctx: ToolLoopContext, displayResponse: string, streamedContent: string): void {
+  // If streamedContent is set, tokens were already streamed; otherwise deliver now.
   if (!streamedContent) {
-    // No tokens were streamed — deliver the final response (may be empty after tool calls)
     ctx.onThinkingDone();
     ctx.callbacks?.onFirstToken?.();
     ctx.onFinalResponse(displayResponse || '_(No response)_');
   }
-  // If streamedContent is set, content was already delivered via streaming and onThinkingDone was called on first token
 }
 
 /**
@@ -370,7 +307,7 @@ export async function runToolLoop(ctx: ToolLoopContext): Promise<void> {
       state.streamedContent = '';
       state.firstTokenFired = false;
       const forcedOnStream = buildStreamHandler(ctx, state);
-      const { fullResponse: forcedResponse } = await callLLMWithRetry(loopMessages, [], forcedOnStream, ctx.forceRemote);
+      const { fullResponse: forcedResponse } = await callLLMWithRetry(loopMessages, [], { onStream: forcedOnStream, forceRemote: ctx.forceRemote });
       emitFinalResponse(ctx, forcedResponse, state.streamedContent);
       return;
     }
@@ -379,8 +316,7 @@ export async function runToolLoop(ctx: ToolLoopContext): Promise<void> {
     logger.log(`[ToolLoop] Iteration ${iteration}, messages: ${loopMessages.length}, tools: ${toolSchemas.length}, totalCalls: ${totalToolCalls}`);
 
     const onStream = buildStreamHandler(ctx, state);
-
-    const { fullResponse, toolCalls } = await callLLMWithRetry(loopMessages, toolSchemas, onStream, ctx.forceRemote);
+    const { fullResponse, toolCalls } = await callLLMWithRetry(loopMessages, toolSchemas, { onStream, forceRemote: ctx.forceRemote });
 
     const { effectiveToolCalls, displayResponse } = resolveToolCalls(fullResponse, toolCalls);
     const cappedToolCalls = effectiveToolCalls.slice(0, MAX_TOTAL_TOOL_CALLS - totalToolCalls);

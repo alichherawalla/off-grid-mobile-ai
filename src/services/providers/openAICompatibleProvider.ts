@@ -18,7 +18,6 @@ import { ThinkTagParser, processDelta, generateOllamaChatImpl } from './openAICo
 import { buildOpenAIMessagesImpl } from './openAIMessageBuilder';
 import type {
   OpenAIChatMessage,
-  OpenAIToolCall,
   OpenAIConfig,
   OpenAIStreamState,
 } from './openAICompatibleTypes';

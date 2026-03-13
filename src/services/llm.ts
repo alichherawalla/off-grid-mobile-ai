@@ -284,16 +284,9 @@ class LLMService {
     return { contextMemoryMB, totalEstimatedMB: contextMemoryMB };
   }
   getGpuInfo() {
-    let backend: string;
-    if (this.gpuEnabled) {
-      if (Platform.OS === 'ios') {
-        backend = 'Metal';
-      } else {
-        backend = this.gpuDevices.length > 0 ? this.gpuDevices.join(', ') : 'OpenCL';
-      }
-    } else {
-      backend = 'CPU';
-    }
+    const backend = this.gpuEnabled
+      ? (Platform.OS === 'ios' ? 'Metal' : (this.gpuDevices.length > 0 ? this.gpuDevices.join(', ') : 'OpenCL'))
+      : 'CPU';
     return { gpu: this.gpuEnabled, gpuBackend: backend, gpuLayers: this.activeGpuLayers, reasonNoGPU: this.gpuReason };
   }
   isCurrentlyGenerating(): boolean { return this.isGenerating; }

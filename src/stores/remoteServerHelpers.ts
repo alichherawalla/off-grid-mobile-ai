@@ -1,0 +1,233 @@
+
+/**
+ * Remote Server Helpers
+ *
+ * Pure async helpers for testing server connections and fetching model lists.
+ * Extracted from remoteServerStore to keep the store file under the line limit.
+ */
+
+import { RemoteServer, RemoteModel, ServerTestResult } from '../types';
+import { testEndpoint, detectServerType } from '../services/httpClient';
+import logger from '../utils/logger';
+import {
+  fetchOllamaModelInfo,
+  fetchLmStudioModelInfo,
+  isGenerativeModel,
+} from './remoteModelCapabilities';
+
+export async function testServerConnection(server: RemoteServer): Promise<ServerTestResult> {
+  try {
+    const testResult = await testEndpoint(server.endpoint, 10000);
+
+    if (!testResult.success) {
+      return {
+        success: false,
+        error: testResult.error,
+        latency: testResult.latency,
+      };
+    }
+
+    // Try to discover models
+    const models = await fetchModelsFromServer(server);
+
+    // Detect server type
+    const serverType = await detectServerType(server.endpoint);
+
+    return {
+      success: true,
+      latency: testResult.latency,
+      models,
+      serverInfo: {
+        name: serverType?.type,
+        version: serverType?.version,
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+export async function testEndpointAndGetModels(
+  endpoint: string,
+  apiKey?: string,
+): Promise<ServerTestResult> {
+  try {
+    const testResult = await testEndpoint(endpoint, 10000);
+
+    if (!testResult.success) {
+      return {
+        success: false,
+        error: testResult.error,
+        latency: testResult.latency,
+      };
+    }
+
+    // Try to discover models with a temporary server config
+    const tempServer: RemoteServer = {
+      id: 'temp',
+      name: 'temp',
+      endpoint,
+      providerType: 'openai-compatible',
+      createdAt: new Date().toISOString(),
+      apiKey,
+    };
+
+    const models = await fetchModelsFromServer(tempServer);
+    const serverType = await detectServerType(endpoint);
+
+    return {
+      success: true,
+      latency: testResult.latency,
+      models,
+      serverInfo: {
+        name: serverType?.type,
+        version: serverType?.version,
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+export async function fetchModelsFromServer(server: RemoteServer): Promise<RemoteModel[]> {
+  let url = server.endpoint;
+  while (url.endsWith('/')) url = url.slice(0, -1);
+
+  // Headers for authentication
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  };
+  if (server.apiKey) {
+    headers.Authorization = `Bearer ${server.apiKey}`;
+  }
+
+  // Try OpenAI-compatible endpoint first
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(`${url}/v1/models`, {
+      method: 'GET',
+      headers,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const data = await response.json();
+
+      // OpenAI format: { object: "list", data: [{ id, object, owned_by, ... }] }
+      if (data?.object === 'list' && Array.isArray(data.data)) {
+        const isLmStudio = url.includes(':1234');
+        const isOllama = url.includes(':11434');
+        const generativeModels = data.data.filter((model: { id: string }) => isGenerativeModel(model.id));
+        const modelInfos = await Promise.all(
+          generativeModels.map((model: { id: string }) => {
+            if (isOllama) return fetchOllamaModelInfo(url, model.id);
+            if (isLmStudio) return fetchLmStudioModelInfo(url, model.id);
+            return Promise.resolve({ contextLength: 4096, supportsVision: false });
+          })
+        );
+        return generativeModels.map((model: { id: string; owned_by?: string; max_context_length?: number }, i: number) => ({
+          id: model.id,
+          name: model.id,
+          serverId: server.id,
+          capabilities: {
+            supportsVision: modelInfos[i].supportsVision,
+            supportsToolCalling: false,
+            supportsThinking: false,
+            maxContextLength: modelInfos[i].contextLength,
+          },
+          lastUpdated: new Date().toISOString(),
+        }));
+      }
+
+      // Ollama format via /v1/models: { models: [{ name, ... }] }
+      if (Array.isArray(data.models)) {
+        const isOllama = url.includes(':11434');
+        const generativeModels = data.models.filter(
+          (model: { name: string }) => isGenerativeModel(model.name)
+        );
+        const modelInfos = await Promise.all(
+          generativeModels.map((model: { name: string }) =>
+            isOllama ? fetchOllamaModelInfo(url, model.name) : Promise.resolve({ contextLength: 4096, supportsVision: false })
+          )
+        );
+        return generativeModels.map(
+          (model: { name: string; details?: Record<string, unknown> }, i: number) => ({
+            id: model.name,
+            name: model.name,
+            serverId: server.id,
+            capabilities: {
+              supportsVision: modelInfos[i].supportsVision,
+              supportsToolCalling: false,
+              supportsThinking: false,
+              maxContextLength: modelInfos[i].contextLength,
+            },
+            details: model.details,
+            lastUpdated: new Date().toISOString(),
+          })
+        );
+      }
+    }
+  } catch (error) {
+    logger.warn('[RemoteServer] Failed to fetch from /v1/models:', error);
+  }
+
+  // Try Ollama-specific endpoint
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(`${url}/api/tags`, {
+      method: 'GET',
+      headers,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const data = await response.json();
+
+      if (Array.isArray(data.models)) {
+        const isOllama = url.includes(':11434');
+        const generativeModels = data.models.filter(
+          (model: { name: string }) => isGenerativeModel(model.name)
+        );
+        const modelInfos = await Promise.all(
+          generativeModels.map((model: { name: string }) =>
+            isOllama ? fetchOllamaModelInfo(url, model.name) : Promise.resolve({ contextLength: 4096, supportsVision: false })
+          )
+        );
+        return generativeModels.map(
+          (model: { name: string; details?: Record<string, unknown> }, i: number) => ({
+            id: model.name,
+            name: model.name,
+            serverId: server.id,
+            capabilities: {
+              supportsVision: modelInfos[i].supportsVision,
+              supportsToolCalling: false,
+              supportsThinking: false,
+              maxContextLength: modelInfos[i].contextLength,
+            },
+            details: model.details,
+            lastUpdated: new Date().toISOString(),
+          })
+        );
+      }
+    }
+  } catch (error) {
+    logger.warn('[RemoteServer] Failed to fetch from /api/tags:', error);
+  }
+
+  // No models found
+  return [];
+}

@@ -292,7 +292,7 @@ type ModelStateSyncDeps = {
   activeModelId: string | null;
   activeModel: DownloadedModel | undefined;
   modelDeps: any;
-  activeRemoteModel: { capabilities?: { supportsVision?: boolean } } | null;
+  activeRemoteModel: { capabilities?: { supportsVision?: boolean; supportsToolCalling?: boolean; supportsThinking?: boolean } } | null;
   activeRemoteTextModelId: string | null;
   isModelLoading: boolean;
   setSupportsVision: (v: boolean) => void;
@@ -318,8 +318,8 @@ export function useChatModelStateSync(deps: ModelStateSyncDeps): void {
   }, [activeModelInfo.isRemote, activeRemoteModel?.capabilities?.supportsVision, activeModel?.mmProjPath]);
   useEffect(() => {
     if (activeRemoteTextModelId) {
-      setSupportsToolCalling(true);
-      setSupportsThinking(true);
+      setSupportsToolCalling(activeRemoteModel?.capabilities?.supportsToolCalling ?? false);
+      setSupportsThinking(activeRemoteModel?.capabilities?.supportsThinking ?? false);
     } else if (llmService.isModelLoaded()) {
       setSupportsToolCalling(llmService.supportsToolCalling());
       setSupportsThinking(llmService.supportsThinking());
@@ -328,5 +328,5 @@ export function useChatModelStateSync(deps: ModelStateSyncDeps): void {
       setSupportsThinking(false);
     }
 
-  }, [activeModelId, isModelLoading, activeRemoteTextModelId]);
+  }, [activeModelId, isModelLoading, activeRemoteTextModelId, activeRemoteModel?.capabilities?.supportsToolCalling, activeRemoteModel?.capabilities?.supportsThinking]);
 }

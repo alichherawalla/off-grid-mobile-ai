@@ -279,8 +279,8 @@ export const AppSheet: React.FC<AppSheetProps> = ({
             styles.sheet,
             {
               ...(enableDynamicSizing
-                ? { maxHeight: SCREEN_HEIGHT * 0.85 }
-                : { height: sheetMaxHeight }),
+                ? { maxHeight: SCREEN_HEIGHT * 0.85 - keyboardHeight }
+                : { height: sheetMaxHeight - keyboardHeight }),
               backgroundColor: levelTokens.backgroundColor,
               borderTopLeftRadius: levelTokens.borderRadius,
               borderTopRightRadius: levelTokens.borderRadius,

@@ -113,7 +113,7 @@ export async function fetchModelsFromServer(server: RemoteServer): Promise<Remot
   // Try OpenAI-compatible endpoint first
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
     const response = await fetch(`${url}/v1/models`, {
       method: 'GET',
@@ -184,7 +184,7 @@ export async function fetchModelsFromServer(server: RemoteServer): Promise<Remot
   // Try Ollama-specific endpoint
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
     const response = await fetch(`${url}/api/tags`, {
       method: 'GET',

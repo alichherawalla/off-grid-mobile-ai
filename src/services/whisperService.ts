@@ -91,7 +91,7 @@ class WhisperService {
 
     const stat = await RNFS.stat(modelPath);
     const fileSize = Number(stat.size);
-    if (isNaN(fileSize) || fileSize < WhisperService.MIN_MODEL_FILE_SIZE) {
+    if (Number.isNaN(fileSize) || fileSize < WhisperService.MIN_MODEL_FILE_SIZE) {
       // Remove the corrupted file so the user can re-download
       await RNFS.unlink(modelPath).catch(() => {});
       throw new Error(
@@ -212,7 +212,7 @@ class WhisperService {
     this.isTranscribing = true;
 
     // Create a promise that resolves when the native side fully finishes
-    let resolveTranscriptionStopped: () => void;
+    let resolveTranscriptionStopped: () => void = () => {};
     this.transcriptionFullyStopped = new Promise<void>(resolve => {
       resolveTranscriptionStopped = resolve;
     });
@@ -221,7 +221,7 @@ class WhisperService {
       // Guard: context could have been released during the async permission check
       if (!this.context) {
         this.isTranscribing = false;
-        resolveTranscriptionStopped!();
+        resolveTranscriptionStopped();
         throw new Error('Whisper context was released before transcription could start');
       }
 
@@ -272,7 +272,7 @@ class WhisperService {
       logger.error('[WhisperService] transcribeRealtime error:', error);
       this.isTranscribing = false;
       this.stopFn = null;
-      resolveTranscriptionStopped!();
+      resolveTranscriptionStopped();
       throw error;
     }
   }

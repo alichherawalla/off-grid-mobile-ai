@@ -45,10 +45,10 @@ class LLMService {
   /** Serializes loadModel / unloadModel / reloadWithSettings to prevent concurrent native context init. */
   private contextMutexPromise: Promise<void> = Promise.resolve();
   private acquireContextMutex(): { release: () => void; ready: Promise<void> } {
-    let release: () => void;
+    let release: () => void = () => {};
     const prev = this.contextMutexPromise;
     this.contextMutexPromise = new Promise<void>(resolve => { release = resolve; });
-    return { release: release!, ready: prev };
+    return { release, ready: prev };
   }
   private hashString(value: string): string { return hashString(value); }
   private ensureSessionCacheDir(): Promise<void> { return ensureSessionCacheDir(this.sessionCacheDir); }

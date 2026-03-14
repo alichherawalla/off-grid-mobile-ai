@@ -1,6 +1,6 @@
 import { NativeModules, NativeEventEmitter, Platform, PermissionsAndroid } from 'react-native';
 import { BackgroundDownloadInfo, BackgroundDownloadStatus } from '../types';
-
+import logger from '../utils/logger';
 const { DownloadManagerModule } = NativeModules;
 
 interface DownloadParams {
@@ -127,8 +127,8 @@ class BackgroundDownloadService {
     }
     try {
       await DownloadManagerModule.cancelDownload(downloadId);
-    } catch (_e) {
-      // Native bridge may be torn down — treat as successful cancellation
+    } catch (e) {
+      logger.log('[BackgroundDownload] cancelDownload failed (bridge may be torn down):', e);
     }
   }
 

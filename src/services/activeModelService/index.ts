@@ -39,10 +39,10 @@ class ActiveModelService {
   /** Serializes text model load/unload so only one operation runs at a time. */
   private textMutex: Promise<void> = Promise.resolve();
   private acquireTextMutex(): { release: () => void; ready: Promise<void> } {
-    let release: () => void;
+    let release: () => void = () => {};
     const prev = this.textMutex;
     this.textMutex = new Promise<void>(resolve => { release = resolve; });
-    return { release: release!, ready: prev };
+    return { release, ready: prev };
   }
   getActiveModels(): ActiveModelInfo {
     const store = useAppStore.getState();

@@ -18,6 +18,26 @@ import { ModelFile, DownloadedModel } from '../types';
 import { RootStackParamList } from '../navigation/types';
 import logger from '../utils/logger';
 
+const RECOMMENDED_QUANTS = ['Q4_K_M', 'Q4_K_S', 'Q4_0'];
+const isRecommendedQuant = (f: ModelFile) =>
+  RECOMMENDED_QUANTS.some((q) => f.quantization.toUpperCase().includes(q.replace('_', '')));
+
+async function fetchModelFiles(models: typeof RECOMMENDED_MODELS): Promise<Record<string, ModelFile[]>> {
+  const filesMap: Record<string, ModelFile[]> = {};
+  await Promise.all(
+    models.map(async (model) => {
+      try {
+        const files = await huggingFaceService.getModelFiles(model.id);
+        const recommended = files.filter(isRecommendedQuant);
+        filesMap[model.id] = recommended.length > 0 ? recommended : files.slice(0, 2);
+      } catch (error) {
+        logger.error(`Error fetching files for ${model.id}:`, error);
+      }
+    })
+  );
+  return filesMap;
+}
+
 type ModelDownloadScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'ModelDownload'>;
 };
@@ -65,26 +85,8 @@ export const ModelDownloadScreen: React.FC<ModelDownloadScreenProps> = ({
         if (cancelled) return;
         setRecommendedModels(compatibleModels);
 
-        // Fetch files for all compatible models
-        const filesToFetch = compatibleModels;
-        const filesMap: Record<string, ModelFile[]> = {};
-
-        const RECOMMENDED_QUANTS = ['Q4_K_M', 'Q4_K_S', 'Q4_0'];
-        const isRecommendedQuant = (f: ModelFile) =>
-          RECOMMENDED_QUANTS.some((q) => f.quantization.toUpperCase().includes(q.replace('_', '')));
-
-        await Promise.all(
-          filesToFetch.map(async (model) => {
-            try {
-              const files = await huggingFaceService.getModelFiles(model.id);
-              const recommendedFiles = files.filter(isRecommendedQuant);
-              filesMap[model.id] = recommendedFiles.length > 0 ? recommendedFiles : files.slice(0, 2);
-            } catch (error) {
-              logger.error(`Error fetching files for ${model.id}:`, error);
-            }
-          })
-        );
-
+        if (cancelled) return;
+        const filesMap = await fetchModelFiles(compatibleModels);
         if (cancelled) return;
         setModelFiles(filesMap);
       } catch (error) {

@@ -278,7 +278,9 @@ export async function fitMessagesInBudget(
 export const BYTES_PER_GB = 1024 * 1024 * 1024;
 export function getMaxContextForDevice(totalMemoryBytes: number): number {
   const gb = totalMemoryBytes / BYTES_PER_GB;
-  return gb <= 6 ? 2048 : gb <= 8 ? 4096 : 8192;
+  if (gb <= 6) return 2048;
+  if (gb <= 8) return 4096;
+  return 8192;
 }
 
 // Android Adreno GPU layer caps by RAM tier to prevent ANRs from GPU contention.

@@ -98,8 +98,8 @@ class LocalDreamGeneratorService {
       const result = await DiffusionModule.unloadModel();
       this.loadedThreads = null;
       return result;
-    } catch (_e) {
-      // Native bridge may be torn down; reset local state anyway
+    } catch (e) {
+      logger.log('[LocalDream] unloadModel failed (bridge may be torn down):', e);
       this.loadedThreads = null;
       return false;
     }

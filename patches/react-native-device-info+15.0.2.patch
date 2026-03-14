@@ -1,0 +1,12 @@
+diff --git a/node_modules/react-native-device-info/android/build.gradle b/node_modules/react-native-device-info/android/build.gradle
+index e352534..ebe9346 100644
+--- a/node_modules/react-native-device-info/android/build.gradle
++++ b/node_modules/react-native-device-info/android/build.gradle
+@@ -56,7 +56,6 @@ repositories {
+ 
+ dependencies {
+   implementation "com.facebook.react:react-native:${safeExtGet('reactNativeVersion', '+')}"
+-  implementation "com.android.installreferrer:installreferrer:${safeExtGet('installReferrerVersion', '1.1.2')}"
+   def firebaseBomVersion = safeExtGet("firebaseBomVersion", null)
+   def firebaseIidVersion = safeExtGet('firebaseIidVersion', null)
+   def googlePlayServicesIidVersion = safeExtGet('googlePlayServicesIidVersion', null)

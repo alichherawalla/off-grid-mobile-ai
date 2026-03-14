@@ -34,9 +34,10 @@ When asked to push code, follow this full workflow:
 2. Create a PR using `gh pr create`. Ensure that you are adhering to the PR template. **Do NOT include "Generated with Codex" or any AI attribution in PR descriptions.**
 3. Wait for Gemini to review the PR (poll with `gh pr checks` and `gh api repos/{owner}/{repo}/pulls/{number}/reviews` until a review appears)
 4. Once a review exists, pull down the review comments: `gh api repos/{owner}/{repo}/pulls/{number}/comments` and `gh api repos/{owner}/{repo}/pulls/{number}/reviews`
-5. Address every review comment — fix the code, re-run the quality gates (tests, lint, tsc). Resolve the comment appropriately and post that on the PR directly.
-6. Push the fixes
-7. Report what was changed in response to the review
+5. Address every review comment — fix the code, re-run the quality gates (tests, lint, tsc).
+6. Reply to **each** review comment individually on the PR using `gh api` (use `/pulls/comments/{id}/replies` endpoint). Every comment must get its own reply confirming what was done — do not post a single summary comment.
+7. Push the fixes
+8. Report what was changed in response to the review
 
 ## CI Review Loop
 

@@ -5,6 +5,7 @@ import {
   GeneratedImage,
 } from '../types';
 import { generateRandomSeed } from '../utils/generateId';
+import logger from '../utils/logger';
 
 const { LocalDreamModule, CoreMLDiffusionModule } = NativeModules;
 

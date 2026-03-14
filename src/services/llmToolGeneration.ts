@@ -66,7 +66,7 @@ export async function generateWithToolsImpl(
     };
     logger.log('[LLM-Tools] === INPUT ===');
     logger.log(JSON.stringify(completionParams, null, 2));
-    const completionResult = await safeCompletion(deps.context, () => deps.context.completion(completionParams as any, (data: any) => {
+    const completionResult: any = await safeCompletion(deps.context, () => deps.context.completion(completionParams as any, (data: any) => {
       if (!generating) return;
       if (data.tool_calls) {
         for (const tc of data.tool_calls) {

@@ -176,12 +176,11 @@ function App() {
       // so getServers() / activeServerId reads see persisted data.
       await ensureRemoteServerStoreHydrated();
 
-      // Initialize remote server providers for any stored servers
-      try {
-        await remoteServerManager.initializeProviders();
-      } catch (err) {
+      // Initialize remote server providers in the background — don't block
+      // the home screen while fetching models from potentially unreachable servers.
+      remoteServerManager.initializeProviders().catch((err) => {
         logger.error('[App] Failed to initialize remote server providers:', err);
-      }
+      });
 
       // Check if passphrase is set and lock app if needed
       const hasPassphrase = await authService.hasPassphrase();

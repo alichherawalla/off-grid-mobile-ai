@@ -18,6 +18,9 @@ import {
   detectToolCallingCapability,
 } from '../services/remoteServerManagerUtils';
 
+/** Timeout for model discovery fetches (non-critical, background operation) */
+const DISCOVERY_FETCH_TIMEOUT_MS = 5000;
+
 export async function testServerConnection(server: RemoteServer): Promise<ServerTestResult> {
   try {
     const testResult = await testEndpoint(server.endpoint, 10000);
@@ -113,7 +116,7 @@ export async function fetchModelsFromServer(server: RemoteServer): Promise<Remot
   // Try OpenAI-compatible endpoint first
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), DISCOVERY_FETCH_TIMEOUT_MS);
 
     const response = await fetch(`${url}/v1/models`, {
       method: 'GET',
@@ -184,7 +187,7 @@ export async function fetchModelsFromServer(server: RemoteServer): Promise<Remot
   // Try Ollama-specific endpoint
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), DISCOVERY_FETCH_TIMEOUT_MS);
 
     const response = await fetch(`${url}/api/tags`, {
       method: 'GET',

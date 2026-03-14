@@ -188,9 +188,12 @@ export async function initializeProvidersImpl(
     }
   }
 
-  // Restore active remote model selection if persisted
-  const activeServerId = store.activeServerId;
-  const activeRemoteTextModelId = store.activeRemoteTextModelId;
+  // Restore active remote model selection if persisted.
+  // Re-read from the store to detect if the user already made a different
+  // selection while we were fetching models in the background.
+  const currentStore = useRemoteServerStore.getState();
+  const activeServerId = currentStore.activeServerId;
+  const activeRemoteTextModelId = currentStore.activeRemoteTextModelId;
 
   if (activeServerId && activeRemoteTextModelId) {
     logger.log('[RemoteServerManager] Restoring active remote model:', activeRemoteTextModelId, 'on server:', activeServerId);

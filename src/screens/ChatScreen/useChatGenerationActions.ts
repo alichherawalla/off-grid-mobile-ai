@@ -78,6 +78,11 @@ function applyCompactionPrefix(conversation: any, systemPrompt: string, messages
   }
   return { prefix, filtered };
 }
+function appendAttachmentText(text: string, attachments?: MediaAttachment[]): string {
+  if (!attachments) return text;
+  return attachments.filter(a => a.type === 'document' && a.textContent)
+    .reduce((acc, doc) => `${acc}\n\n---\n📄 **Attached Document: ${doc.fileName || 'document'}**\n\`\`\`\n${doc.textContent}\n\`\`\`\n---`, text);
+}
 function buildMessagesForContext(conversationId: string, messageText: string, systemPrompt: string): Message[] {
   const conversation = useChatStore.getState().conversations.find(c => c.id === conversationId);
   const allMessages = (conversation?.messages || []).filter(m => !m.isSystemInfo);
@@ -275,12 +280,7 @@ export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promis
     return;
   }
   const targetConversationId = deps.activeConversationId;
-  let messageText = text;
-  if (attachments) {
-    for (const doc of attachments.filter(a => a.type === 'document' && a.textContent)) {
-      messageText += `\n\n---\n📄 **Attached Document: ${doc.fileName || 'document'}**\n\`\`\`\n${doc.textContent}\n\`\`\`\n---`;
-    }
-  }
+  let messageText = appendAttachmentText(text, attachments);
   const shouldGenerateImage = imageMode !== 'disabled' && await shouldRouteToImageGenerationFn(deps, messageText, imageMode === 'force');
   if (shouldGenerateImage && deps.activeImageModel) {
     await handleImageGenerationFn(deps, { prompt: text, conversationId: targetConversationId });
@@ -318,21 +318,22 @@ export async function regenerateResponseFn(deps: GenerationDeps, call: Regenerat
   const { userMessage } = call;
   if (!deps.activeConversationId || !deps.hasActiveModel) return;
   const targetConversationId = deps.activeConversationId;
-  const shouldGenerateImage = await shouldRouteToImageGenerationFn(deps, userMessage.content);
+  const messageText = appendAttachmentText(userMessage.content, userMessage.attachments);
+  const shouldGenerateImage = await shouldRouteToImageGenerationFn(deps, messageText);
   if (shouldGenerateImage && deps.activeImageModel) {
     await handleImageGenerationFn(deps, { prompt: userMessage.content, conversationId: targetConversationId, skipUserMessage: true });
     return;
   }
-  // For local models, check if model is loaded
   if (!deps.activeModelInfo?.isRemote && !llmService.isModelLoaded()) return;
   deps.generatingForConversationRef.current = targetConversationId;
   const conversation = useChatStore.getState().conversations.find(c => c.id === targetConversationId);
   const messages = (conversation?.messages || []).filter((m: Message) => !m.isSystemInfo);
-  const messagesUpToUser = messages.slice(0, messages.findIndex((m: Message) => m.id === userMessage.id) + 1);
+  const messagesUpToUser = messages.slice(0, messages.findIndex((m: Message) => m.id === userMessage.id) + 1)
+    .map(m => m.id === userMessage.id ? { ...m, content: messageText } : m);
   const { enabledTools, rawPrompt } = resolveToolsAndPrompt(deps, conversation);
   const isRemote = !!useRemoteServerStore.getState().activeRemoteTextModelId;
-  const activeTools = (isRemote || shouldUseToolsForMessage(userMessage.content, enabledTools)) ? enabledTools : [];
-  const basePrompt = await injectRagContext(conversation?.projectId, userMessage.content, rawPrompt);
+  const activeTools = (isRemote || shouldUseToolsForMessage(messageText, enabledTools)) ? enabledTools : [];
+  const basePrompt = await injectRagContext(conversation?.projectId, messageText, rawPrompt);
   const systemPrompt = (!isRemote && activeTools.length > 0) ? `${basePrompt}${buildToolSystemPromptHint(activeTools)}` : basePrompt;
   const { prefix, filtered } = applyCompactionPrefix(conversation, systemPrompt, messagesUpToUser);
   try {

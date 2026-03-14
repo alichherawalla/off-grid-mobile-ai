@@ -41,7 +41,9 @@ class RagService {
     }
 
     onProgress?.({ stage: 'extracting', message: `Extracting text from ${fileName}...` });
-    const attachment = await documentService.processDocumentFromPath(filePath, fileName);
+    // Extract full document text for RAG — don't truncate based on context window
+    const RAG_MAX_CHARS = 500_000;
+    const attachment = await documentService.processDocumentFromPath(filePath, fileName, RAG_MAX_CHARS);
     if (!attachment?.textContent) {
       throw new Error('Could not extract text from document');
     }

@@ -150,7 +150,7 @@ class DocumentService {
   /**
    * Process a document from a file path
    */
-  async processDocumentFromPath(filePath: string, fileName?: string): Promise<MediaAttachment | null> {
+  async processDocumentFromPath(filePath: string, fileName?: string, maxCharsOverride?: number): Promise<MediaAttachment | null> {
     try {
       console.log(`[DocumentService] Processing document - filePath: ${filePath}, fileName: ${fileName}`);
       const name = fileName || filePath.split('/').pop() || 'document';
@@ -183,8 +183,7 @@ class DocumentService {
         throw new Error(`File is too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
       }
 
-      const contextLength = useAppStore.getState().settings.contextLength || APP_CONFIG.maxContextLength;
-      const maxChars = Math.floor(contextLength * 4 * 0.5);
+      const maxChars = maxCharsOverride ?? Math.floor((useAppStore.getState().settings.contextLength || APP_CONFIG.maxContextLength) * 4 * 0.5);
       const textContent = await this.readContent(resolvedPath, isPdf, maxChars);
       const { id, uri } = await this.savePersistentCopy(resolvedPath, filePath, name);
 

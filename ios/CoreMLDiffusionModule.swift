@@ -298,6 +298,14 @@ class CoreMLDiffusionModule: RCTEventEmitter {
         }
         try pngData.write(to: imagePath)
 
+        // Release the pipeline immediately after generation to free memory.
+        // On iOS devices the CoreML pipeline holds 1-2 GB+ even when idle;
+        // keeping it loaded while the user navigates causes blank screens and
+        // UI hangs.  The model will auto-reload on the next generation request.
+        self.pipeline = nil
+        self.loadedModelPath = nil
+        NSLog("[CoreMLDiffusion] Pipeline released after successful generation to reclaim memory")
+
         resolve([
           "id": imageId,
           "imagePath": imagePath.path,

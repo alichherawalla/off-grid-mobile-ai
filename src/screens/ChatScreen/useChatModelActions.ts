@@ -319,7 +319,7 @@ export function useChatModelStateSync(deps: ModelStateSyncDeps): void {
       setSupportsVision(false);
     }
 
-  }, [activeModelInfo.isRemote, activeRemoteModel?.capabilities?.supportsVision, activeModel?.mmProjPath]);
+  }, [activeModelInfo.isRemote, activeRemoteModel?.capabilities?.supportsVision, activeModel?.mmProjPath, isModelLoading]);
   useEffect(() => {
     if (activeRemoteTextModelId) {
       setSupportsToolCalling(activeRemoteModel?.capabilities?.supportsToolCalling ?? false);

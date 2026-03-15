@@ -435,7 +435,7 @@ describe('downloadCoreMLTokenizerFiles', () => {
     logSpy.mockRestore();
   });
 
-  it('handles downloadFile promise rejection', async () => {
+  it('handles downloadFile promise rejection gracefully', async () => {
     const modelDir = '/data/models/sd21';
     const repo = 'apple/coreml-stable-diffusion-2-1-base';
 
@@ -446,9 +446,10 @@ describe('downloadCoreMLTokenizerFiles', () => {
       promise: Promise.reject(new Error('Network error')),
     } as any);
 
+    // Per-file errors are caught — function resolves without throwing
     await expect(
       downloadCoreMLTokenizerFiles(modelDir, repo),
-    ).rejects.toThrow('Network error');
+    ).resolves.toBeUndefined();
   });
 
   it('downloads files sequentially (merges.txt first, then vocab.json)', async () => {

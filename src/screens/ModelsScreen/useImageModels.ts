@@ -50,9 +50,6 @@ async function handleCompletedImageDownload(opts: {
     };
     await registerAndNotify(deps, { imageModel, modelName: metadata.imageModelName!, downloadId });
   } else if (metadata.imageDownloadType === 'multifile') {
-    if (metadata.imageModelBackend === 'coreml' && metadata.imageModelRepo) {
-      await downloadCoreMLTokenizerFiles(modelDir, metadata.imageModelRepo);
-    }
     const imageModel: ONNXImageModel = {
       id: modelId, name: metadata.imageModelName!, description: metadata.imageModelDescription!,
       modelPath: modelDir, downloadedAt: new Date().toISOString(),
@@ -60,6 +57,10 @@ async function handleCompletedImageDownload(opts: {
       backend: metadata.imageModelBackend as ONNXImageModel['backend'],
     };
     await registerAndNotify(deps, { imageModel, modelName: metadata.imageModelName!, downloadId });
+    // Fetch tokenizer files in background after model is registered
+    if (metadata.imageModelBackend === 'coreml' && metadata.imageModelRepo) {
+      downloadCoreMLTokenizerFiles(modelDir, metadata.imageModelRepo).catch(() => {});
+    }
   }
 }
 

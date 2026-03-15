@@ -31,14 +31,19 @@ export async function resolveCoreMLModelDir(modelDir: string): Promise<string> {
  */
 export async function downloadCoreMLTokenizerFiles(modelDir: string, repo: string): Promise<void> {
   const files = ['merges.txt', 'vocab.json'];
-  for (const file of files) {
+  // Download in parallel — these are tiny files and independent of each other
+  await Promise.all(files.map(async (file) => {
     const destPath = `${modelDir}/${file}`;
-    if (await RNFS.exists(destPath)) continue;
+    if (await RNFS.exists(destPath)) return;
     const url = `https://huggingface.co/${repo}/resolve/main/${file}`;
     logger.log(`[CoreML] Downloading tokenizer file: ${file}`);
-    const result = await RNFS.downloadFile({ fromUrl: url, toFile: destPath }).promise;
-    if (result.statusCode !== 200) {
-      logger.warn(`[CoreML] Failed to download ${file}: HTTP ${result.statusCode}`);
+    try {
+      const result = await RNFS.downloadFile({ fromUrl: url, toFile: destPath }).promise;
+      if (result.statusCode !== 200) {
+        logger.warn(`[CoreML] Failed to download ${file}: HTTP ${result.statusCode}`);
+      }
+    } catch (e) {
+      logger.warn(`[CoreML] Tokenizer download failed for ${file}:`, e);
     }
-  }
+  }));
 }

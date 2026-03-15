@@ -164,13 +164,17 @@ export async function downloadCoreMLMultiFile(
       imageDownloadType: 'multifile',
     });
     const listeners = wireDownloadListeners({ downloadId: downloadInfo.downloadId, modelId: modelInfo.id, deps }, async () => {
-      if (modelInfo.backend === 'coreml' && modelInfo.repo) await downloadCoreMLTokenizerFiles(modelDir, modelInfo.repo);
       const imageModel: ONNXImageModel = {
         id: modelInfo.id, name: modelInfo.name, description: modelInfo.description,
         modelPath: modelDir, downloadedAt: new Date().toISOString(),
         size: modelInfo.size, style: modelInfo.style, backend: modelInfo.backend,
       };
+      // Register model first so UI unblocks, then fetch tokenizer files in background.
+      // Tokenizer files are only needed at generation time, not for model registration.
       await registerAndNotify(deps, { imageModel, modelName: modelInfo.name, downloadId: downloadInfo.downloadId });
+      if (modelInfo.backend === 'coreml' && modelInfo.repo) {
+        downloadCoreMLTokenizerFiles(modelDir, modelInfo.repo).catch(() => {});
+      }
     });
     listeners.setProgressUnsub(backgroundDownloadService.onProgress(downloadInfo.downloadId, (ev) => {
       deps.updateModelProgress(modelInfo.id, ev.totalBytes > 0 ? (ev.bytesDownloaded / ev.totalBytes) * 0.95 : 0);

@@ -824,7 +824,7 @@ describe('ActiveModelService Integration', () => {
 
       // Mock RNFS.readDir to return a mmproj file
       RNFS.readDir = jest.fn().mockResolvedValue([
-        { name: 'qwen3-vl-mmproj-f16.gguf', path: '/models/qwen3-vl-mmproj-f16.gguf', size: 500000000 },
+        { name: 'qwen3-vl-mmproj-f16.gguf', path: '/models/qwen3-vl-mmproj-f16.gguf', size: 500000000, isFile: () => true },
       ]);
 
       mockLlmService.isModelLoaded.mockReturnValue(true);

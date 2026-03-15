@@ -14,31 +14,44 @@ import RNFS from 'react-native-fs';
 // mmproj path resolver
 // ---------------------------------------------------------------------------
 
+function isMMProjFile(fileName: string): boolean {
+  const lower = fileName.toLowerCase();
+  if (!lower.endsWith('.gguf')) return false;
+  return (
+    lower.includes('mmproj') ||
+    lower.includes('projector') ||
+    // LLaVA/InternVL-style CLIP vision encoder projectors, e.g.
+    // "mmproj-model-f16-clip-vit-large-patch14-336.gguf"
+    (lower.includes('clip') && lower.includes('vit'))
+  );
+}
+
+async function scanDirForMmProj(modelFilePath: string): Promise<RNFS.ReadDirItem | undefined> {
+  const modelDir = modelFilePath.substring(0, modelFilePath.lastIndexOf('/'));
+  const files = await RNFS.readDir(modelDir);
+  return files.find((f: { name: string; isFile: () => boolean }) =>
+    f.isFile() && isMMProjFile(f.name),
+  );
+}
+
 export async function resolveMmProjPath(
   model: DownloadedModel,
   modelId: string,
 ): Promise<string | undefined> {
+  // Fast path: persisted mmProjPath still exists on disk
   if (model.mmProjPath) {
-    return model.mmProjPath;
+    if (await RNFS.exists(model.mmProjPath)) {
+      return model.mmProjPath;
+    }
+    // Path is stale — fall through to directory scan
   }
 
-  const modelNameLower = model.name.toLowerCase();
-  const looksLikeVisionModel =
-    modelNameLower.includes('vl') ||
-    modelNameLower.includes('vision') ||
-    modelNameLower.includes('smolvlm');
-
-  if (!looksLikeVisionModel) {
-    return undefined;
-  }
-
-  const modelDir = model.filePath.substring(0, model.filePath.lastIndexOf('/'));
+  // Scan the model directory for any mmproj file regardless of model name.
+  // Previous code only scanned for models whose name contained "vl"/"vision"/
+  // "smolvlm", which silently broke vision for models like llava, pixtral,
+  // moondream, internvl, minicpm, etc.
   try {
-    const files = await RNFS.readDir(modelDir);
-    const mmProjFile = files.find(
-      (f: { name: string }) =>
-        f.name.toLowerCase().includes('mmproj') && f.name.endsWith('.gguf'),
-    );
+    const mmProjFile = await scanDirForMmProj(model.filePath);
     if (!mmProjFile) {
       return undefined;
     }

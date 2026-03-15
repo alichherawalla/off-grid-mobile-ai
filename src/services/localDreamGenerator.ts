@@ -172,6 +172,9 @@ class LocalDreamGeneratorService {
 
     try {
       const result = await DiffusionModule.generateImage(this.buildNativeParams(params, trimmedPrompt));
+      // Native side releases the CoreML pipeline after generation to free
+      // memory, so clear TS-side state so the next request triggers a reload.
+      this.loadedThreads = null;
       return this.buildResult(params, result);
     } catch (error: any) {
       const msg = error?.message || '';

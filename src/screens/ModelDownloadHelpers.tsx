@@ -46,9 +46,10 @@ export const ServerCard: React.FC<{
   server: RemoteServer;
   modelCount: number;
   isConnecting: boolean;
+  isConnected: boolean;
   onConnect: () => void;
   colors: ThemeColors;
-}> = ({ server, modelCount, isConnecting, onConnect, colors }) => {
+}> = ({ server, modelCount, isConnecting, isConnected, onConnect, colors }) => {
   const serverType = server.endpoint.includes(':11434') ? 'Ollama'
     : server.endpoint.includes(':1234') ? 'LM Studio'
     : 'AI Server';
@@ -63,9 +64,15 @@ export const ServerCard: React.FC<{
             {serverType} · {modelCount > 0 ? `${modelCount} model${modelCount !== 1 ? 's' : ''}` : 'Tap to connect'}
           </Text>
         </View>
-        {isConnecting ? (
+        {isConnecting && (
           <ActivityIndicator size="small" color={colors.primary} />
-        ) : (
+        )}
+        {!isConnecting && isConnected && (
+          <View style={[styles.connectedBadge, { backgroundColor: `${colors.success}20`, borderColor: colors.success }]} testID={`discovered-server-${server.id}-connected`}>
+            <Text style={[styles.connectButtonText, { color: colors.success }]}>Connected</Text>
+          </View>
+        )}
+        {!isConnecting && !isConnected && (
           <TouchableOpacity style={[styles.connectButton, { borderColor: colors.primary }]} onPress={onConnect} testID={`discovered-server-${server.id}-connect`}>
             <Text style={[styles.connectButtonText, { color: colors.primary }]}>Connect</Text>
           </TouchableOpacity>
@@ -83,13 +90,14 @@ export const NetworkSection: React.FC<{
   servers: RemoteServer[];
   discoveredModels: Record<string, RemoteModel[]>;
   connectingServerId: string | null;
+  connectedServerId: string | null;
   isCheckingNetwork: boolean;
   isScanning: boolean;
   onConnectServer: (server: RemoteServer) => void;
   onScanNetwork: () => void;
   onAddManually: () => void;
   colors: ThemeColors;
-}> = ({ servers, discoveredModels, connectingServerId, isCheckingNetwork, isScanning, onConnectServer, onScanNetwork, onAddManually, colors }) => {
+}> = ({ servers, discoveredModels, connectingServerId, connectedServerId, isCheckingNetwork, isScanning, onConnectServer, onScanNetwork, onAddManually, colors }) => {
   const styles = networkSectionStyles(colors);
   const hasServers = servers.length > 0;
   const busy = isCheckingNetwork || isScanning;
@@ -111,6 +119,7 @@ export const NetworkSection: React.FC<{
           server={server}
           modelCount={(discoveredModels[server.id] || []).length}
           isConnecting={connectingServerId === server.id}
+          isConnected={connectedServerId === server.id}
           onConnect={() => onConnectServer(server)}
           colors={colors}
         />
@@ -172,6 +181,12 @@ const serverCardStyles = (colors: ThemeColors) => ({
     color: colors.textSecondary,
   },
   connectButton: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  connectedBadge: {
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: SPACING.md,

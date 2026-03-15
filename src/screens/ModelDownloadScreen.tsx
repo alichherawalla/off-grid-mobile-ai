@@ -30,6 +30,7 @@ export const ModelDownloadScreen: React.FC<Props> = ({ navigation }) => {
   const [modelFiles, setModelFiles] = useState<Record<string, ModelFile[]>>({});
   const [alertState, setAlertState] = useState<AlertState>(initialAlertState);
   const [connectingServerId, setConnectingServerId] = useState<string | null>(null);
+  const [connectedServerId, setConnectedServerId] = useState<string | null>(null);
   const [reachableServerIds, setReachableServerIds] = useState<Set<string>>(new Set());
   const [isScanning, setIsScanning] = useState(false);
   const [isCheckingNetwork, setIsCheckingNetwork] = useState(true);
@@ -136,6 +137,7 @@ export const ModelDownloadScreen: React.FC<Props> = ({ navigation }) => {
     try {
       const result = await remoteServerManager.testConnection(server.id);
       if (result.success) {
+        setConnectedServerId(server.id);
         const models = discoveredModels[server.id] || result.models || [];
         if (models.length === 0) {
           setAlertState(showAlert(
@@ -195,6 +197,7 @@ export const ModelDownloadScreen: React.FC<Props> = ({ navigation }) => {
             servers={liveServers}
             discoveredModels={discoveredModels}
             connectingServerId={connectingServerId}
+            connectedServerId={connectedServerId}
             isCheckingNetwork={isCheckingNetwork}
             isScanning={isScanning}
             onConnectServer={handleConnectServer}

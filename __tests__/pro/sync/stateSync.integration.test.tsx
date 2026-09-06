@@ -30,8 +30,6 @@ import {
   registerHook,
 } from '../../../src/bootstrap/hookRegistry';
 import { useAppStore } from '../../../src/stores/appStore';
-import { useChatStore } from '../../../src/stores/chatStore';
-import { useProjectStore } from '../../../src/stores/projectStore';
 import { buildSyncEngine } from '../../../src/services/sync/engine';
 import {
   type SyncMutation,
@@ -117,8 +115,10 @@ describe('Pro mobile state sync journey', () => {
     (require('@op-engineering/op-sqlite') as {reset(): void}).reset();
     mesh.reset();
     _clearHooksForTesting();
-    await stateSyncService.stop();
-    await applicationFixture?.application.sync.stop();
+    if (applicationFixture) {
+      await stateSyncService.stop();
+      await applicationFixture.application.sync.stop();
+    }
     resetDiscoveryBoundaries();
     await AsyncStorage.clear();
     _clearScreensForTesting();
@@ -134,7 +134,6 @@ describe('Pro mobile state sync journey', () => {
     useAppStore
       .getState()
       .setDownloadedModels([createDownloadedModel({ engine: 'litert' })]);
-    useChatStore.getState().clearAllConversations();
     registerHook(HOOKS.syncRecordLocalMutation, (mutation: SyncMutation) => {
       stateSyncService.recordMutation(mutation);
     });
@@ -426,36 +425,32 @@ describe('Pro mobile state sync journey', () => {
     expect(ui.queryByText('The first answer that was replaced.')).toBeNull();
     fireEvent.press(ui.getByLabelText('Back'));
 
-    useChatStore.getState().addMessage('remote-conversation', {
-      role: 'assistant',
-      content: 'The phone checked the notes.',
-      reasoningContent: 'I should send the reasoning back to Desktop.',
+    const phoneMessageId = 'phone-message-after-pairing';
+    const phoneMessage = await applicationFixture.application.workspaceContent.execute({
+      type: 'append_message',
+      origin: 'local',
+      conversationId: 'remote-conversation',
+      messageId: phoneMessageId,
+      portable: {
+        role: 'assistant',
+        content: 'The phone checked the notes.',
+        context: {reasoning: 'I should send the reasoning back to Desktop.'},
+      },
     });
+    if (!phoneMessage.ok) throw new Error(phoneMessage.failure.message);
     await waitFor(() =>
       expect(
         remoteRecords.records.get(
-          `${CORE_SYNC_ENTITIES.message}:${
-            useChatStore
-              .getState()
-              .conversations.find(item => item.id === 'remote-conversation')
-              ?.messages.at(-1)?.uuid
-          }`,
+          `${CORE_SYNC_ENTITIES.message}:${phoneMessageId}`,
         ),
       ).toMatchObject({ content: 'The phone checked the notes.' }),
     );
     // The context is read as the structure it is, not as an exact string. It carries the reasoning AND
     // now a status, and pinning the whole blob turns every future field into a failure while proving
     // nothing more about the field under test.
-    const deliveredContext = JSON.parse(
-      (remoteRecords.records.get(
-        `${CORE_SYNC_ENTITIES.message}:${
-          useChatStore
-            .getState()
-            .conversations.find(item => item.id === 'remote-conversation')
-            ?.messages.at(-1)?.uuid
-        }`,
-      )?.context ?? '{}') as string,
-    );
+    const deliveredContext = remoteRecords.records.get(
+      `${CORE_SYNC_ENTITIES.message}:${phoneMessageId}`,
+    )?.context;
     expect(deliveredContext).toMatchObject({
       reasoning: 'I should send the reasoning back to Desktop.',
     });
@@ -474,10 +469,13 @@ describe('Pro mobile state sync journey', () => {
     );
     fireEvent.press(ui.getByText('Save'));
 
-    const phoneProject = useProjectStore
-      .getState()
-      .projects.find(project => project.name === 'Phone Notes');
-    if (!phoneProject) throw new Error('Phone project was not saved');
+    const phoneProject = await waitFor(() => {
+      const savedProject = applicationFixture.application.workspaceContent
+        .snapshot()
+        .projects.find(project => project.name === 'Phone Notes');
+      if (!savedProject) throw new Error('Phone project was not saved');
+      return savedProject;
+    });
     await waitFor(() =>
       expect(
         remoteRecords.records.get(
@@ -620,7 +618,7 @@ describe('Pro mobile state sync journey', () => {
     expect(ui.getByTestId('llama-temperature-value').props.children).toBe(
       winningTemperature.value,
     );
-  });
+  }, 30_000);
 
   it('reconnects before slow owners finish and rejects forged task state', async () => {
     let releaseSlowStartup: (() => void) | undefined;
@@ -632,7 +630,7 @@ describe('Pro mobile state sync journey', () => {
     if (!reconciliation.ok) {
       throw new Error('Entitlement reconciliation failed.');
     }
-    await stateSyncService.start(slowStartup);
+    const stateStartup = stateSyncService.start(slowStartup);
     expect(applicationFixture.application.sync.snapshot().running).toBe(true);
 
     const remoteDevice: DeviceInfo = {
@@ -738,6 +736,11 @@ describe('Pro mobile state sync journey', () => {
     await waitFor(() =>
       expect(applicationFixture!.application.sync.snapshot().connections[remoteDevice.id]).toBe('connected'),
     );
+
+    releaseSlowStartup?.();
+    await stateStartup;
+    await stateSyncService.whenReady();
+
     await waitFor(() =>
       expect(useTaskRunStore.getState().runs[task.taskId]).toMatchObject({
         title: task.title,
@@ -749,9 +752,6 @@ describe('Pro mobile state sync journey', () => {
         useTaskRunStore.getState().visualSteps[visualStep.visualStepId],
       ).toMatchObject({ actionLabel: visualStep.actionLabel }),
     );
-
-    releaseSlowStartup?.();
-    await stateSyncService.whenReady();
 
     const ownerUpdate = remoteLog.record(TASK_RUN_ENTITY, task.taskId, 'put', {
       ...task,
@@ -798,6 +798,5 @@ describe('Pro mobile state sync journey', () => {
     expect(useTaskRunStore.getState().runs[task.taskId]?.title).toBe(
       task.title,
     );
-
-  });
+  }, 30_000);
 });

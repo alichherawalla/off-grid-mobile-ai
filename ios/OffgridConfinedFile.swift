@@ -438,6 +438,8 @@ final class OffgridConfinedFile: NSObject {
     return outcome("deleted")
   }
 
+  // The delete transaction keeps path, inode, receipt, and durability checks in one operation.
+  // swiftlint:disable:next cyclomatic_complexity
   private static func delete(_ input: NSDictionary) -> [String: String] {
     guard
       let token = input["root"] as? String,

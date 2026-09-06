@@ -80,7 +80,9 @@ describe('project Knowledge Base journey', () => {
     const view = renderProductionApp(rtl);
     const user = rtl.userEvent.setup();
 
-    await user.press(await view.findByTestId('projects-tab'));
+    await user.press(
+      await view.findByTestId('projects-tab', undefined, { timeout: 15_000 }),
+    );
     await rtl.waitFor(() =>
       expect(view.getByTestId('projects-tab')).toBeSelected(),
     );

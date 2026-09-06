@@ -74,13 +74,6 @@ describe('Settings to Sync licensed-device management', () => {
       addListener: jest.fn(),
       removeListeners: jest.fn(),
     };
-    const { registerMobileApplicationPorts } =
-      require('../../../src/services/composition/application') as typeof import('../../../src/services/composition/application');
-    const { createMobileApplicationPorts } =
-      require('../../../pro/composition/application') as typeof import('../../../pro/composition/application');
-    registerMobileApplicationPorts(createMobileApplicationPorts);
-    ({ SyncScreen } =
-      require('../../../pro/ui/SyncScreen') as typeof import('../../../pro/ui/SyncScreen'));
   });
 
   beforeEach(async () => {
@@ -106,6 +99,8 @@ describe('Settings to Sync licensed-device management', () => {
       const { startMobileApplicationFixture } =
         require('../../harness/mobileApplicationFixture') as typeof import('../../harness/mobileApplicationFixture');
       applicationFixture = await startMobileApplicationFixture({ pro: true });
+      ({ SyncScreen } =
+        require('../../../pro/ui/SyncScreen') as typeof import('../../../pro/ui/SyncScreen'));
     }
     const reconciliation =
       await applicationFixture.application.sync.reconcileEntitlement('manual');

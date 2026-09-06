@@ -13,14 +13,25 @@
 import { setupChatScreen } from '../../harness/chatHarness';
 
 jest.mock('@react-navigation/native', () => ({
-  useNavigation: () => ({ navigate: () => {}, goBack: () => {}, setOptions: () => {}, addListener: () => () => {} }),
+  useNavigation: () => ({
+    navigate: () => {},
+    goBack: () => {},
+    setOptions: () => {},
+    addListener: () => () => {},
+  }),
   useRoute: () => require('../../harness/chatHarness').routeHolder,
-  useFocusEffect: () => {}, useIsFocused: () => true,
+  useFocusEffect: () => {},
+  useIsFocused: () => true,
 }));
 
 describe('T085 (rendered) — voice-mode calculator journey (STT → tool → answer)', () => {
   it('records a calculator request, runs the tool, and renders the tool bubble + reply', async () => {
-    const h = await setupChatScreen({ engine: 'litert', platform: 'android', whisper: true, pro: true });
+    const h = await setupChatScreen({
+      engine: 'litert',
+      platform: 'android',
+      whisper: true,
+      pro: true,
+    });
     await h.setupWhisperModel();
     h.enableToolViaUI('calculator'); // real Tools-screen switch (before render, like the other tool tests)
     h.render();
@@ -34,14 +45,30 @@ describe('T085 (rendered) — voice-mode calculator journey (STT → tool → an
     });
 
     // The calculator ran (its result bubble renders)...
-    await h.rtl.waitFor(() => { expect(h.view!.queryByTestId('tool-result-label-calculator')).not.toBeNull(); }, { timeout: 6000 });
+    await h.rtl.waitFor(
+      () => {
+        expect(
+          h.view!.queryByTestId('tool-result-label-calculator'),
+        ).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
     // ...and the reply reaches the user as an audio bubble (voice mode speaks it), carrying the answer.
-    await h.rtl.waitFor(() => {
-      const msgs = h.useChatStore.getState().getActiveConversation?.()?.messages ?? [];
-      // The LAST assistant message is the final answer (a tool turn also has an earlier tool-call assistant msg).
-      const reply = [...msgs].reverse().find((m: { role: string }) => m.role === 'assistant');
-      expect(reply?.content).toMatch(/160500/);
-      expect(h.view!.queryByTestId(`audio-bubble-${(reply as { id: string }).id}`)).not.toBeNull();
-    }, { timeout: 6000 });
+    await h.rtl.waitFor(
+      () => {
+        const { applicationFacade } =
+          require('../../../src/services/applicationFacade') as typeof import('../../../src/services/applicationFacade');
+        const msgs = applicationFacade().workspaceContent.snapshot().messages;
+        // The LAST assistant message is the final answer (a tool turn also has an earlier tool-call assistant msg).
+        const reply = [...msgs]
+          .reverse()
+          .find(m => m.portable.role === 'assistant');
+        expect(reply?.portable.content).toMatch(/160500/);
+        expect(
+          h.view!.queryByTestId(`audio-bubble-${(reply as { id: string }).id}`),
+        ).not.toBeNull();
+      },
+      { timeout: 6000 },
+    );
   });
 });

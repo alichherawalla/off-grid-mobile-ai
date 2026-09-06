@@ -122,6 +122,8 @@ export interface LiteRTFake {
    * Honest: the fake only emits device-shaped events; OUR loop decides what the user sees.
    */
   scriptTurn(turn: LiteRTTurn): void;
+  /** Make the next native reply depend on the sampler temperature that Mobile supplied. */
+  scriptTurnFromTemperature(reply: (temperature: number) => LiteRTTurn): void;
   /**
    * Script a QUEUE of turns consumed one-per-generateRaw — for flows with more than one native round
    * trip (e.g. the LiteRT tool-router does a separate generateToolSelection pass, THEN the main turn).
@@ -168,6 +170,10 @@ function makeLiteRTFake(handle: FakeEmitterHandle): LiteRTFake {
 
   // Scripted turn state — set by scriptTurn()/scriptTurns(), consumed by the send/respond methods below.
   let pending: LiteRTTurn | null = null;
+  let pendingTemperatureReply: ((temperature: number) => LiteRTTurn) | null =
+    null;
+  let temperature = 0.7;
+  let warmupPending = false;
   const queue: LiteRTTurn[] = [];
   let currentTurn: LiteRTTurn | null = null; // the turn onSend picked (for respondToToolCall completion)
   let toolCallsRemaining = 0;
@@ -182,7 +188,12 @@ function makeLiteRTFake(handle: FakeEmitterHandle): LiteRTFake {
     handle.emit('litert_complete', '{}');
   };
 
-  const onSend = () => {
+  const onSend = (text?: unknown) => {
+    if (warmupPending && text === 'Hi') {
+      warmupPending = false;
+      defer(() => handle.emit('litert_complete', '{}'));
+      return;
+    }
     if (pendingPartialHang !== null) {
       const p = pendingPartialHang;
       pendingPartialHang = null;
@@ -202,7 +213,12 @@ function makeLiteRTFake(handle: FakeEmitterHandle): LiteRTFake {
       defer(() => handle.emit('litert_error', m));
       return;
     }
-    const turn = queue.length ? queue.shift()! : pending;
+    const turn = queue.length
+      ? queue.shift()!
+      : pendingTemperatureReply
+      ? pendingTemperatureReply(temperature)
+      : pending;
+    pendingTemperatureReply = null;
     currentTurn = turn;
     if (!turn) {
       defer(() => handle.emit('litert_complete', '{}'));
@@ -230,30 +246,32 @@ function makeLiteRTFake(handle: FakeEmitterHandle): LiteRTFake {
   };
 
   const module: Record<string, jest.Mock> = {
-    loadModel: jest
-      .fn()
-      .mockResolvedValue({ backend: 'gpu', maxNumTokens: 4096 }),
+    loadModel: jest.fn(async () => {
+      warmupPending = true;
+      return { backend: 'gpu', maxNumTokens: 4096 };
+    }),
     resetConversation: jest.fn((...args: unknown[]) => {
       calls.resetConversation.push(args);
+      temperature = Number(args[1] ?? 0.7);
       return Promise.resolve();
     }),
     sendMessage: jest.fn((...args: unknown[]) => {
       calls.sendMessage.push(args);
-      onSend();
+      onSend(args[0]);
       return Promise.resolve();
     }),
     sendMessageWithImages: jest.fn((...args: unknown[]) => {
       calls.sendMessageWithImages.push(args);
-      onSend();
+      onSend(args[0]);
       return Promise.resolve();
     }),
-    sendMessageWithAudio: jest.fn(() => {
-      onSend();
+    sendMessageWithAudio: jest.fn((...args: unknown[]) => {
+      onSend(args[0]);
       return Promise.resolve();
     }),
     sendMessageWithMedia: jest.fn((...args: unknown[]) => {
       calls.sendMessageWithMedia.push(args);
-      onSend();
+      onSend(args[0]);
       return Promise.resolve();
     }),
     respondToToolCall: jest.fn(() => {
@@ -288,6 +306,9 @@ function makeLiteRTFake(handle: FakeEmitterHandle): LiteRTFake {
     calls,
     scriptTurn: (turn: LiteRTTurn) => {
       pending = turn;
+    },
+    scriptTurnFromTemperature: reply => {
+      pendingTemperatureReply = reply;
     },
     scriptTurns: (turns: LiteRTTurn[]) => {
       queue.length = 0;
@@ -1121,7 +1142,9 @@ export function seedNativeRamBoundary(profile: RamProfile): void {
       footprintBytes: profile.totalBytes - profile.availBytes,
     })),
   };
-  (DeviceInfo.getTotalMemory as jest.Mock).mockResolvedValue(profile.totalBytes);
+  (DeviceInfo.getTotalMemory as jest.Mock).mockResolvedValue(
+    profile.totalBytes,
+  );
   (DeviceInfo.getUsedMemory as jest.Mock).mockResolvedValue(
     profile.totalBytes - profile.availBytes,
   );
@@ -1136,12 +1159,15 @@ export function seedNativeRamBoundary(profile: RamProfile): void {
 }
 
 /** Seed one file on the Jest-native RNFS leaf without replacing the React module graph. */
-export function seedNativeFileBoundary(path: string, sizeBytes: number): () => void {
+export function seedNativeFileBoundary(
+  path: string,
+  sizeBytes: number,
+): () => void {
   const RNFS = require('react-native-fs');
   const previousExists = RNFS.exists.getMockImplementation();
   const previousStat = RNFS.stat.getMockImplementation();
   RNFS.exists.mockImplementation(async (candidate: string) =>
-    candidate === path ? true : ((await previousExists?.(candidate)) ?? false),
+    candidate === path ? true : (await previousExists?.(candidate)) ?? false,
   );
   RNFS.stat.mockImplementation(async (candidate: string) =>
     candidate === path

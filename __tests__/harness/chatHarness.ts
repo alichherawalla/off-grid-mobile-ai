@@ -28,6 +28,7 @@ import {
   type CompletionMeta,
 } from './nativeBoundary';
 import { createDownloadedModel } from '../utils/factories';
+import {doMockRealSqlite} from './sqliteFake';
 
 /** Shared route params the test's navigation mock reads (set by setupChatScreen). */
 export const routeHolder: { params: Record<string, unknown> } = { params: {} };
@@ -78,6 +79,10 @@ export async function setupChatScreen(opts: ChatHarnessOptions) {
     whisper: opts.whisper,
     download: opts.download,
   });
+  // The application root now starts Workspace Content and the generated-image gallery before Home
+  // renders. Give both real repositories a real SQLite boundary; the global empty-row stub cannot
+  // report schema columns and therefore cannot represent their additive migrations.
+  doMockRealSqlite();
 
   // Global boundary polyfill: React 19's error reporter calls window.dispatchEvent; in the node test
   // env there is no window, so an unrelated crash would mask real errors. This is a jsdom/global shim,

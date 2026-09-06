@@ -1,6 +1,7 @@
 import type { ModelsSnapshot, OffGridApplication } from '@offgrid/application';
 import type { ModelModality } from '@offgrid/models';
-import type {PersistedModelDownload} from '@offgrid/models';
+import type { PersistedModelDownload } from '@offgrid/models';
+import { doMockRealSqlite } from './sqliteFake';
 
 const DOWNLOAD_JOURNAL_KEY = '@offgrid/model_downloads_v2';
 
@@ -16,6 +17,7 @@ export interface MobileApplicationFixture {
   readonly application: OffGridApplication;
   refreshModels(): Promise<ModelsSnapshot>;
   selectedModelId(modality: ModelModality): string;
+  restart(): Promise<void>;
   dispose(): Promise<void>;
 }
 
@@ -24,36 +26,54 @@ let consumed = false;
 
 /** Starts the real Mobile composition root in the module graph created by installNativeBoundary(). */
 export async function startMobileApplicationFixture(
-  options: {readonly pro?: boolean} = {},
+  options: { readonly pro?: boolean } = {},
 ): Promise<MobileApplicationFixture> {
   if (current) return current;
   if (consumed) {
-    throw new Error('Install a fresh native boundary before restarting the Mobile application fixture.');
+    throw new Error(
+      'Install a fresh native boundary before restarting the Mobile application fixture.',
+    );
   }
   consumed = true;
 
   if (options.pro) {
-    const {installPro} = require('./proHarness') as typeof import('./proHarness');
+    const { installPro } =
+      require('./proHarness') as typeof import('./proHarness');
     await installPro();
   }
 
-  const composition = require('../../src/services/composition/application') as typeof import('../../src/services/composition/application');
-  const application = composition.getMobileApplication();
+  // The application root owns durable SQLite repositories. Use a real in-memory
+  // database for their migrations and queries; the global empty-row native stub
+  // cannot represent schema state.
+  doMockRealSqlite();
+
+  const composition =
+    require('../../src/services/composition/application') as typeof import('../../src/services/composition/application');
+  let application = composition.getMobileApplication();
   let disposal: Promise<void> | null = null;
 
   const refreshModels = async (): Promise<ModelsSnapshot> => {
     const outcome = await application.models.refresh();
-    if (!outcome.ok) throw new Error(`Model refresh failed: ${outcome.failure.kind}`);
+    if (!outcome.ok)
+      throw new Error(`Model refresh failed: ${outcome.failure.kind}`);
     return outcome.value;
   };
 
   const fixture: MobileApplicationFixture = {
-    application,
+    get application() {
+      return application;
+    },
     refreshModels,
     selectedModelId(modality) {
       const modelId = application.models.snapshot().active[modality]?.model?.id;
       if (!modelId) throw new Error(`No ${modality} model is selected.`);
       return modelId;
+    },
+    async restart() {
+      await composition.stopMobileApplication();
+      application = composition.getMobileApplication();
+      await composition.startMobileApplication();
+      await refreshModels();
     },
     dispose() {
       if (disposal) return disposal;

@@ -19,6 +19,7 @@ export function installRealSqlite(setupSql?: string): void {
  */
 export function createRealSqliteModule(setupSql?: string) {
   const databases: any[] = [];
+  const namedDatabases = new Map<string, any>();
   return (() => {
     const { DatabaseSync } = require('node:sqlite');
 
@@ -33,8 +34,12 @@ export function createRealSqliteModule(setupSql?: string) {
             ? new Uint8Array(p as ArrayBuffer)
             : p,
         );
+        // Row-producing schema inspection is a query in the native driver. Keep it out of the DDL
+        // branch so production upgrade guards observe the columns the real SQLite table contains.
+        const readsRows = /^\s*(SELECT|PRAGMA\s+table_info\s*\()/i.test(sql);
         // Transaction / DDL control statements: no params, run via exec.
         if (
+          !readsRows &&
           /^\s*(BEGIN|COMMIT|ROLLBACK|CREATE|PRAGMA|DROP)/i.test(sql) &&
           bind.length === 0
         ) {
@@ -42,7 +47,7 @@ export function createRealSqliteModule(setupSql?: string) {
           return { rows: [], insertId: undefined, rowsAffected: 0 };
         }
         const stmt = db.prepare(sql);
-        if (/^\s*SELECT/i.test(sql)) {
+        if (readsRows) {
           const rows = stmt.all(...bind);
           return { rows, insertId: undefined, rowsAffected: 0 };
         }
@@ -64,10 +69,15 @@ export function createRealSqliteModule(setupSql?: string) {
     });
 
     return {
-      open: () => {
-        const db = new DatabaseSync(':memory:');
-        databases.push(db);
-        if (setupSql) db.exec(setupSql);
+      open: (options?: {name?: string}) => {
+        const name = options?.name ?? `anonymous-${databases.length}`;
+        let db = namedDatabases.get(name);
+        if (!db) {
+          db = new DatabaseSync(':memory:');
+          namedDatabases.set(name, db);
+          databases.push(db);
+          if (setupSql) db.exec(setupSql);
+        }
         return wrap(db);
       },
       reset: () => {

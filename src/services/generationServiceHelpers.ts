@@ -1,11 +1,11 @@
 import type { ChatTurn } from '@offgrid/models';
 import type { GenerationMeta } from '../types';
-import { useAppStore } from '../stores';
 import { mobileTextEngineControl } from './modelServices/textEngineControl';
 import { effectiveCacheType } from './llmHelpers';
 import { liteRTService } from './litert';
 import { llmService } from './llm';
 import { activeMobileRoute } from './modelServices/mobileLLMService';
+import { applicationFacade } from './applicationFacade';
 
 export const FLUSH_INTERVAL_MS = 50; // ~20 updates/sec
 
@@ -55,7 +55,13 @@ export function buildGenerationMetaImpl(service: any, turn?: ChatTurn): Generati
       timeToFirstToken: service.remoteTimeToFirstToken,
     };
   } else {
-    const { settings } = useAppStore.getState();
+    const settings = applicationFacade().models.settings.current();
+    const inferenceBackend =
+      typeof settings.inferenceBackend === 'string'
+        ? settings.inferenceBackend
+        : undefined;
+    const cacheType =
+      typeof settings.cacheType === 'string' ? settings.cacheType : undefined;
     const modelName = active?.name;
     if (mobileTextEngineControl.activeLocalProviderId() === 'litert') {
       meta = liteRTMeta(service, modelName);
@@ -71,7 +77,7 @@ export function buildGenerationMetaImpl(service: any, turn?: ChatTurn): Generati
         decodeTokensPerSecond: performance.lastDecodeTokensPerSecond,
         timeToFirstToken: performance.lastTimeToFirstToken,
         tokenCount: performance.lastTokenCount,
-        cacheType: effectiveCacheType(settings.inferenceBackend, settings.cacheType),
+        cacheType: effectiveCacheType(inferenceBackend, cacheType),
         truncated: performance.lastTruncated,
       };
     }

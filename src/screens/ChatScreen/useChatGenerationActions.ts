@@ -1,25 +1,68 @@
 import { Dispatch, SetStateAction } from 'react';
-import { admitChatImageAttachment, memoryOverrideOffer } from '@offgrid/application';
+import {
+  admitChatImageAttachment,
+  memoryOverrideOffer,
+  generationMessageText,
+  ModelsFailureError,
+  type ChatTurn,
+  type GenerationOperation,
+  type ModelsFailure,
+  type Outcome,
+  workflowFailureMessage,
+} from '@offgrid/application';
 import { AlertState, hideAlert, showAlert } from '../../components';
 import { callHook, HOOKS } from '../../bootstrap/hookRegistry';
 import { generationSession } from '../../services/generationSession';
 import { mobileTextEngineControl } from '../../services/modelServices/textEngineControl';
 import { applicationFacade } from '../../services/applicationFacade';
 import { needsVisionRepair } from '../../utils/visionRepair';
-import { clearModelFailure, reportModelFailure } from '../../services/modelFailureHandler';
-import { useChatStore } from '../../stores';
+import {
+  clearModelFailure,
+  reportModelFailure,
+} from '../../services/modelFailureHandler';
+import { generateId } from '../../utils/generateId';
 import { mobileImageChatGeneration } from '../../services/modelServices/imageChatGenerationPort';
-import type { CacheType, DownloadedModel, MediaAttachment, Message, Project, RemoteModel } from '../../types';
+import {
+  mobileChatRequestDefaults,
+  mobileGenerationMessage,
+  withMobileChatCommandOptions,
+} from '../../services/adapters/models/mobileChatHostPort';
+import type {
+  DownloadedModel,
+  MediaAttachment,
+  Message,
+  Project,
+  RemoteModel,
+} from '../../types';
 import logger from '../../utils/logger';
 import type { ModelReadyOutcome } from './modelReadiness';
-import { mobileChatSession, prepareMobileChatGeneration, type MobileChatCommandOptions } from './mobileChatSession';
+import {
+  mobileChatSession,
+  prepareMobileChatGeneration,
+  type MobileChatCommandOptions,
+} from './mobileChatSession';
+import { toWorkspaceMessage } from './types';
+import { requireWorkspaceConversationMessages } from '../../hooks/useApplicationProjection';
+import {
+  appendWorkspaceAssistantMessage,
+  appendWorkspaceUserMessage,
+  createWorkspaceConversation,
+  updateWorkspaceConversationProject,
+} from './workspaceChatCommands';
+
+export { appendWorkspaceAssistantMessage } from './workspaceChatCommands';
 
 type SetState<T> = Dispatch<SetStateAction<T>>;
 
 export type GenerationDeps = {
   activeModelId: string | null;
   activeModel: DownloadedModel | null | undefined;
-  activeModelInfo?: { isRemote: boolean; model: DownloadedModel | RemoteModel | null; modelId: string | null; modelName: string };
+  activeModelInfo?: {
+    isRemote: boolean;
+    model: DownloadedModel | RemoteModel | null;
+    modelId: string | null;
+    modelName: string;
+  };
   hasActiveModel?: boolean;
   hasTextModel?: boolean;
   supportsToolCalling?: boolean;
@@ -31,53 +74,45 @@ export type GenerationDeps = {
   isStreaming: boolean;
   isGeneratingImage: boolean;
   imageGenState: { isGenerating: boolean };
-  settings: {
-    showGenerationDetails: boolean;
-    imageGenerationMode: string;
-    autoDetectMethod: string;
-    classifierModelId?: string | null;
-    systemPrompt?: string;
-    imageSteps?: number;
-    imageGuidanceScale?: number;
-    enabledTools?: string[];
-    cacheType?: CacheType;
-    thinkingEnabled?: boolean;
-  };
   downloadedModels: DownloadedModel[];
   setAlertState: SetState<AlertState>;
   setIsClassifying: SetState<boolean>;
   setAppImageGenerationStatus: (value: string | null) => void;
   setAppIsGeneratingImage: (value: boolean) => void;
-  addMessage: (conversationId: string, message: any) => void;
   clearStreamingMessage: () => void;
-  deleteConversation: (conversationId: string) => void;
   setActiveConversation: (conversationId: string | null) => void;
-  removeImagesByConversationId: (conversationId: string) => string[];
+  generatedImageIds: readonly string[];
   navigation: any;
   setShowSettingsPanel?: SetState<boolean>;
   ensureModelLoaded: () => Promise<ModelReadyOutcome>;
   forceLoadModel: () => Promise<ModelReadyOutcome>;
   ensureTextModelForChat: () => Promise<boolean>;
   setPendingMessage?: (text: string, attachments?: MediaAttachment[]) => void;
-  createConversation: (modelId: string, title?: string, projectId?: string) => string;
   pendingProjectId?: string;
 };
 
-function blockedImageForNonVisionModel(deps: GenerationDeps, attachments?: MediaAttachment[]): boolean {
+function blockedImageForNonVisionModel(
+  deps: GenerationDeps,
+  attachments?: MediaAttachment[],
+): boolean {
   const admission = admitChatImageAttachment({
     hasImage: !!attachments?.some(attachment => attachment.type === 'image'),
     remote: !!deps.activeModelInfo?.isRemote,
-    localVisionReady: mobileTextEngineControl.acceptsImage(deps.activeModel?.id),
+    localVisionReady: mobileTextEngineControl.acceptsImage(
+      deps.activeModel?.id,
+    ),
     visionRepairAvailable: needsVisionRepair(deps.activeModel),
   });
   if (admission.allowed) return false;
   const repair = admission.reason === 'vision-file-missing';
-  deps.setAlertState(showAlert(
-    repair ? 'Vision File Missing' : 'Vision Not Supported',
-    repair
-      ? 'This model supports vision, but its vision file has not been installed.\n\nOpen Download Manager and tap the wrench next to the model to download it.'
-      : 'This model does not support image input.\n\nSwitch to a vision-capable model to send images.',
-  ));
+  deps.setAlertState(
+    showAlert(
+      repair ? 'Vision File Missing' : 'Vision Not Supported',
+      repair
+        ? 'This model supports vision, but its vision file has not been installed.\n\nOpen Download Manager and tap the wrench next to the model to download it.'
+        : 'This model does not support image input.\n\nSwitch to a vision-capable model to send images.',
+    ),
+  );
   return true;
 }
 
@@ -97,11 +132,7 @@ function mobileCommandOptions(
   };
 }
 
-/**
- * A turn refused for memory is not a dead end: the shared rule decides whether "Run anyway" applies
- * (overridable refusal, local model) and the shared service forces the load, then reruns the very
- * turn that was refused. This only projects the offer as the failure card.
- */
+/** Projects the Shared memory-override offer and retries the refused turn. */
 function offerRunAnyway(error: unknown, retry: () => Promise<void>): boolean {
   const offer = memoryOverrideOffer({
     modality: 'text',
@@ -114,8 +145,8 @@ function offerRunAnyway(error: unknown, retry: () => Promise<void>): boolean {
     memoryPressure: true,
     overridable: true,
     onLoadAnyway: () => {
-      applicationFacade().models
-        .load({
+      applicationFacade()
+        .models.load({
           modality: offer.modality,
           modelId: offer.modelId,
           override: true,
@@ -125,7 +156,9 @@ function offerRunAnyway(error: unknown, retry: () => Promise<void>): boolean {
           clearModelFailure('text');
           return retry();
         })
-        .catch(cause => reportModelFailure('text', cause, { id: 'chat-text-load' }));
+        .catch(cause =>
+          reportModelFailure('text', cause, { id: 'chat-text-load' }),
+        );
     },
   });
   return true;
@@ -133,20 +166,31 @@ function offerRunAnyway(error: unknown, retry: () => Promise<void>): boolean {
 
 type GenerationFailure = { error: unknown; retry?: () => Promise<void> };
 
-function presentGenerationError(deps: GenerationDeps, conversationId: string, { error, retry }: GenerationFailure): void {
-  const message = error instanceof Error ? error.message : String(error || 'Failed to generate response');
+function presentGenerationError(
+  deps: GenerationDeps,
+  conversationId: string,
+  { error, retry }: GenerationFailure,
+): void {
+  const message =
+    error instanceof Error
+      ? error.message
+      : String(error || 'Failed to generate response');
   logger.error('[ChatGen] Generation failed', error);
   // The refusal is shown once: the failure card carries the reason and the Run anyway action, so the
   // same text is not also written into the conversation.
   if (retry && offerRunAnyway(error, retry)) return;
-  const contextFull = message.includes('too long')
-    || message.includes('Exceeding the maximum number of tokens')
-    || message.includes('Input token ids');
+  const contextFull =
+    message.includes('too long') ||
+    message.includes('Exceeding the maximum number of tokens') ||
+    message.includes('Input token ids');
   if (contextFull) {
-    const sourceConversation = useChatStore.getState().conversations.find(
-      candidate => candidate.id === conversationId,
-    );
-    const modelId = deps.activeModelInfo?.modelId ?? deps.activeModel?.id ?? deps.activeImageModel?.id;
+    // The source conversation is read from the canonical projection - not the legacy Zustand
+    // mirror, which a Shared-created conversation never populates.
+    const sourceProjectId = deps.activeConversation?.projectId;
+    const modelId =
+      deps.activeModelInfo?.modelId ??
+      deps.activeModel?.id ??
+      deps.activeImageModel?.id;
     deps.setAlertState({
       ...showAlert(
         'Context window full',
@@ -157,13 +201,12 @@ function presentGenerationError(deps: GenerationDeps, conversationId: string, { 
             text: 'New chat',
             onPress: () => {
               if (!modelId) return;
-              const nextId = deps.createConversation(
-                modelId,
-                undefined,
-                sourceConversation?.projectId,
-              );
-              deps.setActiveConversation(nextId);
-              deps.setAlertState(hideAlert());
+              createWorkspaceConversation(deps, modelId, sourceProjectId)
+                .then(nextId => {
+                  deps.setActiveConversation(nextId);
+                  deps.setAlertState(hideAlert());
+                })
+                .catch(() => undefined);
             },
           },
         ],
@@ -172,44 +215,73 @@ function presentGenerationError(deps: GenerationDeps, conversationId: string, { 
     });
     return;
   }
-  deps.addMessage(conversationId, { role: 'assistant', content: message });
-  deps.setAlertState(showAlert('Generation Error', 'The model could not complete this response. The details are shown in the chat.'));
+  appendWorkspaceAssistantMessage(conversationId, message).catch(
+    () => undefined,
+  );
+  deps.setAlertState(
+    showAlert(
+      'Generation Error',
+      'The model could not complete this response. The details are shown in the chat.',
+    ),
+  );
 }
 
 export type StartGenerationCall = {
   setDebugInfo: SetState<any>;
   targetConversationId: string;
-  messageText: string;
+  /** The durable turn identity, already committed through Workspace Content's `append_message`. */
+  turnId: string;
+  /** The distinct durable identity of the already-committed user message. */
+  userMessageId: string;
+  userMessage: ReturnType<typeof mobileGenerationMessage>;
+  projectId?: string;
   imageMode?: 'auto' | 'force' | 'disabled';
 };
 
-export async function runPersistedChatTurnFn(deps: GenerationDeps, call: StartGenerationCall): Promise<void> {
-  const conversation = useChatStore.getState().conversations.find(candidate => candidate.id === call.targetConversationId);
-  const userMessage = [...(conversation?.messages ?? [])].reverse().find(message => message.role === 'user');
-  if (!userMessage) return;
+function requireChatTurn(outcome: Outcome<ChatTurn, ModelsFailure>): ChatTurn {
+  if (!outcome.ok) throw new ModelsFailureError(outcome.failure);
+  return outcome.value;
+}
+
+/** Runs an already-persisted Workspace Content turn without a legacy-store dependency. */
+export async function runPersistedChatTurnFn(
+  deps: GenerationDeps,
+  call: StartGenerationCall,
+): Promise<void> {
   generationSession.begin(call.targetConversationId);
+  const recordedOperation: GenerationOperation | undefined =
+    call.imageMode === 'force'
+      ? { type: 'image', prompt: generationMessageText(call.userMessage) }
+      : call.imageMode === 'disabled'
+      ? { type: 'text' }
+      : undefined;
   try {
-    const turn = await mobileChatSession.sendPersisted(
-      call.targetConversationId,
-      userMessage.id,
+    const turn = await withMobileChatCommandOptions(
+      call.turnId,
       mobileCommandOptions(deps, call.imageMode),
+      async () =>
+        requireChatTurn(
+          await applicationFacade().models.chat.send({
+            conversationId: call.targetConversationId,
+            turnId: call.turnId,
+            userMessageId: call.userMessageId,
+            projectId: call.projectId,
+            userMessage: call.userMessage,
+            operation: recordedOperation,
+            request: mobileChatRequestDefaults(),
+          }),
+        ),
     );
     generationSession.end(turn.status === 'stopped' ? 'stopped' : undefined);
     // An intentional stop can complete with no assistant row. That is the
     // expected terminal state, not a model failure.
     if (turn.status === 'stopped') return;
   } catch (error) {
-    presentGenerationError(deps, call.targetConversationId, { error, retry: () => runPersistedChatTurnFn(deps, call) });
-    generationSession.end('error');
-    return;
-  }
-  const finalConversation = useChatStore.getState().conversations.find(candidate => candidate.id === call.targetConversationId);
-  if (finalConversation?.messages.at(-1)?.role === 'user') {
-    reportModelFailure('text', 'The model produced no output', {
-      title: 'No response',
-      message: 'The model returned nothing. Try again, or switch the backend or model.',
-      onRetry: () => { runPersistedChatTurnFn(deps, call).catch(() => undefined); },
+    presentGenerationError(deps, call.targetConversationId, {
+      error,
+      retry: () => runPersistedChatTurnFn(deps, call),
     });
+    generationSession.end('error');
   }
 }
 
@@ -222,9 +294,14 @@ export type SendCall = {
   startGeneration?: (conversationId: string, text: string) => Promise<void>;
 };
 
-export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promise<void> {
+export async function handleSendFn(
+  deps: GenerationDeps,
+  call: SendCall,
+): Promise<void> {
   if (!deps.hasActiveModel) {
-    deps.setAlertState(showAlert('No Model Selected', 'Please select a model first.'));
+    deps.setAlertState(
+      showAlert('No Model Selected', 'Please select a model first.'),
+    );
     return;
   }
   if (blockedImageForNonVisionModel(deps, call.attachments)) return;
@@ -238,16 +315,36 @@ export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promis
   // the shared residency then loads the model on acquire. Pre-loading here loaded the text model
   // for every "draw a ..." before the shared service had routed it to the image model.
   let conversationId = deps.activeConversationId;
+  let projectId = deps.activeConversation?.projectId;
   if (!conversationId) {
     const modelId = deps.activeModelInfo?.modelId || deps.activeImageModel?.id;
-    conversationId = deps.createConversation(modelId!, undefined, deps.pendingProjectId);
+    conversationId = await createWorkspaceConversation(deps, modelId!);
+    projectId = deps.pendingProjectId;
     deps.setActiveConversation(conversationId);
   }
-  deps.addMessage(conversationId, { role: 'user', content: call.text, attachments: call.attachments });
+  const messageId = generateId();
+  const turnId = generateId();
+  await appendWorkspaceUserMessage({
+    conversationId,
+    messageId,
+    text: call.text,
+    attachments: call.attachments,
+  });
+  const userMessage = mobileGenerationMessage({
+    id: messageId,
+    uuid: messageId,
+    role: 'user',
+    content: call.text,
+    timestamp: Date.now(),
+    attachments: call.attachments,
+  } as Message);
   await runPersistedChatTurnFn(deps, {
     setDebugInfo: call.setDebugInfo,
     targetConversationId: conversationId,
-    messageText: call.text,
+    turnId,
+    userMessageId: messageId,
+    userMessage,
+    projectId,
     imageMode: call.imageMode,
   });
 }
@@ -255,7 +352,10 @@ export async function handleSendFn(deps: GenerationDeps, call: SendCall): Promis
 export async function replayPersistedChatTurnFn(
   deps: GenerationDeps,
   userMessage: Message,
-  operation?: { type: 'image'; prompt: string } | { type: 'text' } | { type: 'vision' },
+  operation?:
+    | { type: 'image'; prompt: string }
+    | { type: 'text' }
+    | { type: 'vision' },
 ): Promise<void> {
   const conversationId = deps.activeConversationId;
   if (!conversationId || !deps.hasActiveModel) return;
@@ -263,27 +363,44 @@ export async function replayPersistedChatTurnFn(
   await prepareMobileChatGeneration();
   generationSession.begin(conversationId);
   try {
-    const turn = await mobileChatSession.regenerate(conversationId, userMessage.id, {
-      operation,
-      options: mobileCommandOptions(deps),
-    });
+    const turn = await mobileChatSession.regenerate(
+      conversationId,
+      userMessage.id,
+      {
+        operation,
+        options: mobileCommandOptions(deps),
+      },
+    );
     generationSession.end(turn.status === 'stopped' ? 'stopped' : undefined);
   } catch (error) {
-    presentGenerationError(deps, conversationId, { error, retry: () => replayPersistedChatTurnFn(deps, userMessage, operation) });
+    presentGenerationError(deps, conversationId, {
+      error,
+      retry: () => replayPersistedChatTurnFn(deps, userMessage, operation),
+    });
     generationSession.end('error');
   }
 }
 
-export async function editPersistedChatTurnFn(deps: GenerationDeps, message: Message): Promise<void> {
+export async function editPersistedChatTurnFn(
+  deps: GenerationDeps,
+  message: Message,
+): Promise<void> {
   const conversationId = deps.activeConversationId;
   if (!conversationId || !deps.hasActiveModel) return;
   await prepareMobileChatGeneration();
   generationSession.begin(conversationId);
   try {
-    const turn = await mobileChatSession.edit(conversationId, message.id, message);
+    const turn = await mobileChatSession.edit(
+      conversationId,
+      message.id,
+      message,
+    );
     generationSession.end(turn.status === 'stopped' ? 'stopped' : undefined);
   } catch (error) {
-    presentGenerationError(deps, conversationId, { error, retry: () => editPersistedChatTurnFn(deps, message) });
+    presentGenerationError(deps, conversationId, {
+      error,
+      retry: () => editPersistedChatTurnFn(deps, message),
+    });
     generationSession.end('error');
   }
 }
@@ -293,47 +410,87 @@ export async function generateImageForPersistedTurnFn(
   prompt: string,
   conversationId: string,
 ): Promise<void> {
-  const message = [...useChatStore.getState().getConversationMessages(conversationId)]
+  const message = requireWorkspaceConversationMessages(conversationId)
+    .map(toWorkspaceMessage)
     .reverse()
     .find(candidate => candidate.role === 'user');
   if (!message) return;
   await replayPersistedChatTurnFn(deps, message, { type: 'image', prompt });
 }
 
-export async function handleStopFn(deps: Pick<GenerationDeps, 'isGeneratingImage'>): Promise<void> {
+export async function handleStopFn(
+  deps: Pick<GenerationDeps, 'isGeneratingImage'>,
+): Promise<void> {
   generationSession.end('stopped');
   callHook(HOOKS.audioStop);
   if (!mobileChatSession.stop() && deps.isGeneratingImage) {
-    try { await mobileImageChatGeneration.cancel(); }
-    catch (error) { logger.error('Error stopping image generation', error); }
+    try {
+      await mobileImageChatGeneration.cancel();
+    } catch (error) {
+      logger.error('Error stopping image generation', error);
+    }
   }
 }
 
 export async function executeDeleteConversationFn(
-  deps: Pick<GenerationDeps, 'activeConversationId' | 'isStreaming' | 'clearStreamingMessage' | 'removeImagesByConversationId' | 'deleteConversation' | 'setActiveConversation' | 'navigation' | 'setAlertState'>,
+  deps: Pick<
+    GenerationDeps,
+    | 'activeConversationId'
+    | 'isStreaming'
+    | 'clearStreamingMessage'
+    | 'setActiveConversation'
+    | 'navigation'
+    | 'setAlertState'
+  >,
 ): Promise<void> {
   if (!deps.activeConversationId) return;
+  const conversationId = deps.activeConversationId;
   deps.setAlertState(hideAlert());
   if (deps.isStreaming) {
-    mobileChatSession.stopConversation(deps.activeConversationId);
+    mobileChatSession.stopConversation(conversationId);
     deps.clearStreamingMessage();
   }
-  for (const id of deps.removeImagesByConversationId(deps.activeConversationId)) {
-    await mobileImageChatGeneration.deleteArtifact(id);
+  try {
+    await mobileImageChatGeneration.clearConversationSummary(conversationId);
+    const outcome = await applicationFacade().workflows.deleteConversation(
+      conversationId,
+    );
+    if (!outcome.ok) {
+      deps.setAlertState(
+        showAlert(
+          'Conversation Not Deleted',
+          workflowFailureMessage(outcome.failure),
+        ),
+      );
+      return;
+    }
+  } catch (error) {
+    deps.setAlertState(
+      showAlert(
+        'Conversation Not Deleted',
+        error instanceof Error ? error.message : String(error),
+      ),
+    );
+    return;
   }
-  mobileImageChatGeneration.clearConversationSummary(deps.activeConversationId);
-  deps.deleteConversation(deps.activeConversationId);
   deps.setActiveConversation(null);
   deps.navigation.goBack();
 }
 
 export type SelectProjectDeps = {
   activeConversationId: string | null | undefined;
-  setConversationProject: (conversationId: string, projectId: string | null) => void;
   setShowProjectSelector: SetState<boolean>;
 };
 
-export function handleSelectProjectFn(deps: SelectProjectDeps, project: Project | null): void {
-  if (deps.activeConversationId) deps.setConversationProject(deps.activeConversationId, project?.id || null);
+export function handleSelectProjectFn(
+  deps: SelectProjectDeps,
+  project: Project | null,
+): void {
+  if (deps.activeConversationId) {
+    updateWorkspaceConversationProject(
+      deps.activeConversationId,
+      project?.id ?? null,
+    ).catch(() => undefined);
+  }
   deps.setShowProjectSelector(false);
 }

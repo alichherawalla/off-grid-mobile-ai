@@ -1,16 +1,14 @@
 import { useMemo, useEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { useChatStore } from '../../stores/chatStore';
-import { useProjectStore } from '../../stores/projectStore';
 import { useActiveMobileModel } from '../../hooks/useActiveMobileModel';
+import { useWorkspaceContentProjection } from '../../hooks/useApplicationProjection';
 import { useMobileModelInventory } from '../../hooks/useMobileModelInventory';
 import { useTheme } from '../../theme';
 import type { OnboardingStep, ChecklistTheme } from './types';
 
 export function useOnboardingSteps() {
   const onboardingChecklist = useAppStore(s => s.onboardingChecklist);
-  const conversations = useChatStore(s => s.conversations);
-  const projects = useProjectStore(s => s.projects);
+  const workspaceContent = useWorkspaceContentProjection();
   const availableModels = useMobileModelInventory();
   const activeText = useActiveMobileModel('text');
   const activeImage = useActiveMobileModel('image');
@@ -21,15 +19,19 @@ export function useOnboardingSteps() {
     model.installed && (model.modality === 'text' || model.modality === 'image'),
   );
   const hasActiveModel = activeText.model !== null || activeImage.model !== null;
+  const hasCreatedProject = workspaceContent.status === 'ready' &&
+    workspaceContent.projects.length > 4;
+  const hasSentMessage = workspaceContent.status === 'ready' &&
+    workspaceContent.messages.length > 0;
 
   const steps: OnboardingStep[] = useMemo(() => [
     { id: 'downloadedModel', title: 'Download a model', subtitle: 'Browse and download an AI model', completed: hasAnyModel },
     { id: 'loadedModel', title: 'Load a model', subtitle: 'Select a model to activate it', completed: hasActiveModel },
-    { id: 'sentMessage', title: 'Send your first message', subtitle: 'Start a conversation with AI', completed: conversations.some(c => c.messages.length > 0) },
+    { id: 'sentMessage', title: 'Send your first message', subtitle: 'Start a conversation with AI', completed: hasSentMessage },
     { id: 'triedImageGen', title: 'Try image generation', subtitle: 'Generate your first image', completed: onboardingChecklist.triedImageGen, disabled: activeText.model === null },
     { id: 'exploredSettings', title: 'Explore settings', subtitle: 'Configure your experience', completed: onboardingChecklist.exploredSettings },
-    { id: 'createdProject', title: 'Create a project', subtitle: 'Organize chats by topic', completed: projects.length > 4 },
-  ], [hasAnyModel, hasActiveModel, conversations, onboardingChecklist.exploredSettings, onboardingChecklist.triedImageGen, projects.length, activeText.model]);
+    { id: 'createdProject', title: 'Create a project', subtitle: 'Organize chats by topic', completed: hasCreatedProject },
+  ], [hasAnyModel, hasActiveModel, hasSentMessage, onboardingChecklist.exploredSettings, onboardingChecklist.triedImageGen, hasCreatedProject, activeText.model]);
 
   const completedCount = steps.filter(s => s.completed).length;
 

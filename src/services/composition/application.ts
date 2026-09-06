@@ -1,11 +1,17 @@
+/* eslint-disable max-lines -- One Mobile composition root supplies every platform port. */
 /** Mobile composition root. Shared owns the application and domain behavior; this file supplies I/O. */
 import {
   createOffGridApplication,
+  createWorkspaceContentOutboxDeliveryOwner,
   modelsFailureMessage,
   observeApplicationFailures,
   type NormalizedFailure,
   type OffGridApplication,
   type OffGridPlatformPorts,
+  type GeneratedImageGalleryFailure,
+  type WorkspaceContentOutboxDeliveryOwner,
+  type WorkspaceContentOutboxDeliveryPort,
+  type DeletionCleanupContinuation,
 } from '@offgrid/application';
 import { generateId } from '../../utils/generateId';
 import logger from '../../utils/logger';
@@ -27,17 +33,392 @@ import type { MobileManagedArtifactIO } from '../modelServices/modelDownloadArti
 import { modelsChatPort } from './chat';
 import { callHook, HOOKS } from '../../bootstrap/hookRegistry';
 import { mobileCoreSpeechPorts } from '../adapters/speech/mobileSpeechInputPorts';
-
+import { MobileWorkspaceContentRepository } from '../adapters/workspaceContent/mobileWorkspaceContentRepository';
+import { MobileProjectDeletionIntentRepository } from '../adapters/workspaceContent/mobileProjectDeletionIntentRepository';
+import { MobileConversationDeletionIntentRepository } from '../adapters/workspaceContent/mobileConversationDeletionIntentRepository';
+import { MobileProjectMediaCleanup } from '../adapters/workspaceContent/mobileProjectMediaCleanup';
+import {
+  MobileGeneratedImageGalleryRepository,
+  type GeneratedImageReleaseIntent,
+} from '../adapters/generated-image-gallery';
+import { admitGeneratedImageRecovery } from './generatedImageRecovery';
+import {
+  receivedMediaRelease,
+  ReceivedMediaReleaseDrainScheduler,
+  type ReceivedMediaReleaseDrainPass,
+} from '../sync/receivedMediaRelease';
+import type { ReceivedMediaReleaseAdmissionPort } from '../sync/receivedMediaReleaseAdmission';
+import { MobileReceivedMediaReleaseAdmissions } from '../adapters/sync/mobileReceivedMediaReleaseAdmissions';
+import { mobileDeletionContinuationResolver } from '../adapters/sync/mobileRemoteDeletionWinner';
+import {
+  type MobileLocalResourcePrivacyScope,
+  type MobileCanonicalImagePrivacyPort,
+  type MobileOwnedDirectoryPrivacyPort,
+} from '../adapters/workspaceContent/mobileLocalResourcePrivacyWorkflow';
+import { MobileOwnedDirectoryPrivacy } from '../adapters/workspaceContent/mobileOwnedDirectoryPrivacy';
+import { MobileCanonicalImagePrivacy } from '../adapters/workspaceContent/mobileCanonicalImagePrivacy';
 type MobileApplicationExtensionPorts = Partial<
   Pick<OffGridPlatformPorts, 'sync' | 'speech' | 'automation' | 'use' | 'pro'>
 > & { readonly modelDownloads?: MobileManagedArtifactIO };
-
 export type MobileApplicationPortsFactory =
   () => MobileApplicationExtensionPorts;
-
 let extensionPortsFactory: MobileApplicationPortsFactory | null = null;
 let application: OffGridApplication | null = null;
 let releaseFailureObserver: (() => void) | null = null;
+/**
+ * Registered once per application lifetime and passed to Shared as the `workspaceContent` platform
+ * port. This is the SAME normalized SQLite repository built for milestone M4
+ * (`MobileWorkspaceContentRepository` / `openWorkspaceContentDatabase`) - reused here, not rebuilt,
+ * so there is exactly one Mobile-side owner of the workspace-content tables.
+ *
+ * As of M59 this repository also implements `WorkspaceContentOutboxRepositoryPort` (durable claim,
+ * acknowledge, and failed-attempt transitions), so it satisfies Shared's
+ * `createWorkspaceContentOutboxDeliveryOwner({repository, delivery, newClaimId})` unchanged.
+ */
+let workspaceContentRepository: MobileWorkspaceContentRepository | null = null;
+let projectDeletionIntents: MobileProjectDeletionIntentRepository | null = null;
+let conversationDeletionIntents: MobileConversationDeletionIntentRepository | null =
+  null;
+let projectMediaCleanup: MobileProjectMediaCleanup | null = null;
+let generatedImageGalleryRepository: MobileGeneratedImageGalleryRepository | null =
+  null;
+let releaseAdmissions: ReceivedMediaReleaseAdmissionPort | null = null;
+let localResourcePrivacyDirectories: MobileOwnedDirectoryPrivacyPort | null =
+  null;
+let defaultLocalResourcePrivacyDirectories: MobileOwnedDirectoryPrivacyPort | null =
+  null;
+let canonicalImagePrivacy: MobileCanonicalImagePrivacyPort | null = null;
+let localResourcePrivacyWorkflow: ReturnType<
+  MobileWorkspaceContentRepository['createLocalResourcePrivacyWorkflow']
+> | null = null;
+/**
+ * The release owner that is always available, including BEFORE the Shared root recovers deletions.
+ *
+ * It requires no transport and no session, so it is constructed on first use inside the same
+ * startup that recovery runs in - never registered by an optional module that only comes up later.
+ */
+function getReleaseAdmissions(): ReceivedMediaReleaseAdmissionPort {
+  releaseAdmissions ??= new MobileReceivedMediaReleaseAdmissions();
+  return releaseAdmissions;
+}
+function getMobileWorkspaceContentRepository(): MobileWorkspaceContentRepository {
+  workspaceContentRepository ??= new MobileWorkspaceContentRepository();
+  return workspaceContentRepository;
+}
+
+function getLocalResourcePrivacyWorkflow() {
+  localResourcePrivacyWorkflow ??=
+    getMobileWorkspaceContentRepository().createLocalResourcePrivacyWorkflow(
+      () =>
+        localResourcePrivacyDirectories ??
+        (defaultLocalResourcePrivacyDirectories ??=
+          new MobileOwnedDirectoryPrivacy(
+            getGeneratedImageGalleryRepository(),
+            intent => settleGeneratedImageRelease(intent).then(() => undefined),
+          )),
+      () =>
+        (canonicalImagePrivacy ??= new MobileCanonicalImagePrivacy({
+          gallery: () => getMobileApplication().generatedImages,
+          repository: getGeneratedImageGalleryRepository(),
+          settle: intent =>
+            settleGeneratedImageRelease(intent).then(() => undefined),
+        })),
+      generateId,
+    );
+  return localResourcePrivacyWorkflow;
+}
+
+/** Supply platform-owned Images/All directory cleanup without moving file policy into the workflow. */
+export function registerMobileOwnedDirectoryPrivacyPort(
+  port: MobileOwnedDirectoryPrivacyPort,
+): () => void {
+  if (
+    localResourcePrivacyDirectories &&
+    localResourcePrivacyDirectories !== port
+  )
+    throw new Error(
+      'Mobile owned-directory privacy cleanup is already registered.',
+    );
+  localResourcePrivacyDirectories = port;
+  return () => {
+    if (localResourcePrivacyDirectories === port)
+      localResourcePrivacyDirectories = null;
+  };
+}
+
+/** Read or command the one reactive Mobile local-resource privacy owner. */
+export const mobileLocalResourcePrivacy = {
+  getSnapshot: () => getLocalResourcePrivacyWorkflow().getSnapshot(),
+  subscribe: (listener: () => void) =>
+    getLocalResourcePrivacyWorkflow().subscribe(listener),
+  execute: (scope: MobileLocalResourcePrivacyScope) =>
+    getLocalResourcePrivacyWorkflow().execute(scope),
+  retry: () => getLocalResourcePrivacyWorkflow().retry(),
+};
+export function withMobileWorkspaceContentDeletionFence<Result>(input: {
+  entity: 'project' | 'conversation';
+  entityId: string;
+  isCurrentWinner: () => boolean;
+  work: () => Promise<Result>;
+}): Promise<Result> {
+  return getMobileWorkspaceContentRepository().withDeletionCommitFence(input);
+}
+
+function getGeneratedImageGalleryRepository(): MobileGeneratedImageGalleryRepository {
+  generatedImageGalleryRepository ??=
+    new MobileGeneratedImageGalleryRepository();
+  return generatedImageGalleryRepository;
+}
+
+export function removeReceivedGalleryHolder(
+  imageId: string,
+  deletionOperationId: string,
+) {
+  return getGeneratedImageGalleryRepository().removeHolderWithReceipt({
+    imageId,
+    deletionOperationId,
+  });
+}
+
+export async function removeReceivedMessageHolder(input: {
+  readonly messageId: string;
+  readonly deletionOperationId: string;
+  readonly syncId: string;
+  readonly expectedRevision: string;
+  readonly expectedPreimage:
+    | import('@offgrid/application').MessageRecord['local']
+    | null;
+}) {
+  const receipt =
+    await getMobileWorkspaceContentRepository().removeMessageHolderWithReceipt(
+      input,
+    );
+  const refreshed = await getMobileApplication().workspaceContent.refresh();
+  if (!refreshed.ok) throw new Error(refreshed.failure.message);
+  return receipt;
+}
+
+/**
+ * Settle one durable release intent through the owner it names.
+ *
+ * The intent, not the (already deleted) record, decides who acts: a locally generated image is
+ * unlinked here through the native store, and a received image is handed to the Shared File owner,
+ * which stays the sole owner of provenance bytes. Either path THROWS on failure, and the repository
+ * only drops an intent once this resolves - so a missing owner, a busy file, or a crash leaves the
+ * path and its provenance on disk for the next attempt, and the failure travels up to the Shared
+ * deletion workflow's media phase.
+ */
+export async function settleGeneratedImageRelease(
+  intent: GeneratedImageReleaseIntent,
+  commitFence?: DeletionCleanupContinuation,
+): Promise<void | 'fenced'> {
+  if (commitFence && !commitFence()) return 'fenced';
+  if (intent.owner === 'provenance') {
+    const owner = receivedMediaRelease();
+    if (!owner) {
+      // Startup order, not an error: the Shared File session that installs the owner can only
+      // start once the application is running, and this runs inside the root's own deletion
+      // recovery. Settle the release the only way that is honest without a transport - a durable
+      // local tombstone - and let the post-running drain hand it to the owner. `admit` resolves
+      // only when the row is proven persisted, so nothing is dropped on a void write.
+      await getReleaseAdmissions().admit({
+        id: intent.id,
+        path: intent.path,
+        authority: commitFence ? 'remote_conditional' : 'local_unconditional',
+        ...(commitFence
+          ? {
+              continuation: {
+                operationId: commitFence.operationId,
+                entity: commitFence.entity,
+                entityId: commitFence.entityId,
+                expectedWinner: commitFence.expectedWinner,
+                phase: commitFence.phase,
+              },
+            }
+          : {}),
+      });
+      // Close the race where Pro installs between the owner check and the durable admission.
+      requestReceivedMediaReleaseAdmissionDrain();
+      return;
+    }
+    // `already_released` is the owner's proof that there is nothing left to release - no durable
+    // record claims the bytes AND the confined file is gone - so the intent is settled and drops.
+    // `not_owned` means ownership is unknown while bytes may still exist, which stays a durable
+    // failure so the deletion workflow retries rather than orphaning a file.
+    const outcome = await owner.release({ path: intent.path }, commitFence);
+    if (outcome === 'fenced') return 'fenced';
+    if (outcome === 'not_owned') {
+      throw new Error(
+        `No received record claims the bytes of image ${intent.id}.`,
+      );
+    }
+    return;
+  }
+  const { localDreamGeneratorService } =
+    require('../localDreamGenerator') as typeof import('../localDreamGenerator');
+  // `deleted` and `already_missing` are BOTH settled: the intent asks for no bytes at that path,
+  // and a retry after a crash between the unlink and the journal ack finds the file already gone.
+  // Only `failure` - permission, busy, I/O, no native store - keeps the intent for the next attempt.
+  const outcome = await localDreamGeneratorService.deleteGeneratedImage(
+    intent.path,
+    commitFence,
+  );
+  if (outcome.status === 'fenced') return 'fenced';
+  if (outcome.status === 'failure') {
+    throw new Error(
+      `Native image ${intent.id} could not be deleted (${outcome.code}: ${outcome.message}).`,
+    );
+  }
+}
+
+async function deliverReleaseAdmissions(): Promise<ReceivedMediaReleaseDrainPass> {
+  const admissions = getReleaseAdmissions();
+  const owner = receivedMediaRelease();
+  if (!owner) return 'owner_absent';
+  const failures: unknown[] = [];
+  let retry = false;
+  for (const admission of await admissions.pending()) {
+    try {
+      if (admission.authority === 'legacy_unknown') {
+        retry = true;
+        continue;
+      }
+      let continuation: DeletionCleanupContinuation | undefined;
+      if (admission.authority === 'remote_conditional') {
+        if (!admission.continuation) {
+          retry = true;
+          continue;
+        }
+        const resolution = await mobileDeletionContinuationResolver.resolve({
+          entity: admission.continuation.entity,
+          entityId: admission.continuation.entityId,
+          remoteOperationId: admission.continuation.operationId,
+        });
+        if (resolution.status === 'not_ready') {
+          retry = true;
+          continue;
+        }
+        if (resolution.status === 'superseded') {
+          await admissions.settle(admission.id);
+          continue;
+        }
+        const current = () =>
+          resolution.continuation.isCurrent(admission.continuation!.phase);
+        continuation = Object.freeze(
+          Object.assign(current, {
+            operationId: admission.continuation.operationId,
+            entity: admission.continuation.entity,
+            entityId: admission.continuation.entityId,
+            expectedWinner: admission.continuation.expectedWinner,
+            phase: admission.continuation.phase,
+            winnerIsCurrent: current,
+          }),
+        );
+      }
+      const outcome = await owner.release(
+        { path: admission.path },
+        continuation,
+      );
+      if (outcome === 'not_owned') {
+        retry = true;
+        continue;
+      }
+      await admissions.settle(admission.id);
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length > 0)
+    throw new Error(
+      `${failures.length} provenance release admission(s) did not settle`,
+    );
+  return retry ? 'retry' : 'settled';
+}
+
+const releaseAdmissionDrain = new ReceivedMediaReleaseDrainScheduler(
+  deliverReleaseAdmissions,
+  error =>
+    logger.error('[Application] Provenance release delivery failed', error),
+);
+export function requestReceivedMediaReleaseAdmissionDrain(): void {
+  releaseAdmissionDrain.request();
+}
+async function drainGeneratedImageBytesForScope(
+  scope: string,
+  continuation?: DeletionCleanupContinuation,
+): Promise<void> {
+  await getGeneratedImageGalleryRepository().drainByteDeletionsForScope(
+    scope,
+    settleGeneratedImageRelease,
+    continuation,
+  );
+}
+
+export class MobileGeneratedImageRemovalError extends Error {
+  constructor(readonly failure: GeneratedImageGalleryFailure) {
+    super(failure.message);
+    this.name = 'MobileGeneratedImageRemovalError';
+  }
+}
+
+export async function removeGeneratedImage(id: string): Promise<void> {
+  const gallery = getMobileApplication().generatedImages;
+  if (!gallery) throw new Error('Generated image gallery was not composed.');
+  const releaseScope = `gallery-delete:${id}`;
+  getGeneratedImageGalleryRepository().captureByteDeletionScope(
+    releaseScope,
+    [id],
+    generateId(),
+  );
+  const outcome = await gallery.remove(id);
+  if (!outcome.ok && outcome.failure.kind !== 'not_found') {
+    throw new MobileGeneratedImageRemovalError(outcome.failure);
+  }
+  await drainGeneratedImageBytesForScope(releaseScope);
+}
+
+/** Bind Pro's transport to the same repository used by the root Workspace Content facade. */
+export function createMobileWorkspaceContentOutboxOwner(
+  delivery: WorkspaceContentOutboxDeliveryPort,
+): WorkspaceContentOutboxDeliveryOwner {
+  return createWorkspaceContentOutboxDeliveryOwner({
+    repository: getMobileWorkspaceContentRepository(),
+    delivery,
+    newClaimId: generateId,
+  });
+}
+
+function getProjectDeletionRecovery(): NonNullable<
+  OffGridPlatformPorts['projectDeletionRecovery']
+> {
+  projectDeletionIntents ??= new MobileProjectDeletionIntentRepository();
+  projectMediaCleanup ??= new MobileProjectMediaCleanup({
+    releases: getGeneratedImageGalleryRepository(),
+    settle: settleGeneratedImageRelease,
+    gallery: () => getMobileApplication().generatedImages,
+  });
+  conversationDeletionIntents ??=
+    new MobileConversationDeletionIntentRepository();
+  return {
+    intents: projectDeletionIntents,
+    media: projectMediaCleanup,
+    deletionContinuationResolver: mobileDeletionContinuationResolver,
+    now: () => new Date().toISOString(),
+    conversations: {
+      intents: conversationDeletionIntents,
+      captureImageReleaseScope: async (scope, imageIds, continuation) => {
+        getGeneratedImageGalleryRepository().captureByteDeletionScope(
+          scope,
+          imageIds,
+          continuation?.operationId ?? `local:${scope}`,
+        );
+      },
+      settleImageBytes: drainGeneratedImageBytesForScope,
+      now: () => new Date().toISOString(),
+      deletionContinuationResolver: mobileDeletionContinuationResolver,
+    },
+  };
+}
 
 /**
  * The ONLY thing this app still owns about failure reporting: where the line goes.
@@ -69,7 +450,7 @@ function reportDegradedStart(
   if (result.degraded.length > 0) {
     logger.warn('[Application] Domains running but not whole', {
       degraded: result.degraded.map(
-        ({domain, source, reason}) => `${domain} (${source}): ${reason}`,
+        ({ domain, source, reason }) => `${domain} (${source}): ${reason}`,
       ),
     });
   }
@@ -100,7 +481,9 @@ function createMobileApplication(): OffGridApplication {
       ejection: mobileModelEjectionPorts(),
       library: createMobileModelLibraryFacadePorts(modelDownloads),
       downloads: createMobileApplicationDownloadPorts(modelDownloads),
-      control: createMobileModelControlPort(() => autoSetupImageCatalogProvider.load()),
+      control: createMobileModelControlPort(() =>
+        autoSetupImageCatalogProvider.load(),
+      ),
       settings: mobileModelSettingsPorts,
       activation: mobileModelActivationHostPort,
     },
@@ -111,7 +494,16 @@ function createMobileApplication(): OffGridApplication {
       prepareDocument: prepareMobileRagDocument,
     },
     speech: mobileCoreSpeechPorts,
+    // Shared's root application composes the WorkspaceContentFacade from this repository port.
+    // See `shared/packages/application/src/contracts/platform-ports.ts` (`workspaceContent?:
+    // WorkspaceContentPlatformPorts`, an alias of `WorkspaceContentRepositoryPort`) and
+    // `OffGridApplication.workspaceContent` in `contracts/application.ts`. That root-level
+    // construction is a parallel Shared worker's milestone, not this file's - this is only the
+    // Mobile-side registration of the port.
+    workspaceContent: getMobileWorkspaceContentRepository(),
+    generatedImageGallery: getGeneratedImageGalleryRepository(),
     ...extensionPorts,
+    projectDeletionRecovery: getProjectDeletionRecovery(),
     newId: generateId,
   });
 }
@@ -136,7 +528,6 @@ function mobileModelServices(): Pick<
   // Deferred because modelServices resolves this composition root through applicationFacade().
   // getMobileApplication() has created the root before this function is called, so both sides use
   // the same application instead of depending on an App.tsx import side effect.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require('../modelServices') as typeof import('../modelServices');
 }
 
@@ -175,13 +566,23 @@ function recoverDownloadJournal(current: OffGridApplication): void {
       report(modelsFailureMessage(outcome.failure));
     })
     .catch(error => {
-      logger.error(
-        '[Application] Cold-start download recovery threw',
-        error,
-      );
+      logger.error('[Application] Cold-start download recovery threw', error);
       report(error instanceof Error ? error.message : String(error));
     });
 }
+
+/**
+ * Project-deletion recovery is NOT coordinated here.
+ *
+ * `@offgrid/application`'s root runs both durable deletion recoveries inside its own start lifetime
+ * and is the sole coordinator. This file supplies the intent and cleanup ports only.
+ *
+ * A second call from here was a duplicate coordinator: it re-read the intent set AFTER the root had
+ * already settled it, so a resumed deletion could be observed twice and this consumer held its own
+ * opinion about recovery lifecycle state. The root reports for itself - an absent port is a
+ * successful no-op, and a configured port's real failure emits `workflow_failed` (written by the
+ * failure observer) and throws out of `start()`, which the catch below logs and re-raises.
+ */
 
 export function startMobileApplication(): ReturnType<
   OffGridApplication['start']
@@ -193,7 +594,19 @@ export function startMobileApplication(): ReturnType<
     await modelServices.refreshMobileModelServices();
     try {
       const result = await current.start();
+      if (result.status !== 'running') {
+        throw new Error(result.message);
+      }
+      await getLocalResourcePrivacyWorkflow().start();
+      await getMobileWorkspaceContentRepository().localResourceReleases.start();
+      await admitGeneratedImageRecovery({
+        application: current,
+        repository: getGeneratedImageGalleryRepository(),
+        settle: intent =>
+          settleGeneratedImageRelease(intent).then(() => undefined),
+      });
       await callHook<Promise<void>>(HOOKS.applicationStarted);
+      requestReceivedMediaReleaseAdmissionDrain();
       recoverDownloadJournal(current);
       return reportDegradedStart(result);
     } catch (error) {
@@ -208,6 +621,7 @@ export function startMobileApplication(): ReturnType<
 export async function stopMobileApplication(): Promise<void> {
   try {
     await callHook<Promise<void>>(HOOKS.applicationStopping);
+    await getMobileWorkspaceContentRepository().localResourceReleases.stop();
     mobileModelServices().stopMobileModelServices();
     await application?.stop();
   } finally {
@@ -222,6 +636,16 @@ export async function stopMobileApplication(): Promise<void> {
     // module invariant: the memo either holds a live application or holds nothing.
     application = null;
   }
+}
+
+/** Pause post-commit local byte release while Images/All privacy owns the filesystem. */
+export function suspendWorkspaceContentLocalResourceReleases(): Promise<void> {
+  return getMobileWorkspaceContentRepository().localResourceReleases.suspend();
+}
+
+/** Return local byte release ownership after Images/All privacy settles. */
+export function resumeWorkspaceContentLocalResourceReleases(): void {
+  getMobileWorkspaceContentRepository().localResourceReleases.resume();
 }
 
 /**

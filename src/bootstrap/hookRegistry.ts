@@ -80,8 +80,6 @@ export const HOOKS = {
   audioOnAppBackground: 'audio.onAppBackground',
   /** () => void — app returned to foreground: resume paused speech. */
   audioOnAppForeground: 'audio.onAppForeground',
-  /** (basePrompt: string) => string — augment the prompt when in voice mode. */
-  audioAugmentPrompt: 'audio.augmentPrompt',
   /** (language: string) => void — keep the active speech voice aligned with STT. */
   audioSelectLanguage: 'audio.selectLanguage',
   /** (mutation: SyncMutation) => void — a core data owner committed a record

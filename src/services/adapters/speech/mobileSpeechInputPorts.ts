@@ -1,19 +1,87 @@
 /** React Native microphone and transcription I/O for Shared's Speech application. */
 import RNFS from 'react-native-fs';
-import type { SpeechPlatformPorts } from '@offgrid/application';
+import {
+  readVoicePreferences,
+  VOICE_SETTING_KEYS,
+  type SpeechPlatformPorts,
+  type VoicePreferences,
+} from '@offgrid/application';
 import { cleanTranscription } from '@offgrid/models';
 import { audioRecorderService } from '../../audioRecorderService';
 import { whisperService } from '../../whisperService';
 import { prepareMessageForSpeech } from '../../../utils/messageContent';
-import { mobileModelSelectionStore } from '../../modelServices/selectionStore';
+import { trimWavSilence } from '../../wavTrimmer';
+import { useAppStore } from '../../../stores';
+import { useWhisperStore } from '../../../stores/whisperStore';
+import { activeMobileRoute } from '../../modelServices/mobileLLMService';
+import { transcribeRemoteMobileFile } from '../../modelServices/transcriptionGenerationAdapter';
+
+function selectedTranscriptionModel() {
+  return activeMobileRoute('transcription').model;
+}
+
+function selectedTranscriberReady(): boolean {
+  try {
+    const model = selectedTranscriptionModel();
+    if (!model) return false;
+    if (model.source === 'remote') return true;
+    return (
+      whisperService.isModelLoaded() &&
+      whisperService.getLoadedModelPath() ===
+        whisperService.getModelPath(model.id)
+    );
+  } catch {
+    return false;
+  }
+}
 
 export type MobileSpeechInputPorts = Pick<
   SpeechPlatformPorts,
-  'microphone' | 'transcriber' | 'files' | 'clock' | 'cleanTranscript'
+  | 'microphone'
+  | 'recordingFinalizer'
+  | 'transcriber'
+  | 'files'
+  | 'clock'
+  | 'cleanTranscript'
+  | 'initialPreferences'
+  | 'preferences'
 >;
+
+const persistedVoicePreferences = (): VoicePreferences => {
+  const settings = useAppStore.getState().settings;
+  return readVoicePreferences({
+    [VOICE_SETTING_KEYS.turnMode]: settings.voiceTurnMode,
+    [VOICE_SETTING_KEYS.silenceAfterSpeechMs]:
+      settings.voiceSilenceAfterSpeechMs,
+    [VOICE_SETTING_KEYS.speakerDrainMs]: settings.voiceSpeakerDrainMs,
+    [VOICE_SETTING_KEYS.transcriptionLanguage]:
+      useWhisperStore.getState().transcriptionLanguage,
+  });
+};
 
 /** Native input adapters only. Shared owns recording and transcription policy. */
 export const mobileSpeechInputPorts: MobileSpeechInputPorts = {
+  get initialPreferences() {
+    return persistedVoicePreferences();
+  },
+  preferences: {
+    supported: [
+      'turnMode',
+      'silenceAfterSpeechMs',
+      'speakerDrainMs',
+      'transcriptionLanguage',
+    ],
+    async write(preferences) {
+      useAppStore.getState().updateSettings({
+        voiceTurnMode: preferences.turnMode,
+        voiceSilenceAfterSpeechMs: preferences.silenceAfterSpeechMs,
+        voiceSpeakerDrainMs: preferences.speakerDrainMs,
+      });
+      useWhisperStore
+        .getState()
+        .setTranscriptionLanguage(preferences.transcriptionLanguage);
+    },
+  },
   microphone: {
     start: () => audioRecorderService.startRecording(),
     async stop() {
@@ -30,22 +98,46 @@ export const mobileSpeechInputPorts: MobileSpeechInputPorts = {
     onLevel: listener => audioRecorderService.onAudioLevel(listener),
     echoCancelled: () => audioRecorderService.isEchoCancelled(),
   },
+  recordingFinalizer: {
+    async finalize(recording, trim) {
+      if (!recording.path) return recording;
+      const trimmed = await trimWavSilence(
+        recording.path,
+        trim.frontSeconds,
+        trim.tailSeconds,
+      );
+      if (!trimmed || recording.durationSeconds === undefined) return recording;
+      return {
+        ...recording,
+        durationSeconds: Math.max(
+          0,
+          recording.durationSeconds - trim.frontSeconds - trim.tailSeconds,
+        ),
+      };
+    },
+  },
   transcriber: {
-    ready: () =>
-      whisperService.isModelLoaded() &&
-      whisperService.getLoadedModelPath() !== null,
+    ready: selectedTranscriberReady,
     async transcribe(source, options) {
       if (source.kind !== 'file') {
         throw new TypeError(
           'Mobile Speech transcription requires a file source.',
         );
       }
-      return {
-        text: await whisperService.transcribeFileRaw(source.path, {
-          language: options.language,
-          signal: options.signal,
-        }),
-      };
+      const model = selectedTranscriptionModel();
+      if (!model) throw new Error('No transcription model is selected.');
+      const text =
+        model.source === 'remote'
+          ? await transcribeRemoteMobileFile(model, {
+              fileUri: source.path,
+              language: options.language,
+              signal: options.signal,
+            })
+          : await whisperService.transcribeFileRaw(source.path, {
+              language: options.language,
+              signal: options.signal,
+            });
+      return { text };
     },
   },
   files: {
@@ -82,15 +174,11 @@ export const mobileCoreSpeechPorts: SpeechPlatformPorts = {
   },
   cleanForSpeech: prepareMessageForSpeech,
   selection: {
-    async read() {
-      return {
-        stt: mobileModelSelectionStore.read('transcription'),
-        tts: null,
-        voice: null,
-      };
+    async readVoice() {
+      return null;
     },
-    async write(selection) {
-      await mobileModelSelectionStore.write('transcription', selection.stt);
+    async writeVoice(_voice, commitVoice) {
+      commitVoice();
     },
   },
 };

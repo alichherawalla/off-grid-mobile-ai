@@ -6,7 +6,10 @@ import {
 } from '@offgrid/models';
 import { generateId } from '../../utils/generateId';
 import { mobileModelSelectionStore } from './selectionStore';
-import { mobileConversationPort, mobileToolExecutor } from './toolExecutorPorts';
+import {
+  mobileConversationPort,
+  mobileToolExecutor,
+} from './toolExecutorPorts';
 import { mobileModelLifecyclePorts } from './modelLifecyclePorts';
 import { mobileModelMemoryAdvisoryPorts } from './modelMemoryAdvisoryPorts';
 import { mobileExecutionAdapterId } from './mobileRoute';
@@ -21,13 +24,27 @@ import logger from '../../utils/logger';
 // resolved at call time as well. Every member delegates; nothing is decided here.
 type RemotePorts = Omit<RemoteServerApplicationPorts, 'select'>;
 function remotePorts(): RemotePorts {
-  return (require('./remoteServerApplication') as typeof import('./remoteServerApplication'))
-    .mobileRemoteServerPorts;
+  return (
+    require('./remoteServerApplication') as typeof import('./remoteServerApplication')
+  ).mobileRemoteServerPorts;
 }
 const lazyRemote: RemotePorts = {
   configuration: {
     read: () => remotePorts().configuration.read(),
     write: value => remotePorts().configuration.write(value),
+    isReady: () => remotePorts().configuration.isReady?.() ?? false,
+    awaitReady: async () => {
+      const awaitReady = remotePorts().configuration.awaitReady;
+      if (!awaitReady)
+        throw new Error('Remote server persistence cannot report readiness.');
+      await awaitReady();
+    },
+    retryReady: async () => {
+      const retryReady = remotePorts().configuration.retryReady;
+      if (!retryReady)
+        throw new Error('Remote server persistence cannot retry loading.');
+      await retryReady();
+    },
   },
   credentials: {
     read: id => remotePorts().credentials.read(id),
@@ -35,7 +52,8 @@ const lazyRemote: RemotePorts = {
     remove: id => remotePorts().credentials.remove(id),
   },
   providers: {
-    register: (server, credential) => remotePorts().providers.register(server, credential),
+    register: (server, credential) =>
+      remotePorts().providers.register(server, credential),
     update: (server, credential) =>
       remotePorts().providers.update?.(server, credential) ??
       remotePorts().providers.register(server, credential),
@@ -47,7 +65,8 @@ const lazyRemote: RemotePorts = {
     if (!discover) throw new Error('Remote discovery is not available.');
     return discover(server, credential);
   },
-  projectDiscovery: (id, result) => remotePorts().projectDiscovery?.(id, result),
+  projectDiscovery: (id, result) =>
+    remotePorts().projectDiscovery?.(id, result),
   test: (server, credential) => {
     const test = remotePorts().test;
     if (!test) throw new Error('Remote health checks are not available.');
@@ -67,7 +86,9 @@ const lazyRemote: RemotePorts = {
 
 // Remote reachability, from the transport registry and server health.
 function remoteStatus(serverId: string): { ready: boolean; error?: string } {
-  const unhealthy = useRemoteServerStore.getState().serverHealth[serverId]?.status === 'unhealthy';
+  const unhealthy =
+    useRemoteServerStore.getState().serverHealth[serverId]?.status ===
+    'unhealthy';
   return {
     ready: !!remoteTextTransportRegistry.get(serverId),
     ...(unhealthy ? { error: 'Remote server is unavailable' } : {}),
@@ -102,10 +123,15 @@ export const mobileModelWorkspacePorts: ModelWorkspacePorts = {
   selection: mobileModelSelectionStore,
   memory,
   residencyLogger: {
-    debug: (message, details) => logger.log(`[ModelResidency] ${message}`, details),
-    warn: (message, details) => logger.warn(`[ModelResidency] ${message}`, details),
+    debug: (message, details) =>
+      logger.log(`[ModelResidency] ${message}`, details),
+    warn: (message, details) =>
+      logger.warn(`[ModelResidency] ${message}`, details),
   },
-  generation: { tools: mobileToolExecutor, conversations: mobileConversationPort },
+  generation: {
+    tools: mobileToolExecutor,
+    conversations: mobileConversationPort,
+  },
   remote: lazyRemote,
   remoteServerId: generateId,
   // Ports for the services the facade composes on demand. Shared hands the lifecycle factory the

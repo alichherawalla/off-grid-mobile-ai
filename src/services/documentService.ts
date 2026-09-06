@@ -8,8 +8,8 @@ import RNFS from 'react-native-fs';
 import { statFile } from '../utils/fileStat';
 import { MediaAttachment } from '../types';
 import { pdfExtractor } from './pdfExtractor';
-import { useAppStore } from '../stores/appStore';
-import { APP_CONFIG } from '../constants';
+import {MOBILE_TEXT_SETTINGS_DEFAULTS} from '@offgrid/models';
+import {applicationFacade} from './applicationFacade';
 import { generateId } from '../utils/generateId';
 import logger from '../utils/logger';
 import {
@@ -52,9 +52,10 @@ class DocumentService {
 
   /** The chat's context window as the model sees it, in tokens. */
   private contextLength(): number {
-    return (
-      useAppStore.getState().settings.contextLength || APP_CONFIG.maxContextLength
-    );
+    const value = applicationFacade().models.settings.current().contextLength;
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
+      ? value
+      : MOBILE_TEXT_SETTINGS_DEFAULTS.contextLength;
   }
 
   /**

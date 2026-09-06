@@ -16,7 +16,7 @@ import {
   CORE_SYNC_ENTITIES,
   type KnowledgeDocumentSnapshot,
 } from '@offgrid/application';
-import type { Conversation, Message, Project } from '../../types';
+import type { Message } from '../../types';
 import { serializeMessageContext } from './messageContext';
 
 // The committed-mutation contract (entity table in wire order, mutation shape) is shared with
@@ -44,22 +44,6 @@ export function mobileModelSettingPatch(
   fields: Record<string, unknown>,
 ): Record<string, unknown> | null {
   return decodeModelSettingPatch('mobile', wireKey, fields);
-}
-
-export function conversationPutMutation(
-  conversation: Conversation,
-): SyncMutation {
-  return {
-    entity: CORE_SYNC_ENTITIES.conversation,
-    entityId: conversation.id,
-    kind: 'put',
-    fields: {
-      title: conversation.title,
-      project_id: conversation.projectId ?? null,
-      created_at: conversation.createdAt,
-      updated_at: conversation.updatedAt,
-    },
-  };
 }
 
 export function messagePutMutation(
@@ -91,23 +75,6 @@ export function messagePutMutation(
       content: message.content,
       context: serializeMessageContext(message),
       created_at: new Date(message.timestamp).toISOString(),
-    },
-  };
-}
-
-export function projectPutMutation(project: Project): SyncMutation {
-  return {
-    entity: CORE_SYNC_ENTITIES.project,
-    entityId: project.id,
-    kind: 'put',
-    fields: {
-      name: project.name,
-      description: project.description,
-      system_prompt: project.systemPrompt,
-      icon: project.icon ?? null,
-      include_memory: 1,
-      created_at: project.createdAt,
-      updated_at: project.updatedAt,
     },
   };
 }

@@ -3,7 +3,6 @@ import { persist } from 'zustand/middleware';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RNFS from 'react-native-fs';
-import type { RecordProvenance } from '@offgrid/application';
 import {
   DEFAULT_SILENCE_AFTER_SPEECH_MS,
   DEFAULT_SPEAKER_DRAIN_MS,
@@ -30,10 +29,7 @@ import {
   LiteRTBackend,
   GeneratedImage,
 } from '../types';
-import {
-  emitChangedModelSettings,
-  mobileModelSettingPatch,
-} from '../services/sync/mutation';
+import { emitChangedModelSettings } from '../services/sync/mutation';
 import { createProAccessSlice, type ProAccessSlice } from './proAccessSlice';
 import { migratePersistedState } from './appStoreMigrations';
 import { changedSliceStorage } from './persistence/changedSliceStorage';
@@ -61,7 +57,6 @@ export type AppSettings = {
   nBatch: number;
   imageGenerationMode: ImageGenerationMode;
   autoDetectMethod: AutoDetectMethod;
-  classifierModelId: string | null;
   imageSteps: number;
   imageGuidanceScale: number;
   imageThreads: number;
@@ -156,7 +151,6 @@ export interface AppState extends ProAccessSlice {
   modelMaxContext: number | null;
   setModelMaxContext: (ctx: number | null) => void;
   settings: AppSettings;
-  modelSettingProvenance: Record<string, RecordProvenance>;
   updateSettings: (settings: Partial<AppSettings>) => void;
   /**
    * Persist one COMMITTED settings record, whole, in a single write. The shared settings command has
@@ -164,12 +158,6 @@ export interface AppState extends ProAccessSlice {
    * scan `updateSettings` runs - that would publish the same change a second time.
    */
   replaceCommittedSettings: (settings: AppSettings) => void;
-  applySyncedModelSetting: (
-    wireKey: string,
-    fields: Record<string, unknown>,
-    provenance?: RecordProvenance,
-  ) => void;
-  resetSettings: () => void;
   downloadedImageModels: ONNXImageModel[];
   /** @deprecated Legacy persistence read once by the selection migration. */
   activeImageModelId?: string | null;
@@ -213,9 +201,10 @@ const DEFAULT_CHECKLIST: OnboardingChecklist = {
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  // ONE owner for the default persona. This was its own copy, and `projectStore` a third - three texts for
-  // one idea, all opening with the same sentence. That matters beyond tidiness: `systemPrompt` is a SYNCED
-  // model setting, so whichever copy a device happens to hold is the one that travels to its peers.
+  // ONE owner for the default persona. This was its own copy, and the retired legacy project store a
+  // third - three texts for one idea, all opening with the same sentence. That matters beyond tidiness:
+  // `systemPrompt` is a SYNCED model setting, so whichever copy a device happens to hold is the one
+  // that travels to its peers.
   systemPrompt: APP_CONFIG.defaultSystemPrompt,
   ...MOBILE_TEXT_SETTINGS_DEFAULTS,
   nThreads: 0,
@@ -223,7 +212,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   speculativeDecoding: false,
   imageGenerationMode: 'auto' as ImageGenerationMode,
   autoDetectMethod: 'pattern' as AutoDetectMethod,
-  classifierModelId: null,
   imageSteps: defaultImageSteps(Platform.OS),
   imageGuidanceScale: DEFAULT_IMAGE_GUIDANCE,
   imageThreads: 4,
@@ -267,7 +255,6 @@ const persistedAppSlice = (state: AppState) => ({
   onboardingChecklist: state.onboardingChecklist,
   checklistDismissed: state.checklistDismissed,
   settings: state.settings,
-  modelSettingProvenance: state.modelSettingProvenance,
   generatedImages: state.generatedImages,
   textGenerationCount: state.textGenerationCount,
   imageGenerationCount: state.imageGenerationCount,
@@ -348,7 +335,6 @@ export const useAppStore = create<AppState>()(
       modelMaxContext: null,
       setModelMaxContext: ctx => set({ modelMaxContext: ctx }),
       settings: { ...DEFAULT_SETTINGS },
-      modelSettingProvenance: {},
       updateSettings: newSettings => {
         const before = get().settings;
         const after = { ...before, ...newSettings };
@@ -356,27 +342,6 @@ export const useAppStore = create<AppState>()(
         emitChangedModelSettings(before, after);
       },
       replaceCommittedSettings: settings => set({ settings }),
-      applySyncedModelSetting: (wireKey, fields, provenance) => {
-        const patch = mobileModelSettingPatch(wireKey, fields);
-        if (patch) {
-          set(state => ({
-            settings: { ...state.settings, ...(patch as Partial<AppSettings>) },
-            modelSettingProvenance: provenance
-              ? {
-                  ...state.modelSettingProvenance,
-                  [wireKey]:
-                    state.modelSettingProvenance[wireKey] ?? provenance,
-                }
-              : state.modelSettingProvenance,
-          }));
-        }
-      },
-      resetSettings: () => {
-        const before = get().settings;
-        const after = { ...DEFAULT_SETTINGS };
-        set({ settings: after });
-        emitChangedModelSettings(before, after);
-      },
       // Image models (ONNX-based)
       downloadedImageModels: [],
       setDownloadedImageModels: models =>

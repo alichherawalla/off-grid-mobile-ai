@@ -6,9 +6,11 @@ import {
   ChatSessionService,
   once,
 } from '@offgrid/models';
-import type { ModelsChatPlatformPort } from '@offgrid/application';
 import {
-  invalidateMobileChatSession,
+  createWorkspaceContentChatSessionRepository,
+  type ModelsChatPlatformPort,
+} from '@offgrid/application';
+import {
   mobileChatContextPorts,
   mobileChatOperationCommand,
   mobileChatOperationPorts,
@@ -18,6 +20,8 @@ import {
   subscribeMobileChatSessionEvents,
 } from '../adapters/models/mobileChatHostPort';
 import { contextCompaction, generationIntent } from './chat-services';
+import { applicationFacade } from '../applicationFacade';
+import { generateId } from '../../utils/generateId';
 
 // Re-exported so the existing import paths keep resolving; the owner is `chat-services`.
 ;
@@ -26,8 +30,13 @@ const chatOperation = once(
   () => new ChatOperationApplicationService(mobileChatOperationPorts(generationIntent())),
 );
 const chatContext = once(() => new ChatContextApplicationService(mobileChatContextPorts()));
-const chatSession = once(() => new ChatSessionService(
-  ...mobileChatSessionPorts(
+const chatRepository = once(() => createWorkspaceContentChatSessionRepository({
+  workspaceContent: applicationFacade().workspaceContent,
+  newId: generateId,
+  now: Date.now,
+}));
+const chatSession = once(() => {
+  const [generation, options] = mobileChatSessionPorts(
     {
       augment: ({ identity, signal }) => chatContext().compose({
         conversationId: identity.conversationId,
@@ -41,8 +50,9 @@ const chatSession = once(() => new ChatSessionService(
       ),
     },
     contextCompaction(),
-  ),
-));
+  );
+  return new ChatSessionService(generation, chatRepository(), options);
+});
 export const modelsChatPort: ModelsChatPlatformPort = {
   snapshot: () => mobileChatQueueSnapshot(),
   subscribe: listener => subscribeMobileChatQueue(listener),
@@ -53,5 +63,6 @@ export const modelsChatPort: ModelsChatPlatformPort = {
   stop: (turnId, reason) => chatSession().stop(turnId, reason),
   stopConversation: (conversationId, reason) =>
     chatSession().stopConversation(conversationId, reason),
-  invalidate: conversationId => invalidateMobileChatSession(conversationId),
+  // Workspace content has no per-conversation repository cache to invalidate.
+  invalidate: () => undefined,
 };

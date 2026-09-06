@@ -10,7 +10,6 @@ import {
 } from '@offgrid/models';
 import type { ModelDownloadStartRequest } from '../modelServices/downloadTypes';
 import { modelsFailureMessage } from '@offgrid/application';
-import { useAppStore } from '../../stores';
 import {
   loadAutoSetupCompatibleCatalog,
   type AutoSetupImagePayload,
@@ -164,14 +163,19 @@ export function createAutoSetupSession(
     startDownload: item => downloads.start(toDownloadRequest(item)),
     cancelDownload: id => downloads.cancel(id),
     subscribeDownloads: listener => downloads.subscribe(listener),
-    loadTier: () =>
-      guidedSetupTierFromLoadingMode(
-        useAppStore.getState().settings.modelLoadingMode,
-      ),
-    saveTier: tier => {
-      useAppStore.getState().updateSettings({
-        modelLoadingMode: guidedSetupTierToLoadingMode(tier),
+    loadTier: () => {
+      const mode =
+        applicationFacade().models.snapshot().settings.modelLoadingMode;
+      return guidedSetupTierFromLoadingMode(
+        typeof mode === 'string' ? mode : undefined,
+      );
+    },
+    saveTier: async tier => {
+      const outcome = await applicationFacade().models.settings.save({
+        patch: { modelLoadingMode: guidedSetupTierToLoadingMode(tier) },
+        origin: 'local',
       });
+      if (!outcome.ok) throw new Error(modelsFailureMessage(outcome.failure));
     },
     activate: async item => {
       if (item.kind !== 'text') return;

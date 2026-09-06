@@ -12,6 +12,46 @@ Verdict legend:
 
 ---
 
+## Manual-endpoint restart hydration needs a live device check - 2026-09-05
+
+**Verdict: complete live verification.**
+
+`mobile/pro/sync/mobileSyncPlatformPorts.ts`'s `persistence.load()` override now awaits
+`manualMeshEndpointStore.load()` alongside `persistence.load()`, before Shared's `startSyncRun`
+projects the initial `SyncSnapshot.manualEndpoints` from `manualEndpoints.current(deviceId)` (see
+`.codex/ownership-migration/reports/claude-mobile-sync-endpoint-store-removal-v5.md`). This closes
+the previously-logged gap in code: `manualMeshEndpointStore.load()` now has exactly one production
+caller, on the sync startup path, so a saved endpoint should survive an app restart.
+
+Not yet confirmed live: save a manual endpoint for a paired device, force-quit the app, relaunch, and
+check the endpoint still shows in `SyncScreen`'s manual-endpoint sheet and the `SyncHomeCard`
+route-privacy badge. Needs an on-device run before this is trusted as fixed, not merely wired.
+
+---
+
+## `connectedDeviceIds` is permanently empty for three UI/task consumers - 2026-09-05
+
+**Verdict: fix-the-guard.**
+
+`mobile/pro/sync/syncStore.ts`'s `connectedDeviceIds` field has exactly one setter,
+`setConnectedDeviceIds`, and it has zero production callers anywhere in the repo (confirmed by a
+whole-tree grep, tests included). `ui/SyncHomeCard.tsx` and `ui/SyncScreen/useSyncScreenState.ts`
+already bypass the dead field - both build their own `connectedDeviceIds` from
+`SyncSnapshot.connections` via `facadeConnectedDeviceIds` - but three files outside the Sync
+ownership vertical still read `useSyncStore(state => state.connectedDeviceIds)` /
+`sync.connectedDeviceIds` directly: `ui/TaskChatCard.tsx:84`, `tasks/companionTaskRouter.ts:128`,
+and `mcp/mcpToolGrantService.ts:129/132`. Every one of them always observes `[]`, i.e. "nothing is
+connected," even while devices are actually connected. `TaskChatCard`'s connected-badge check
+(`connectedDeviceIds.includes(run.executionDevice.id)`) can therefore never be true in production.
+
+Fix: point those three call sites at the same `SyncSnapshot.connections` /
+`facadeConnectedDeviceIds` pattern `SyncHomeCard.tsx` and `useSyncScreenState.ts` already use, then
+delete `connectedDeviceIds`/`setConnectedDeviceIds` from `syncStore.ts` entirely (see
+`.codex/ownership-migration/reports/claude-mobile-sync-roster-store-removal-v6.md`). None of those
+three files were in scope for the v6 milestone that found this.
+
+---
+
 ## Shared model-control consolidation is not release-verified - 2026-09-01
 
 **Verdict: complete live verification.**
@@ -2250,3 +2290,16 @@ Deletion condition: rule which principle governs an outbound port that needs a s
 either the port receives the unload primitive as an inbound dependency (no facade reach), or the
 no-back-edge rule is narrowed to commands that share the control lane. Then make the two gates
 agree, and delete whichever rule loses.
+
+## Pre-M59 Workspace Content outbox schema ordering (code fixed, verification open, 2026-09-05)
+
+Code: M81 separates table creation, additive claim-column upgrade/backfill, and index creation.
+`claim_id`, `claimed_at`, `retry_at`, and `origin` now exist before the pending index references
+them. Existing rows are preserved and missing origins become `local`.
+
+Wired: `openWorkspaceContentDatabase()` runs this order on every normal repository open. The
+column checks and `CREATE INDEX IF NOT EXISTS` make a second open a schema no-op.
+
+Verified: open. The later verification phase must use real SQLite with a pre-M59 outbox table and
+existing rows, open it twice, and prove row equality, origin backfill, all four columns, one pending
+index, and no exception on either open.

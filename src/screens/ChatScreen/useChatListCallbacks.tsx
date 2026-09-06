@@ -51,7 +51,7 @@ export function useChatRowRenderer(chat: Chat): ChatRowRenderer {
   );
 
   const displayMessagesLength = chat.displayMessages.length;
-  const showGenerationDetails = chat.settings.showGenerationDetails;
+  const showGenerationDetails = chat.settings.showGenerationDetails === true;
   const { animateLastN, imageModelLoaded, isStreaming, isGeneratingImage } =
     chat;
 

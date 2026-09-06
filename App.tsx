@@ -48,6 +48,12 @@ import {
   LockedSurface,
   MainSurface,
 } from './src/bootstrap/AppSurfaces';
+import { startContentPersistenceMigration } from './src/services/migrations/contentMigrationCoordinator';
+import {
+  ContentMigrationSurface,
+  shouldBlockForContentMigration,
+  useContentMigrationStatus,
+} from './src/components/migrations/ContentMigrationSurface';
 
 LogBox.ignoreAllLogs(); // Suppress all logs
 
@@ -138,6 +144,7 @@ function App() {
   const AppRoot = useSlot(SLOTS.appRoot);
   const applyPendingProRedirect = useProExpiryRedirect();
   const [isInitializing, setIsInitializing] = useState(true);
+  const contentMigration = useContentMigrationStatus();
   const startupGeneration = useRef(0);
   const setDeviceInfo = useAppStore(s => s.setDeviceInfo);
   const setModelRecommendation = useAppStore(s => s.setModelRecommendation);
@@ -184,6 +191,12 @@ function App() {
         // Ensure persisted download metadata is loaded before restore logic reads it.
         logger.log('[BOOT] app store hydrate');
         await ensureAppStoreHydrated();
+
+        // Copy released AsyncStorage content into the normalized SQLite target before later
+        // application/UI milestones switch their read owner. Failure is projected reactively and
+        // leaves the released stores untouched, so startup can continue without data loss.
+        logger.log('[BOOT] workspace content migration');
+        await startContentPersistenceMigration();
 
         // Project the persisted "aggressive model loading" setting onto the residency
         // manager (single owner of the runtime load policy) now that settings are
@@ -310,6 +323,10 @@ function App() {
   }, [initializeApp]);
 
   const handleUnlock = useCallback(() => setLocked(false), [setLocked]);
+
+  if (shouldBlockForContentMigration(contentMigration)) {
+    return <ContentMigrationSurface status={contentMigration} />;
+  }
 
   if (isInitializing) {
     return <InitializingSurface colors={colors} isDark={isDark} />;

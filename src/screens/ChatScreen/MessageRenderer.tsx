@@ -5,7 +5,7 @@ import { ThinkingIndicator } from '../../components/ThinkingIndicator';
 import { SPACING } from '../../constants';
 import { prepareMessageForSpeech } from '../../utils/messageContent';
 import { Message } from '../../types';
-import { useUiModeStore } from '../../stores';
+import { useSpeechProjection } from '../../hooks/useApplicationProjection';
 import { getSlot, SLOTS } from '../../bootstrap/slotRegistry';
 import { ChatMessageItem } from './useChatScreen';
 import { STREAMING_MESSAGE_ID } from './types';
@@ -44,7 +44,7 @@ const MessageRendererInner: React.FC<MessageRendererProps> = props => {
     onImagePress,
   } = props;
 
-  const interfaceMode = useUiModeStore(s => s.interfaceMode);
+  const voiceMode = useSpeechProjection().preferences.voiceMode;
   const msg = item as Message;
   const animateEntry =
     animateLastN > 0 && index >= displayMessagesLength - animateLastN;
@@ -55,9 +55,9 @@ const MessageRendererInner: React.FC<MessageRendererProps> = props => {
 
   // Audio mode: the pro audio feature owns the whole message presentation
   // (user/assistant bubbles, thinking, streaming). Free builds never reach
-  // this branch (interfaceMode stays 'chat').
+  // this branch because the audio slot is absent.
   const AudioMessage = getSlot(SLOTS.messageAudioMode);
-  if (interfaceMode === 'audio' && AudioMessage) {
+  if (voiceMode && AudioMessage) {
     const audioMessage = (
       <AudioMessage
         msg={msg}

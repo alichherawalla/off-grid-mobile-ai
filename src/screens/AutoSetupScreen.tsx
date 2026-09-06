@@ -55,8 +55,9 @@ export const AutoSetupScreen: React.FC<Props> = ({
     snapshot.plans.find(plan => plan.tier === snapshot.selectedTier) ??
     snapshot.plans[0];
   const selectedOutcomes =
-    selected?.items.map(item => snapshot.outcomes[guidedSetupDownloadId(item)]) ??
-    [];
+    selected?.items.map(
+      item => snapshot.outcomes[guidedSetupDownloadId(item)],
+    ) ?? [];
   const progress =
     selectedOutcomes.length === 0
       ? 0
@@ -112,7 +113,9 @@ export const AutoSetupScreen: React.FC<Props> = ({
           {snapshot.plans.map(plan => (
             <Card
               key={plan.tier}
-              onPress={() => session.selectTier(plan.tier)}
+              onPress={() => {
+                session.selectTier(plan.tier).catch(() => undefined);
+              }}
               style={{
                 ...styles.planCard,
                 ...(width >= 700 ? styles.planCardWide : {}),

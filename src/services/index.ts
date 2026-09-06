@@ -14,6 +14,7 @@ export type { ResourceUsage } from './modelServices/modelStateTypes';
 export {
   selectMobileModel,
   clearMobileModel,
+  modelSelectionFailureMessage,
 } from './modelServices';
 export { imageGenerationService } from './imageGenerationService';
 export type { ImageGenerationState } from './imageGenerationService';

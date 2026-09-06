@@ -1,9 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Platform } from 'react-native';
-import { useAppStore } from '../stores';
+import type {
+  CommittedModelSettings,
+  ModelsFailure,
+  Outcome,
+} from '@offgrid/application';
 import { CacheType, INFERENCE_BACKENDS } from '../types';
 import { hardwareService } from '../services/hardware';
+import { applicationFacade } from '../services/applicationFacade';
 import { backendForcesF16Cache } from '../services/llmHelpers';
+import { useModelsProjection } from './useApplicationProjection';
 
 export const CACHE_TYPE_DESCRIPTIONS: Record<CacheType, string> = {
   f16: 'Full precision — best quality, highest memory usage',
@@ -14,17 +20,26 @@ export const CACHE_TYPE_DESCRIPTIONS: Record<CacheType, string> = {
 export const GPU_LAYERS_MAX = 99;
 export const CACHE_TYPE_OPTIONS: CacheType[] = ['f16', 'q8_0', 'q4_0'];
 
+export type TextGenerationAdvancedSettingsSaveOutcome = Outcome<
+  CommittedModelSettings,
+  ModelsFailure
+>;
+
 export function useTextGenerationAdvanced() {
-  // FIVE settings fields, read one at a time. `useAppStore()` woke every advanced-settings row on
-  // every store write - a finished download, a generated image, a device-info refresh - and, worse,
-  // on every character and every slider step of ANY other setting, because one whole-store read
-  // cannot tell which field moved.
-  const flashAttn = useAppStore(s => s.settings?.flashAttn);
-  const cacheType = useAppStore(s => s.settings?.cacheType);
-  const gpuLayers = useAppStore(s => s.settings?.gpuLayers);
-  const inferenceBackend = useAppStore(s => s.settings?.inferenceBackend);
-  const nThreads = useAppStore(s => s.settings?.nThreads);
-  const updateSettings = useAppStore(s => s.updateSettings);
+  const settings = useModelsProjection().settings;
+  const flashAttn = typeof settings.flashAttn === 'boolean'
+    ? settings.flashAttn
+    : undefined;
+  const cacheType = CACHE_TYPE_OPTIONS.find(value => value === settings.cacheType);
+  const gpuLayers = typeof settings.gpuLayers === 'number'
+    ? settings.gpuLayers
+    : undefined;
+  const inferenceBackend = Object.values(INFERENCE_BACKENDS).find(
+    value => value === settings.inferenceBackend,
+  );
+  const nThreads = typeof settings.nThreads === 'number'
+    ? settings.nThreads
+    : undefined;
 
   const isFlashAttnOn = flashAttn ?? true;
   const isQuantizedCache = (cacheType ?? 'q8_0') !== 'f16';
@@ -51,21 +66,29 @@ export function useTextGenerationAdvanced() {
     ? (resolvedThreadCount != null ? `Auto (${resolvedThreadCount})` : 'Auto')
     : String(cpuThreadsSliderValue);
 
-  const handleFlashAttnToggle = (next: boolean) => {
-    if (!next && isQuantizedCache) {
-      updateSettings({ flashAttn: false, cacheType: 'f16' });
-    } else {
-      updateSettings({ flashAttn: next });
-    }
+  const handleFlashAttnToggle = (
+    next: boolean,
+  ): Promise<TextGenerationAdvancedSettingsSaveOutcome> => {
+    const patch = !next && isQuantizedCache
+      ? { flashAttn: false, cacheType: 'f16' as const }
+      : { flashAttn: next };
+    return applicationFacade().models.settings.save({
+      origin: 'local',
+      patch,
+    });
   };
 
-  const handleCacheTypeChange = (ct: CacheType) => {
-    if (cacheDisabled) return;
-    const updates: Parameters<typeof updateSettings>[0] = { cacheType: ct };
-    if (ct !== 'f16' && !isFlashAttnOn) {
-      updates.flashAttn = true;
-    }
-    updateSettings(updates);
+  const handleCacheTypeChange = (
+    ct: CacheType,
+  ): Promise<TextGenerationAdvancedSettingsSaveOutcome> | undefined => {
+    if (cacheDisabled) return undefined;
+    const patch = ct !== 'f16' && !isFlashAttnOn
+      ? { cacheType: ct, flashAttn: true }
+      : { cacheType: ct };
+    return applicationFacade().models.settings.save({
+      origin: 'local',
+      patch,
+    });
   };
 
   return {

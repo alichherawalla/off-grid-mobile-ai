@@ -18,11 +18,11 @@ import { resolvePickedFileUri } from '../utils/resolvePickedFileUri';
 import logger from '../utils/logger';
 import { useTheme, useThemedStyles } from '../theme';
 import { createStyles } from './KnowledgeBaseScreen.styles';
-import { useProjectStore } from '../stores';
 import type { RagDocument } from '@offgrid/application';
 import { applicationFacade } from '../services/applicationFacade';
 import { requireRagSuccess } from '../services/ragOutcome';
 import { useProjectRagDocuments } from '../hooks/useProjectRagDocuments';
+import { useWorkspaceContentProjection } from '../hooks/useApplicationProjection';
 import { RootStackParamList } from '../navigation/types';
 import { isPickerStuck } from '../utils/pickerErrorUtils';
 
@@ -52,7 +52,13 @@ export const KnowledgeBaseScreen: React.FC = () => {
   const [indexError, setIndexError] = useState<{ fileName: string; message: string } | null>(null);
   const isPickingRef = useRef(false);
 
-  const project = useProjectStore((s) => s.getProject(projectId));
+  const workspaceContent = useWorkspaceContentProjection();
+  const project = workspaceContent.projects.find(item => item.id === projectId);
+  const isProjectLoading =
+    workspaceContent.status === 'created' || workspaceContent.status === 'loading';
+  const isProjectUnavailable = workspaceContent.status === 'stopped';
+  const isProjectNotFound = workspaceContent.status === 'ready' && !project;
+  const canUseProject = workspaceContent.status === 'ready' && !!project;
 
   const handleAddDocument = async () => {
     if (isPickingRef.current) {
@@ -212,7 +218,11 @@ export const KnowledgeBaseScreen: React.FC = () => {
             {project?.name || 'Knowledge Base'}
           </Text>
         </View>
-        <TouchableOpacity onPress={handleAddDocument} style={styles.addButton} disabled={isPicking || !!indexingFile}>
+        <TouchableOpacity
+          onPress={handleAddDocument}
+          style={styles.addButton}
+          disabled={!canUseProject || isPicking || !!indexingFile}
+        >
           {indexingFile ? (
             <LoadingDots color={colors.primary} />
           ) : (
@@ -221,6 +231,26 @@ export const KnowledgeBaseScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
 
+      {isProjectLoading ? (
+        <View style={styles.centered}>
+          <LoadingDots color={colors.primary} />
+          <Text style={styles.emptyText}>Loading project...</Text>
+        </View>
+      ) : isProjectUnavailable ? (
+        <View style={styles.errorCard}>
+          <Icon name="alert-triangle" size={16} color={colors.error} />
+          <View style={styles.errorTextWrap}>
+            <Text style={styles.errorTitle}>Project unavailable</Text>
+            <Text style={styles.errorMessage}>Your project data is not available.</Text>
+          </View>
+        </View>
+      ) : isProjectNotFound ? (
+        <View style={styles.centered}>
+          <Icon name="folder" size={40} color={colors.textMuted} />
+          <Text style={styles.emptyText}>Project not found</Text>
+        </View>
+      ) : (
+        <>
       {indexingFile && (
         <View style={styles.indexingBanner}>
           <LoadingDots color={colors.primary} />
@@ -286,6 +316,8 @@ export const KnowledgeBaseScreen: React.FC = () => {
           showsVerticalScrollIndicator={false}
         />
       ) : null}
+        </>
+      )}
     </SafeAreaView>
   );
 };

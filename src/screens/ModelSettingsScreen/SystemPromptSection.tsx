@@ -2,9 +2,9 @@ import React, { useCallback, useState } from 'react';
 import { View, Text, TextInput } from 'react-native';
 import { modelsFailureMessage } from '@offgrid/application';
 import { useTheme, useThemedStyles } from '../../theme';
-import { useAppStore } from '../../stores';
 import { APP_CONFIG } from '../../constants';
 import { applicationFacade } from '../../services/applicationFacade';
+import { useModelsProjection } from '../../hooks/useApplicationProjection';
 import { useCommittedTextDraft } from '../../hooks/useCommittedTextDraft';
 import { Button } from '../../components';
 import { createStyles } from './styles';
@@ -19,10 +19,11 @@ import { createStyles } from './styles';
 export const SystemPromptSection: React.FC = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  // Narrow selector: this section re-renders for the committed prompt alone, not for every setting.
-  const committed = useAppStore(
-    state => state.settings?.systemPrompt ?? APP_CONFIG.defaultSystemPrompt,
-  );
+  // Shared owns the committed value; this component owns only the uncommitted text draft.
+  const projectedSystemPrompt = useModelsProjection().settings.systemPrompt;
+  const committed = typeof projectedSystemPrompt === 'string'
+    ? projectedSystemPrompt
+    : APP_CONFIG.defaultSystemPrompt;
   const [syncWarning, setSyncWarning] = useState<string | null>(null);
 
   const commit = useCallback(async (systemPrompt: string) => {

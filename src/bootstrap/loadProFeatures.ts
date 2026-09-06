@@ -24,6 +24,9 @@ export async function loadProFeatures(isPro?: boolean): Promise<boolean> {
   if (!pro) {
     return false; // proStub.js returns null — free build via metro extraNodeModules
   }
+  if (typeof pro.prepareMobileApplicationPorts === 'function') {
+    await pro.prepareMobileApplicationPorts();
+  }
   if (typeof pro.createMobileApplicationPorts === 'function') {
     registerMobileApplicationPorts(pro.createMobileApplicationPorts);
   }

@@ -1,6 +1,5 @@
 import {
   DEFAULT_IMAGE_MIME,
-  chatGenerationRequestDefaults,
   generationMessageText,
   isMemoryToolAllowed,
   runtimeModelRouteId,
@@ -12,44 +11,54 @@ import {
   type ChatQueueProjection,
   type ChatRagPort,
   type ChatSessionEvent,
-  type ChatSessionRepositoryPort,
   type ChatSessionServiceOptions,
-  type ChatTurn,
   type GenerationEvents,
   type GenerationMessage,
   type GenerationOperation,
   type GenerationRequest,
   type GenerationResult,
+  type MessageRecord,
 } from '@offgrid/application';
+import { portableMessageText } from '../../../utils/portableMessageText';
+import { Platform } from 'react-native';
 import type {
   CompactableGenerationMessage,
   ContextCompactionService,
   GenerationIntentService,
 } from '@offgrid/models';
-import { callHook, HOOKS } from '../../../bootstrap/hookRegistry';
-import { APP_CONFIG } from '../../../constants';
+import { describeImageBackend } from '@offgrid/models';
+import { voiceModeSystemPrompt } from '@offgrid/speech';
 import {
   generationMessage,
-  MobileChatTurnRepository,
+  mobileWorkspaceGenerationMessage,
 } from './mobileChatTurnRepository';
+import { committedEnabledToolIds } from './committedToolSelection';
 import { generateChatWithModelsFacade } from './modelsFacadeGeneration';
-import { useAppStore, useChatStore, useProjectStore } from '../../../stores';
+import { useAppStore } from '../../../stores';
 import type { MediaAttachment, Message } from '../../../types';
-import { isLiteRTModel } from '../../../types';
 import logger from '../../../utils/logger';
 import { applicationFacade } from '../../applicationFacade';
 import { ensureDefaultClassifier } from '../../classifierProvisioning';
 import { mobileChatGenerationProjection } from '../../chatGenerationProjection';
 import { mobileCompactionOptions } from '../../contextCompactionPorts';
-import { classifyMobileIntent, configuredClassifierModel } from '../../intentClassifierPorts';
+import {
+  classifyMobileIntent,
+  configuredClassifierModel,
+} from '../../intentClassifierPorts';
 import { reportModelFailure } from '../../modelFailureHandler';
 import { modelInputAudioUris } from '../../modelMedia';
 import { requireRagSuccess } from '../../ragOutcome';
-import { activeLocalModelId } from '../../modelServices/activeRoute';
 import { mobileImageChatGeneration } from '../../modelServices/imageChatGenerationPort';
 import { activeMobileRoute } from '../../modelServices/mobileLLMService';
 import { lifecycleProjectionPort } from '../../modelServices/lifecycleProjectionPort';
 import { mobileToolDefinitions } from '../../modelServices/toolPorts';
+import {
+  committedModelSettings,
+  committedSystemPrompt,
+  optionalNumberSetting,
+} from './mobileChatSettingsProjection';
+
+export { mobileChatRequestDefaults } from './mobileChatSettingsProjection';
 
 export interface MobileChatCommandOptions {
   imageMode?: 'auto' | 'force' | 'disabled';
@@ -59,7 +68,6 @@ export interface MobileChatCommandOptions {
   ensureTextRoute?: () => Promise<boolean>;
 }
 
-const repository = new MobileChatTurnRepository();
 const commandOptions = new Map<string, MobileChatCommandOptions>();
 let queue: ChatQueueProjection = {
   entries: [],
@@ -69,16 +77,11 @@ let queue: ChatQueueProjection = {
 const queueListeners = new Set<(projection: ChatQueueProjection) => void>();
 const sessionEventListeners = new Set<(event: ChatSessionEvent) => void>();
 
-export function prepareMobileChatMessage(
-  conversationId: string,
-  turnId: string,
-): Message | null {
-  return repository.prepareNew(conversationId, turnId);
-}
-
 export function mobileGenerationMessage(message: Message): GenerationMessage {
   return generationMessage(message);
 }
+
+export { mobileWorkspaceGenerationMessage };
 
 export async function withMobileChatCommandOptions<T>(
   turnId: string,
@@ -106,10 +109,6 @@ export function subscribeMobileChatSessionEvents(
   sessionEventListeners.add(listener);
   return () => sessionEventListeners.delete(listener);
 }
-export function invalidateMobileChatSession(conversationId: string): void {
-  repository.invalidate(conversationId);
-}
-
 type ClassifierFailureStage = 'provisioning' | 'classification';
 
 export function projectClassifierFailure(
@@ -134,20 +133,20 @@ export function mobileChatOperationPorts(
 ): ChatOperationApplicationPorts {
   return {
     inspect() {
-      const state = useAppStore.getState();
+      // Both routing facts are committed settings, so they are read from the canonical record - not
+      // from an app-store slice a remote or sync-applied patch may not have reached yet.
+      const settings = committedModelSettings();
       const facts = {
         imageEnabled: true,
         imageGenerationRunning: mobileImageChatGeneration.isGenerating(),
         imageRoutingMode:
-          state.settings.imageGenerationMode === 'manual' ? ('manual' as const) : ('auto' as const),
+          settings.imageGenerationMode === 'manual'
+            ? ('manual' as const)
+            : ('auto' as const),
         imageRouteAvailable: !!activeMobileRoute('image').model,
         textRouteAvailable: !!activeMobileRoute('text').model,
-        modelAutoDetection: state.settings.autoDetectMethod === 'llm',
-        dedicatedClassifierAvailable:
-          !!state.settings.classifierModelId &&
-          state.downloadedModels.some(
-            model => model.id === state.settings.classifierModelId,
-          ),
+        modelAutoDetection: settings.autoDetectMethod === 'llm',
+        dedicatedClassifierAvailable: !!configuredClassifierModel(),
       };
       logger.log(`[ROUTE-SM] facts ${JSON.stringify(facts)}`);
       return facts;
@@ -194,18 +193,63 @@ export function mobileChatOperationCommand(input: {
   };
 }
 
+function workspaceMessage(record: MessageRecord): Message {
+  const local = record.local as Partial<Message> | undefined;
+  const timestamp = Date.parse(record.createdAt);
+  return {
+    ...local,
+    id: record.id,
+    uuid: record.id,
+    role: record.portable.role,
+    content: portableMessageText(record.portable.content) ?? '',
+    timestamp: Number.isNaN(timestamp) ? 0 : timestamp,
+    ...(record.portable.context?.reasoning === undefined
+      ? {}
+      : { reasoningContent: record.portable.context.reasoning }),
+    ...(record.portable.context?.notice === undefined
+      ? {}
+      : { isSystemInfo: record.portable.context.notice }),
+    ...(record.portable.context?.tool?.name === undefined
+      ? {}
+      : { toolName: record.portable.context.tool.name }),
+    ...(record.portable.context?.tool?.callId === undefined
+      ? {}
+      : { toolCallId: record.portable.context.tool.callId }),
+  };
+}
+
 export function mobileChatContextPorts(): ChatContextApplicationPorts {
   return {
-    conversation: id =>
-      useChatStore
-        .getState()
-        .conversations.find(candidate => candidate.id === id) ?? null,
-    project: id => useProjectStore.getState().getProject(id) ?? null,
-    defaultSystemPrompt: () =>
-      useAppStore.getState().settings.systemPrompt ||
-      APP_CONFIG.defaultSystemPrompt,
+    conversation: id => {
+      const snapshot = applicationFacade().workspaceContent.snapshot();
+      const conversation = snapshot.conversations.find(
+        candidate => candidate.id === id,
+      );
+      if (!conversation) return null;
+      return {
+        messages: snapshot.messages
+          .filter(message => message.conversationId === id)
+          .map(workspaceMessage),
+        ...(conversation.compactionSummary === undefined
+          ? {}
+          : { compactionSummary: conversation.compactionSummary }),
+        ...(conversation.compactionCutoffMessageId === undefined
+          ? {}
+          : {
+              compactionCutoffMessageId: conversation.compactionCutoffMessageId,
+            }),
+      };
+    },
+    project: id =>
+      applicationFacade()
+        .workspaceContent.snapshot()
+        .projects.find(project => project.id === id) ?? null,
+    defaultSystemPrompt: committedSystemPrompt,
     augmentSystemPrompt: prompt =>
-      callHook<string>(HOOKS.audioAugmentPrompt, prompt) ?? prompt,
+      voiceModeSystemPrompt(
+        prompt,
+        applicationFacade().speech.snapshot().preferences.voiceMode,
+      ),
     async enabledDocumentNames(projectId) {
       return requireRagSuccess(
         await applicationFacade().rag.listDocuments(projectId),
@@ -214,37 +258,25 @@ export function mobileChatContextPorts(): ChatContextApplicationPorts {
         .map(document => document.name);
     },
     async retrieve(projectId, query) {
-      return requireRagSuccess(
-        await applicationFacade().rag.buildContext(projectId, query),
-      ) || undefined;
+      return (
+        requireRagSuccess(
+          await applicationFacade().rag.buildContext(projectId, query),
+        ) || undefined
+      );
     },
-    audioUris: attachment => modelInputAudioUris([attachment as MediaAttachment]),
+    audioUris: attachment =>
+      modelInputAudioUris([attachment as MediaAttachment]),
     onRetrievalError: error =>
       logger.error('[ChatSession] RAG augmentation failed', error),
   };
 }
 
-function publishSessionEvent(event: ChatSessionEvent): void {
+async function publishSessionEvent(event: ChatSessionEvent): Promise<void> {
   sessionEventListeners.forEach(listener => listener(event));
-  if (event.type === 'started') {
-    useChatStore
-      .getState()
-      .updateMessageTurnKind(
-        event.turn.conversationId,
-        event.turn.id,
-        event.turn.request.operation.type === 'image' ? 'image' : 'text',
-      );
-  }
-  mobileChatGenerationProjection.publish(event);
+  await mobileChatGenerationProjection.publish(event);
   if (event.type === 'queue_changed') {
     queue = event.queue;
     queueListeners.forEach(listener => listener(queue));
-    return;
-  }
-  if (event.type === 'invalidated') {
-    const first = event.turnIds[0];
-    if (first)
-      useChatStore.getState().deleteMessagesAfter(event.conversationId, first);
   }
 }
 
@@ -260,6 +292,7 @@ async function generateForSession(
   if (!identity?.conversationId)
     throw new Error('Image generation requires a conversation identity');
   await lifecycleProjectionPort.refreshInventory();
+  const startedAt = Date.now();
   const abort = () => {
     mobileImageChatGeneration.cancel().catch(() => undefined);
   };
@@ -276,13 +309,27 @@ async function generateForSession(
       conversationId: identity.conversationId,
     });
     if (!generated) {
-      throw new Error(mobileImageChatGeneration.lastError() ?? 'Image generation returned no image');
+      throw new Error(
+        mobileImageChatGeneration.lastError() ??
+          'Image generation returned no image',
+      );
     }
     const model =
-      (request.routeId ? applicationFacade().models.lookup(request.routeId) : null) ??
-      activeMobileRoute('image').model;
+      (request.routeId
+        ? applicationFacade().models.lookup(request.routeId)
+        : null) ?? activeMobileRoute('image').model;
     if (!model) throw new Error('The selected image model is unavailable');
     const routeId = model.routeId ?? runtimeModelRouteId(model);
+    // The SAME canonical record every other read on this path uses. `models.snapshot().settings` is
+    // a projected copy of it; reading the record two ways left one fact with two readers.
+    const settings = committedModelSettings();
+    const useOpenCL = settings.imageUseOpenCL;
+    const guidanceScale =
+      request.operation.guidanceScale ??
+      optionalNumberSetting(settings, 'imageGuidanceScale');
+    const localImageModel = useAppStore
+      .getState()
+      .downloadedImageModels.find(candidate => candidate.id === model.id);
     return {
       model,
       output: {
@@ -295,6 +342,24 @@ async function generateForSession(
             width: generated.width,
             height: generated.height,
             seed: generated.seed,
+            local: {
+              generationTimeMs: Date.now() - startedAt,
+              generationMeta: {
+                ...(typeof useOpenCL === 'boolean'
+                  ? describeImageBackend(
+                      Platform.OS,
+                      model.source === 'remote'
+                        ? 'remote'
+                        : localImageModel?.backend,
+                      useOpenCL,
+                    )
+                  : {}),
+                modelName: model.name,
+                steps: generated.steps,
+                ...(guidanceScale === undefined ? {} : { guidanceScale }),
+                resolution: `${generated.width}x${generated.height}`,
+              },
+            },
           },
         ],
       },
@@ -310,56 +375,39 @@ async function generateForSession(
   }
 }
 
-export function mobileChatRequestDefaults(): ChatTurn['request']['request'] {
-  const state = useAppStore.getState();
-  const selected = state.downloadedModels.find(
-    model => model.id === activeLocalModelId('text'),
-  );
-  return { profile: 'chat', ...chatGenerationRequestDefaults({
-    runtime: selected && isLiteRTModel(selected) ? 'litert' : 'standard',
-    standard: {
-      maxTokens: state.settings.maxTokens,
-      temperature: state.settings.temperature,
-      topP: state.settings.topP,
-      repetitionPenalty: state.settings.repeatPenalty,
-    },
-    litert: {
-      maxTokens: state.settings.liteRTMaxTokens,
-      temperature: state.settings.liteRTTemperature,
-      topP: state.settings.liteRTTopP,
-    },
-    thinkingEnabled: state.settings.thinkingEnabled,
-    reasoningBudget: state.settings.reasoningBudget,
-    maxToolCalls: state.settings.maxToolCalls,
-  }) };
-}
-
 export function mobileChatSessionPorts(
   rag: ChatRagPort,
   operation: ChatOperationPolicyPort,
   compaction: ContextCompactionService<CompactableGenerationMessage>,
-): [ChatGenerationPort, ChatSessionRepositoryPort, ChatSessionServiceOptions] {
+): [ChatGenerationPort, ChatSessionServiceOptions] {
   return [
     { generate: generateForSession },
-    repository,
     {
       rag,
       tools: {
         resolve: async ({ identity }) => {
-          const enabledToolIds =
-            useAppStore.getState().settings.enabledTools ?? [];
+          // The committed tool selection has one owner: the Shared Models settings record. The chat
+          // path must resolve tools from the same value the Tools screen commits, never from a store
+          // mirror that a sync-applied or remote patch has not reached yet.
+          const enabledToolIds = committedEnabledToolIds();
+          const workspaceContent =
+            applicationFacade().workspaceContent.snapshot();
           const admittedToolIds = enabledToolIds.filter(toolId =>
             isMemoryToolAllowed(toolId, {
               projectActive:
                 !!identity.projectId &&
-                !!useProjectStore.getState().getProject(identity.projectId),
+                workspaceContent.projects.some(
+                  project => project.id === identity.projectId,
+                ),
               allMemory: true,
             }),
           );
           if (!admittedToolIds.length) return {};
-          const messages = useChatStore
-            .getState()
-            .getConversationMessages(identity.conversationId)
+          const messages = workspaceContent.messages
+            .filter(
+              message => message.conversationId === identity.conversationId,
+            )
+            .map(workspaceMessage)
             .filter(message => !message.isSystemInfo);
           const tools = await mobileToolDefinitions(admittedToolIds, messages);
           return tools.length ? { tools, toolChoice: 'auto' } : {};

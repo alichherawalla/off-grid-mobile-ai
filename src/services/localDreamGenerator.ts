@@ -1,4 +1,5 @@
 import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
+import RNFS from 'react-native-fs';
 import {
   projectNativeGeneratedImageResult,
   projectNativeImageGeneration,
@@ -12,6 +13,12 @@ import {
 import { generateRandomSeed } from '../utils/generateId';
 import logger from '../utils/logger';
 import { shouldLogProgressStep } from './image/progressDiagnostics';
+import {
+  nativeImageDeleteFailure,
+  projectNativeImageDeletePath,
+  projectNativeImageDeleteOutcome,
+  type NativeImageDeleteOutcome,
+} from './image/nativeImageDeleteOutcome';
 
 const { LocalDreamModule, CoreMLDiffusionModule } = NativeModules;
 
@@ -201,28 +208,43 @@ class LocalDreamGeneratorService {
     return this.generating;
   }
 
-  async getGeneratedImages(): Promise<GeneratedImage[]> {
-    if (!this.isAvailable()) return [];
-    try {
-      const images = await DiffusionModule.getGeneratedImages();
-      return images.flatMap((img: unknown) => {
-        const value = img && typeof img === 'object' ? img as Record<string, unknown> : {};
-        const request = projectNativeImageGeneration({
-          platform: Platform.OS,
-          request: { prompt: typeof value.prompt === 'string' ? value.prompt : '' },
-          randomSeed: 0,
-        });
-        const projected = projectNativeGeneratedImageResult({ value: img, request });
-        return projected ? [projected] : [];
-      });
-    } catch {
-      return [];
+  /**
+   * Ask the native store to release one generated image's bytes.
+   *
+   * Never throws: a rejected bridge call is a `failure` outcome, because the caller settles a
+   * durable intent and needs the three-way answer (gone / already gone / still there) rather than
+   * an exception it would have to re-classify.
+   */
+  async deleteGeneratedImage(
+    imagePath: string,
+    commitFence?: () => boolean,
+  ): Promise<NativeImageDeleteOutcome> {
+    const admitted = projectNativeImageDeletePath(
+      imagePath,
+      `${RNFS.DocumentDirectoryPath}/generated_images`,
+    );
+    if (!admitted.ok) return admitted.outcome;
+    if (!this.isAvailable()) {
+      return nativeImageDeleteFailure(
+        'NATIVE_MODULE_UNAVAILABLE',
+        'No native image store is available to delete generated image bytes.',
+      );
     }
-  }
-
-  async deleteGeneratedImage(imageId: string): Promise<boolean> {
-    if (!this.isAvailable()) return false;
-    return await DiffusionModule.deleteGeneratedImage(imageId);
+    // This is the last synchronous JavaScript boundary before native file I/O is admitted.
+    // A stale remote workflow must not enqueue an irreversible unlink.
+    if (commitFence && !commitFence()) return {status: 'fenced'};
+    try {
+      return projectNativeImageDeleteOutcome(
+        await DiffusionModule.deleteGeneratedImage(admitted.path),
+      );
+    } catch (error) {
+      return nativeImageDeleteFailure(
+        typeof (error as { code?: unknown })?.code === 'string'
+          ? String((error as { code: string }).code)
+          : 'NATIVE_DELETE_REJECTED',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   async clearOpenCLCache(modelPath: string): Promise<number> {

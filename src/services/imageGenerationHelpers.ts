@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import type { PortableMessageState } from '@offgrid/application';
 import {
   buildImageEnhancementMessages,
   cleanImageEnhancement,
@@ -9,10 +10,11 @@ import {
   isRuntimeOnlyMessage,
   PROMPT_ENHANCEMENT_REASONING_LABEL,
 } from '@offgrid/sync';
-import { useAppStore, useChatStore } from '../stores';
+import { useAppStore } from '../stores';
 import { GeneratedImage, GenerationMeta, Message } from '../types';
 import { parseModelOutput } from '../utils/messageContent';
 import { maybeScheduleSharePrompt } from '../utils/sharePrompt';
+import { applicationFacade } from './applicationFacade';
 import { reportModelFailure } from './modelFailureHandler';
 import { checkProPromptForImage } from './proPrompt';
 import type {
@@ -92,27 +94,42 @@ export function buildEnhancementMessages(
  *
  * So: the enhancement's own cards are dropped, because they are this feature talking to itself and
  * carry no conversation, and everything else is passed through the one display parse.
+ *
+ * Reads the Workspace Content snapshot, not the legacy Zustand mirror: the generated-image result
+ * row and tool-loop context rows are durable ONLY through Workspace Content (see
+ * `imageGenerationResult.ts` / `modelServices/toolExecutorPorts.ts`), so a Shared-created
+ * conversation's context would be silently incomplete if this still read `useChatStore`.
  */
+function contextMessageText(content: PortableMessageState['content']): string {
+  if (typeof content === 'string') return content;
+  return content.map(part => (part.type === 'text' ? part.text : '')).join('');
+}
+
 export function getConversationContext(conversationId: string): Message[] {
-  const conversation = useChatStore
-    .getState()
-    .conversations.find(c => c.id === conversationId);
-  if (!conversation?.messages) return [];
-  return selectImageEnhancementContext(conversation.messages.map(message => {
-    const parsed = parseModelOutput(message.content, message.reasoningContent);
+  const messages = applicationFacade()
+    .workspaceContent.snapshot()
+    .messages.filter(message => message.conversationId === conversationId);
+  if (!messages.length) return [];
+  return selectImageEnhancementContext(messages.map(message => {
+    const content = contextMessageText(message.portable.content);
+    const reasoningContent = message.portable.context?.reasoning;
+    const isSystemInfo = message.portable.context?.notice;
+    const generationMeta = (message.local as Partial<Message> | undefined)?.generationMeta;
+    const timestamp = Date.parse(message.createdAt);
+    const parsed = parseModelOutput(content, reasoningContent);
     return {
       id: `ctx-${message.id}`,
-      role: message.role,
-      content: message.content,
-      timestamp: message.timestamp,
+      role: message.portable.role,
+      content,
+      timestamp: Number.isNaN(timestamp) ? 0 : timestamp,
       answer: parsed.answer,
       reasoning: parsed.reasoning,
       runtimeOnly: isRuntimeOnlyMessage({
-        role: message.role,
-        content: message.content,
-        notice: message.isSystemInfo,
+        role: message.portable.role,
+        content,
+        notice: isSystemInfo,
       }),
-      generatedImage: Boolean(message.generationMeta?.resolution),
+      generatedImage: Boolean(generationMeta?.resolution),
       promptEnhancement: parsed.reasoningLabel === PROMPT_ENHANCEMENT_REASONING_LABEL,
     };
   })) as Message[];

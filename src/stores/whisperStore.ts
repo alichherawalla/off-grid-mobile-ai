@@ -18,7 +18,7 @@ export const useWhisperStore = create<WhisperState>()(
   persist(
     set => ({
       downloadedModelId: null,
-      transcriptionLanguage: 'en',
+      transcriptionLanguage: 'auto',
       setTranscriptionLanguage: transcriptionLanguage =>
         set({ transcriptionLanguage }),
     }),

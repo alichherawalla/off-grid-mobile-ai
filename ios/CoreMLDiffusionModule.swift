@@ -424,22 +424,53 @@ class CoreMLDiffusionModule: RCTEventEmitter {
 
   // MARK: - deleteGeneratedImage
 
-  @objc func deleteGeneratedImage(_ imageId: String,
+  @objc func deleteGeneratedImage(_ persistedPath: String,
                                   resolver resolve: @escaping RCTPromiseResolveBlock,
                                   rejecter reject: @escaping RCTPromiseRejectBlock) {
     guard let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
       reject("ERR_NO_DOCS_DIR", "Could not locate documents directory", nil)
       return
     }
-    let imagePath = docsDir
+    let generatedImagesDir = docsDir
       .appendingPathComponent("generated_images")
-      .appendingPathComponent("\(imageId).png")
+      .standardizedFileURL
+      .resolvingSymlinksInPath()
+    let imagePath = URL(fileURLWithPath: persistedPath)
+      .standardizedFileURL
+      .resolvingSymlinksInPath()
+    guard imagePath.deletingLastPathComponent().path == generatedImagesDir.path else {
+      resolve([
+        "status": "failure",
+        "code": "UNSAFE_DELETE_PATH",
+        "message": "The generated-image deletion path is outside the generated-image directory.",
+      ])
+      return
+    }
 
+    // Three outcomes, never a boolean. The caller is settling a DURABLE deletion intent, so it has
+    // to tell "the bytes are gone" apart from "the bytes may still be there". A retry that arrives
+    // after a previous attempt unlinked the file but died before the journal acknowledged it must
+    // settle as `already_missing`, and a permission / busy / I/O error must keep the intent.
     do {
       try FileManager.default.removeItem(at: imagePath)
-      resolve(true)
-    } catch {
-      resolve(false)
+      resolve(["status": "deleted"])
+    } catch let error as NSError {
+      // Only a genuinely absent file is a success. Every other error names itself so the JS owner
+      // can log the real reason instead of retrying an anonymous `false` forever.
+      if error.domain == NSCocoaErrorDomain,
+         error.code == NSFileNoSuchFileError || error.code == NSFileReadNoSuchFileError {
+        resolve(["status": "already_missing"])
+        return
+      }
+      if !FileManager.default.fileExists(atPath: imagePath.path) {
+        resolve(["status": "already_missing"])
+        return
+      }
+      resolve([
+        "status": "failure",
+        "code": "\(error.domain):\(error.code)",
+        "message": error.localizedDescription,
+      ])
     }
   }
 }

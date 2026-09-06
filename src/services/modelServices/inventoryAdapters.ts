@@ -8,7 +8,7 @@ import {
 } from '@offgrid/models';
 import { useAppStore } from '../../stores/appStore';
 import { activeLocalModelId } from './activeRoute';
-import { rememberedLocalTextModelId } from './modelSelectionProjection';
+import { selectedLocalModelId } from './modelSelectionProjection';
 import type { DownloadedModel } from '../../types';
 import { llmService } from '../llm';
 import { liteRTService } from '../litert';
@@ -253,10 +253,9 @@ const classifierInventoryAdapter: ModelInventoryAdapter = {
   id: 'mobile-local-classifier-inventory',
   async listModels() {
     const state = useAppStore.getState();
-    const modelId =
-      state.settings.classifierModelId ??
-      activeLocalModelId('text') ??
-      rememberedLocalTextModelId();
+    // The canonical selection projection already resolves the explicit classifier pick and, when
+    // there is none, the active/remembered text fallback. Reading it keeps ONE fallback rule.
+    const modelId = selectedLocalModelId('classifier');
     const model = modelId
       ? state.downloadedModels.find(candidate => candidate.id === modelId)
       : null;

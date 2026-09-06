@@ -18,7 +18,10 @@ export class TranscriptionResetError extends GenerationCancellationFailedError {
   readonly code = 'transcription-reset-failed' as const;
 
   constructor(readonly cause: unknown) {
-    super('The transcription runtime did not confirm that recording stopped.', cause);
+    super(
+      'The transcription runtime did not confirm that recording stopped.',
+      cause,
+    );
     this.name = 'TranscriptionResetError';
   }
 }
@@ -27,17 +30,50 @@ export class TranscriptionFileStopError extends GenerationCancellationFailedErro
   readonly code = 'transcription-file-stop-failed' as const;
 
   constructor(readonly cause: unknown) {
-    super('The transcription runtime did not confirm that file transcription stopped.', cause);
+    super(
+      'The transcription runtime did not confirm that file transcription stopped.',
+      cause,
+    );
     this.name = 'TranscriptionFileStopError';
   }
 }
 
-export async function stopFileTranscriptionAtBoundary(stop: () => Promise<void>): Promise<void> {
+/** Remote file transcription I/O shared by Models generation and Shared Speech adapters. */
+export async function transcribeRemoteMobileFile(
+  model: RuntimeModel,
+  input: { fileUri: string; language?: string; signal?: AbortSignal },
+): Promise<string> {
+  const server = useRemoteServerStore
+    .getState()
+    .servers.find(candidate => candidate.id === model.serverId);
+  if (!server)
+    throw new Error(
+      `Remote transcription server is unavailable: ${model.serverId}`,
+    );
+  return cleanTranscription(
+    await remoteMediaRuntime.transcribe(
+      server,
+      {
+        fileUri: input.fileUri,
+        model: model.id,
+        language: input.language === 'auto' ? undefined : input.language,
+      },
+      { signal: input.signal },
+    ),
+  );
+}
+
+export async function stopFileTranscriptionAtBoundary(
+  stop: () => Promise<void>,
+): Promise<void> {
   try {
     await stop();
   } catch (cause) {
     const failure = new TranscriptionFileStopError(cause);
-    logger.error('[TranscriptionGenerationAdapter] File transcription stop failed:', failure);
+    logger.error(
+      '[TranscriptionGenerationAdapter] File transcription stop failed:',
+      failure,
+    );
     throw failure;
   }
 }
@@ -50,7 +86,10 @@ export async function resetTranscriptionAtBoundary(
     await reset();
   } catch (cause) {
     const failure = new TranscriptionResetError(cause);
-    logger.error('[TranscriptionGenerationAdapter] Transcription reset failed:', failure);
+    logger.error(
+      '[TranscriptionGenerationAdapter] Transcription reset failed:',
+      failure,
+    );
     throw failure;
   }
 }
@@ -95,7 +134,9 @@ async function* realtimeTranscriptionChunks(
   const cancellation = bindGenerationCancellation(
     request.signal,
     () => resetTranscriptionAtBoundary(() => whisperService.forceReset()),
-    error => { resetFailure = error; },
+    error => {
+      resetFailure = error;
+    },
     () => {
       completed = true;
       const listener = wake;
@@ -103,8 +144,8 @@ async function* realtimeTranscriptionChunks(
       listener?.();
     },
   );
-  const unregisterCancellation = request.cancellation?.register(
-    () => cancellation.cancel(),
+  const unregisterCancellation = request.cancellation?.register(() =>
+    cancellation.cancel(),
   );
   let generationFailure: unknown;
   try {
@@ -186,18 +227,20 @@ async function* transcriptionChunks(
     let transcript = '';
     let cancellationSettled = false;
     const native = whisperService.startFileTranscriptionRaw(fileUri, {
-        language: input.language,
-        onProgress: progress => {
-          pending.push({ progress: { completed: progress, total: 100 } });
-          const listener = wake;
-          wake = null;
-          listener?.();
-        },
-      });
+      language: input.language,
+      onProgress: progress => {
+        pending.push({ progress: { completed: progress, total: 100 } });
+        const listener = wake;
+        wake = null;
+        listener?.();
+      },
+    });
     const cancellation = bindGenerationCancellation(
       request.signal,
       () => stopFileTranscriptionAtBoundary(native.stop),
-      error => { failure = error; },
+      error => {
+        failure = error;
+      },
       () => {
         cancellationSettled = true;
         completed = true;
@@ -206,8 +249,8 @@ async function* transcriptionChunks(
         listener?.();
       },
     );
-    const unregisterCancellation = request.cancellation?.register(
-      () => cancellation.cancel(),
+    const unregisterCancellation = request.cancellation?.register(() =>
+      cancellation.cancel(),
     );
     const operation = native.promise
       .then(result => {
@@ -242,24 +285,11 @@ async function* transcriptionChunks(
     if (request.signal?.aborted) throw new GenerationAbortedError();
     text = transcript;
   } else {
-    const server = useRemoteServerStore
-      .getState()
-      .servers.find(candidate => candidate.id === model.serverId);
-    if (!server)
-      throw new Error(
-        `Remote transcription server is unavailable: ${model.serverId}`,
-      );
-    text = cleanTranscription(
-      await remoteMediaRuntime.transcribe(
-        server,
-        {
-          fileUri,
-          model: model.id,
-          language: input.language === 'auto' ? undefined : input.language,
-        },
-        { signal: request.signal },
-      ),
-    );
+    text = await transcribeRemoteMobileFile(model, {
+      fileUri,
+      language: input.language,
+      signal: request.signal,
+    });
   }
   yield {
     output: {

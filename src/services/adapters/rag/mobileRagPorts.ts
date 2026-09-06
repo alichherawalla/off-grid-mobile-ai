@@ -100,8 +100,8 @@ export const mobileRagStore: VectorStore = {
   async deleteDocument(docId) {
     ragDatabase.deleteDocument(docId);
   },
-  async deleteDocumentsByProject(projectId) {
-    ragDatabase.deleteDocumentsByProject(projectId);
+  async deleteDocumentsByProject(projectId, commitFence) {
+    return ragDatabase.deleteDocumentsByProject(projectId, commitFence);
   },
 };
 

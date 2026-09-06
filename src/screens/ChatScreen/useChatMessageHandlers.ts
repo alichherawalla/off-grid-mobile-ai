@@ -10,14 +10,14 @@ import {
 } from './useChatGenerationActions';
 import type { GenerationDeps } from './useChatGenerationActions';
 import { supersedeSyncedReplies } from '../../services/sync/supersedeSyncedReplies';
-import { useChatStore } from '../../stores/chatStore';
+import { requireWorkspaceConversationMessages } from '../../hooks/useApplicationProjection';
+import { toWorkspaceMessage } from './types';
 
 type SetState<T> = Dispatch<SetStateAction<T>>;
 
 type RetryParams = {
   activeConversationId: string | null | undefined;
   hasActiveModel: boolean;
-  deleteMessagesAfter: (c: string, m: string) => void;
   setDebugInfo: SetState<any>;
 };
 
@@ -44,7 +44,7 @@ export async function handleRetryMessageFn(
   message: Message, genDeps: GenerationDeps, p: RetryParams,
 ): Promise<void> {
   const msgs = p.activeConversationId
-    ? useChatStore.getState().getConversationMessages(p.activeConversationId)
+    ? requireWorkspaceConversationMessages(p.activeConversationId).map(toWorkspaceMessage)
     : [];
   // No model loaded (e.g. user ejected all models): tell them, don't silently
   // no-op. Mirrors the send path's "No Model Selected" alert (handleSendFn).
@@ -64,8 +64,6 @@ type EditParams = {
   newContent: string;
   activeConversationId: string | null | undefined;
   hasActiveModel: boolean;
-  updateMessageContent: (c: string, m: string, v: string) => void;
-  deleteMessagesAfter: (c: string, m: string) => void;
   setDebugInfo: SetState<any>;
 };
 
@@ -75,7 +73,8 @@ export async function handleEditMessageFn(genDeps: GenerationDeps, p: EditParams
   if (!p.activeConversationId) return;
   // Same as resend: a synced reply is a live preview until its op lands, so clear it before regenerating.
   supersedeSyncedReplies(p.activeConversationId);
-  p.updateMessageContent(p.activeConversationId, p.message.id, p.newContent);
+  // Shared ChatSession.edit is the sole durable writer; the edited content reaches the UI through
+  // the reactive Workspace Content projection after commit, not a local mirror write here.
   await editPersistedChatTurnFn(genDeps, { ...p.message, content: p.newContent });
 }
 

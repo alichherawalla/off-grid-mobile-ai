@@ -5,9 +5,40 @@ import {
   isSupportingChatContext,
   splitInlineReasoning,
   type ChatStreamPreviewRow,
+  type MessageRecord,
 } from '@offgrid/application';
 import { Message } from '../../types';
 import { visibleMessages } from '../../utils/visibleMessages';
+
+/**
+ * One durable message, read only from the canonical Workspace Content record - never from a
+ * legacy Zustand mirror. A Shared-created conversation (Sync materialization, another Shared-owned
+ * surface) has no such mirror, so this is the only path that can ever render its transcript.
+ */
+export function toWorkspaceMessage(record: MessageRecord): Message {
+  const local = record.local as Partial<Message> | undefined;
+  const timestamp = Date.parse(record.createdAt);
+  return {
+    ...local,
+    id: record.id,
+    uuid: record.id,
+    role: record.portable.role,
+    content: typeof record.portable.content === 'string' ? record.portable.content : '',
+    timestamp: Number.isNaN(timestamp) ? 0 : timestamp,
+    ...(record.portable.context?.reasoning === undefined
+      ? {}
+      : { reasoningContent: record.portable.context.reasoning }),
+    ...(record.portable.context?.notice === undefined
+      ? {}
+      : { isSystemInfo: record.portable.context.notice }),
+    ...(record.portable.context?.tool?.name === undefined
+      ? {}
+      : { toolName: record.portable.context.tool.name }),
+    ...(record.portable.context?.tool?.callId === undefined
+      ? {}
+      : { toolCallId: record.portable.context.tool.callId }),
+  };
+}
 export type ChatMessageItem = Message & {
   statusText?: string;
   suppressMessageBubble?: boolean;

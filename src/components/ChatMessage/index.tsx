@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Clipboard } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useTheme, useThemedStyles } from '../../theme';
-import { useUiModeStore } from '../../stores';
+import { useSpeechProjection } from '../../hooks/useApplicationProjection';
 import { callHook, HOOKS } from '../../bootstrap/hookRegistry';
 import Icon from 'react-native-vector-icons/Feather';
 import {
@@ -259,7 +259,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const ttsCanSpeak = callHook<boolean>(HOOKS.audioCanSpeak) ?? false;
-  const interfaceMode = useUiModeStore(s => s.interfaceMode);
+  const voiceMode = useSpeechProjection().preferences.voiceMode;
   const [showActionMenu, setShowActionMenu] = useState(false);
   const [showSelectText, setShowSelectText] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -441,7 +441,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         canRetry={!!onRetry}
         canGenerateImage={canGenerateImage && !!onGenerateImage}
         canSpeak={canSpeak}
-        showSelectTextAction={interfaceMode === 'chat'}
+        showSelectTextAction={!voiceMode}
         displayContent={displayContent}
         alertState={alertState}
         onCloseActionMenu={() => setShowActionMenu(false)}

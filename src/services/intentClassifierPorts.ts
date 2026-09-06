@@ -5,6 +5,7 @@ import { useAppStore } from '../stores';
 import logger from '../utils/logger';
 import { executeMobileClassification } from './mobileSidecarGeneration';
 import { mobileRouteId } from './modelServices/mobileRoute';
+import { explicitLocalModelId } from './modelServices/modelSelectionProjection';
 
 export interface ClassifyOptions {
   useLLM: boolean;
@@ -14,11 +15,9 @@ export interface ClassifyOptions {
 
 /** The dedicated classifier the user configured, when it is actually downloaded. */
 export function configuredClassifierModel(): DownloadedModel | null {
-  const state = useAppStore.getState();
-  if (!state.settings.classifierModelId) return null;
-  return (
-    state.downloadedModels.find(model => model.id === state.settings.classifierModelId) ?? null
-  );
+  const modelId = explicitLocalModelId('classifier');
+  if (!modelId) return null;
+  return useAppStore.getState().downloadedModels.find(model => model.id === modelId) ?? null;
 }
 
 /**

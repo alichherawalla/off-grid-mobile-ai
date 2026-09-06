@@ -5,7 +5,12 @@ import { llmService } from '../../llm';
 import { liteRTService } from '../../litert';
 import { localDreamGeneratorService as imageEngine } from '../../localDreamGenerator';
 import { ImageModelIncompleteError } from '../../modelLoadErrors';
-import { allReleased, notReleased, RELEASED, type NativeRelease } from '../../nativeRelease';
+import {
+  allReleased,
+  notReleased,
+  RELEASED,
+  type NativeRelease,
+} from '../../nativeRelease';
 import { useAppStore } from '../../../stores/appStore';
 import { activeLocalModelId } from '../../modelServices/activeRoute';
 import { validateImageModelDir } from '../../../utils/imageModelIntegrity';
@@ -14,8 +19,17 @@ import {
   doLoadImageModel,
   doLoadTextModel,
 } from './modelLoaders';
+import { applicationFacade } from '../../applicationFacade';
 
 type NativeLifecycleListener = () => void;
+
+function committedImageThreads(): number {
+  const value = applicationFacade().models.snapshot().settings.imageThreads;
+  if (typeof value !== 'number') {
+    throw new TypeError('Committed image thread settings are unavailable');
+  }
+  return value;
+}
 
 /** Raw native engine lifecycle. Shared residency must admit a model before calling load. */
 class NativeModelLifecycle {
@@ -25,6 +39,7 @@ class NativeModelLifecycle {
   private loadedImageModelId: string | null = null;
   private loadedImageModelThreads: number | null = null;
   private textLoadPromise: Promise<void> | null = null;
+  private textLoadingModelId: string | null = null;
   private imageLoadPromise: Promise<void> | null = null;
 
   private changed(): void {
@@ -55,16 +70,21 @@ class NativeModelLifecycle {
   supportsAudioInput(): boolean {
     const store = useAppStore.getState();
     const activeTextId = activeLocalModelId('text');
-    const model = store.downloadedModels.find(candidate => candidate.id === activeTextId);
+    const model = store.downloadedModels.find(
+      candidate => candidate.id === activeTextId,
+    );
     if (!model) return false;
     return model.engine === 'litert'
       ? liteRTService.supportsAudio()
-      : llmService.isModelLoaded() && !!llmService.getMultimodalSupport()?.audio;
+      : llmService.isModelLoaded() &&
+          !!llmService.getMultimodalSupport()?.audio;
   }
 
   private textIsCurrent(modelId: string): boolean {
     if (this.loadedTextModelId !== modelId) return false;
-    const model = useAppStore.getState().downloadedModels.find(candidate => candidate.id === modelId);
+    const model = useAppStore
+      .getState()
+      .downloadedModels.find(candidate => candidate.id === modelId);
     return model?.engine === 'litert'
       ? liteRTService.isModelLoaded()
       : llmService.isModelLoaded();
@@ -75,13 +95,25 @@ class NativeModelLifecycle {
     timeoutMs = modelLoadTimeoutMs('text'),
     override = false,
   ): Promise<void> {
+    if (this.textLoadPromise) {
+      const loadingModelId = this.textLoadingModelId;
+      try {
+        await this.textLoadPromise;
+      } catch (error) {
+        if (loadingModelId === modelId) throw error;
+      }
+      if (this.textIsCurrent(modelId)) return;
+    }
     const store = useAppStore.getState();
     if (this.textIsCurrent(modelId)) {
       return;
     }
-    const model = store.downloadedModels.find(candidate => candidate.id === modelId);
+    const model = store.downloadedModels.find(
+      candidate => candidate.id === modelId,
+    );
     if (!model) throw new Error('Model not found');
     this.loading.text = true;
+    this.textLoadingModelId = modelId;
     this.changed();
     this.textLoadPromise = doLoadTextModel({
       model,
@@ -101,6 +133,7 @@ class NativeModelLifecycle {
       },
       onFinally: () => {
         this.loading.text = false;
+        this.textLoadingModelId = null;
         this.textLoadPromise = null;
         this.changed();
       },
@@ -115,8 +148,8 @@ class NativeModelLifecycle {
    */
   async unloadTextModel(keepSelection = false): Promise<NativeRelease> {
     if (this.textLoadPromise) await this.textLoadPromise;
-    const loadedEngines = [llmService, liteRTService].filter(
-      engine => engine.isModelLoaded(),
+    const loadedEngines = [llmService, liteRTService].filter(engine =>
+      engine.isModelLoaded(),
     );
     const isLoaded = loadedEngines.length > 0;
     if (!activeLocalModelId('text') && !this.loadedTextModelId && !isLoaded) {
@@ -128,7 +161,8 @@ class NativeModelLifecycle {
       // Every loaded engine must have let go. Text can have both resident at once, so one engine
       // refusing is the whole answer - the other's success does not free the memory it holds.
       const releases: NativeRelease[] = [];
-      for (const engine of loadedEngines) releases.push(await engine.unloadModel());
+      for (const engine of loadedEngines)
+        releases.push(await engine.unloadModel());
       this.loadedTextModelId = null;
       const residency = useModelResidencyStore.getState();
       residency.setLoadedTextModelId(null);
@@ -140,21 +174,34 @@ class NativeModelLifecycle {
     }
   }
 
-  async loadImageModel(modelId: string, timeoutMs = modelLoadTimeoutMs('image')): Promise<void> {
+  async loadImageModel(
+    modelId: string,
+    timeoutMs = modelLoadTimeoutMs('image'),
+  ): Promise<void> {
     await hardwareService.getDeviceInfo();
     const store = useAppStore.getState();
-    const model = store.downloadedImageModels.find(candidate => candidate.id === modelId);
+    const model = store.downloadedImageModels.find(
+      candidate => candidate.id === modelId,
+    );
     if (!model) throw new Error('Model not found');
-    const imageThreads = store.settings?.imageThreads ?? 4;
-    const needsThreadReload = this.loadedImageModelId === modelId &&
+    const imageThreads = committedImageThreads();
+    const needsThreadReload =
+      this.loadedImageModelId === modelId &&
       this.loadedImageModelThreads !== imageThreads;
-    if (this.loadedImageModelId === modelId &&
-      await imageEngine.isModelLoaded() && !needsThreadReload) {
+    if (
+      this.loadedImageModelId === modelId &&
+      (await imageEngine.isModelLoaded()) &&
+      !needsThreadReload
+    ) {
       return;
     }
     if (model.backend === 'mnn' || model.backend === 'qnn') {
-      const integrity = await validateImageModelDir(model.modelPath, model.backend);
-      if (!integrity.complete) throw new ImageModelIncompleteError(integrity.missing);
+      const integrity = await validateImageModelDir(
+        model.modelPath,
+        model.backend,
+      );
+      if (!integrity.complete)
+        throw new ImageModelIncompleteError(integrity.missing);
     }
     const support = await checkImageHardwareSupport(modelId, model);
     if (!support.canLoad) throw new Error(support.error);
@@ -188,8 +235,10 @@ class NativeModelLifecycle {
   }
 
   imageNeedsReload(modelId: string): boolean {
-    return this.loadedImageModelId === modelId &&
-      this.loadedImageModelThreads !== (useAppStore.getState().settings?.imageThreads ?? 4);
+    return (
+      this.loadedImageModelId === modelId &&
+      this.loadedImageModelThreads !== committedImageThreads()
+    );
   }
 
   /** Answers whether the engine let go. See `unloadTextModel` for the "nothing loaded" rule. */
@@ -218,13 +267,16 @@ class NativeModelLifecycle {
   }
 
   async syncWithNativeState(): Promise<void> {
-    const textLoaded = llmService.isModelLoaded() || liteRTService.isModelLoaded();
+    const textLoaded =
+      llmService.isModelLoaded() || liteRTService.isModelLoaded();
     if (!textLoaded) {
       this.loadedTextModelId = null;
       useModelResidencyStore.getState().setLoadedTextModelId(null);
     } else if (!this.loadedTextModelId && activeLocalModelId('text')) {
       this.loadedTextModelId = activeLocalModelId('text');
-      useModelResidencyStore.getState().setLoadedTextModelId(this.loadedTextModelId);
+      useModelResidencyStore
+        .getState()
+        .setLoadedTextModelId(this.loadedTextModelId);
     }
     const imageLoaded = await imageEngine.isModelLoaded();
     if (!imageLoaded) {

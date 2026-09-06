@@ -11,8 +11,8 @@ import {
   type RemoteTextDiscoveryCandidate,
 } from '@offgrid/models';
 import type { RemoteModel, RemoteServer, ServerTestResult } from '../../types';
-import { useAppStore } from '../../stores';
 import logger from '../../utils/logger';
+import { applicationFacade } from '../applicationFacade';
 import {
   mobileRemoteCapabilityPorts,
   type RemoteModelInfo,
@@ -153,6 +153,9 @@ export function discoverLANServers(
       onLog?.(message);
     },
     onFound,
-    { kinds: remoteLanScanKinds(useAppStore.getState().settings), onProgress },
+    {
+      kinds: remoteLanScanKinds(applicationFacade().models.settings.current()),
+      onProgress,
+    },
   );
 }

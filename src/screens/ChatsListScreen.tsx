@@ -1,14 +1,29 @@
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
+import {
+  chatListPreviewLine,
+  workflowFailureMessage,
+  type ConversationRecord,
+} from '@offgrid/application';
 import { View, Text, FlatList, TouchableOpacity, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, CompositeNavigationProp } from '@react-navigation/native';
+import {
+  useNavigation,
+  CompositeNavigationProp,
+} from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
+import { portableMessageText } from '../utils/portableMessageText';
 import Icon from 'react-native-vector-icons/Feather';
 import { Button } from '../components/Button';
 import { ModelSelectorModal } from '../components';
-import { CustomAlert, showAlert, hideAlert, AlertState, initialAlertState } from '../components/CustomAlert';
+import {
+  CustomAlert,
+  showAlert,
+  hideAlert,
+  AlertState,
+  initialAlertState,
+} from '../components/CustomAlert';
 import { AnimatedEntry } from '../components/AnimatedEntry';
 import { AnimatedListItem } from '../components/AnimatedListItem';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -16,45 +31,55 @@ import { useFocusTrigger } from '../hooks/useFocusTrigger';
 import { useTheme, useThemedStyles } from '../theme';
 import type { ThemeColors, ThemeShadows } from '../theme';
 import { TYPOGRAPHY, SPACING } from '../constants';
-import { useChatStore, useProjectStore, useAppStore } from '../stores';
+import { useChatStore } from '../stores';
 import { useActiveMobileModel } from '../hooks/useActiveMobileModel';
 import { useActiveTextModel } from '../hooks/useActiveTextModel';
-import { onnxImageGeneratorService } from '../services';
+import { applicationFacade } from '../services/applicationFacade';
 import {
   selectModelRoute,
   unloadAndClearModel,
 } from '../services/modelServices/modelFacadeCommands';
-import { Conversation, DownloadedModel } from '../types';
+import { DownloadedModel } from '../types';
 import { RootStackParamList, MainTabParamList } from '../navigation/types';
-import { byRecentActivity } from '../utils/conversationOrdering';
 import { formatWhen } from '../utils/localTime';
-import { useConversationPreviewLine } from '../hooks/useConversationPreviewLine';
+import { useWorkspaceContentProjection } from '../hooks/useApplicationProjection';
 type NavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'ChatsTab'>,
   NativeStackNavigationProp<RootStackParamList>
 >;
 
 export const ChatsListScreen: React.FC = () => {
-  const previewLine = useConversationPreviewLine();
   const navigation = useNavigation<NavigationProp>();
   const focusTrigger = useFocusTrigger();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const conversations = useChatStore(s => s.conversations);
-  const { deleteConversation, setActiveConversation } = useChatStore.getState();
-  // `getProject` reads through `get()`, so selecting the FUNCTION would never re-render this list
-  // when a project is renamed. The rows render project names, so the rows subscribe to the projects.
-  const projects = useProjectStore(s => s.projects);
-  const { removeImagesByConversationId } = useAppStore.getState();
+  const { conversations, projects, messages } = useWorkspaceContentProjection();
+  const { setActiveConversation } = useChatStore.getState();
   const { modelId: activeTextModelId } = useActiveTextModel();
   const [alertState, setAlertState] = useState<AlertState>(initialAlertState);
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [isModelLoading, setIsModelLoading] = useState(false);
+  const deleteInFlight = useRef(false);
 
   const hasImageModel = !!useActiveMobileModel('image').model;
   const hasModels = !!activeTextModelId || hasImageModel;
 
-  const handleChatPress = (conversation: Conversation) => {
+  const projectsById = useMemo(
+    () => new Map(projects.map(project => [project.id, project])),
+    [projects],
+  );
+  const lastMessageByConversation = useMemo(() => {
+    const latest = new Map<string, (typeof messages)[number]>();
+    for (const message of messages) {
+      const current = latest.get(message.conversationId);
+      if (!current || message.position > current.position) {
+        latest.set(message.conversationId, message);
+      }
+    }
+    return latest;
+  }, [messages]);
+
+  const handleChatPress = (conversation: ConversationRecord) => {
     setActiveConversation(conversation.id);
     navigation.navigate('Chat', { conversationId: conversation.id });
   };
@@ -70,12 +95,17 @@ export const ChatsListScreen: React.FC = () => {
   const handleSelectTextModel = async (model: DownloadedModel) => {
     try {
       await selectModelRoute({
-        source: 'local', hostId: model.engine, modality: 'text', modelId: model.id,
+        source: 'local',
+        hostId: model.engine,
+        modality: 'text',
+        modelId: model.id,
       });
       setShowModelSelector(false);
       navigation.navigate('Chat', {});
     } catch (error) {
-      setAlertState(showAlert('Failed to Select Model', (error as Error).message));
+      setAlertState(
+        showAlert('Failed to Select Model', (error as Error).message),
+      );
     }
   };
 
@@ -97,31 +127,54 @@ export const ChatsListScreen: React.FC = () => {
     }
   };
 
-  const handleDeleteChat = (conversation: Conversation) => {
-    setAlertState(showAlert(
-      'Delete Chat',
-      `Delete "${conversation.title}"? This will also delete all images generated in this chat.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            setAlertState(hideAlert());
-            const imageIds = removeImagesByConversationId(conversation.id);
-            for (const imageId of imageIds) {
-              onnxImageGeneratorService.deleteGeneratedImage(imageId).catch(() => {});
-            }
-            deleteConversation(conversation.id);
+  const handleDeleteChat = (conversation: ConversationRecord) => {
+    setAlertState(
+      showAlert(
+        'Delete Chat',
+        `Delete "${conversation.title}"? This will also delete all images generated in this chat.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              if (deleteInFlight.current) return;
+              deleteInFlight.current = true;
+              setAlertState(hideAlert());
+              try {
+                const outcome =
+                  await applicationFacade().workflows.deleteConversation(
+                    conversation.id,
+                  );
+                if (!outcome.ok) {
+                  setAlertState(
+                    showAlert(
+                      'Chat Not Deleted',
+                      workflowFailureMessage(outcome.failure),
+                    ),
+                  );
+                  return;
+                }
+              } catch (error) {
+                setAlertState(
+                  showAlert(
+                    'Chat Not Deleted',
+                    error instanceof Error ? error.message : String(error),
+                  ),
+                );
+              } finally {
+                deleteInFlight.current = false;
+              }
+            },
           },
-        },
-      ]
-    ));
+        ],
+      ),
+    );
   };
 
   const formatDate = (dateString: string): string => formatWhen(dateString);
 
-  const renderRightActions = (conversation: Conversation) => (
+  const renderRightActions = (conversation: ConversationRecord) => (
     <TouchableOpacity
       style={styles.deleteAction}
       onPress={() => handleDeleteChat(conversation)}
@@ -130,12 +183,19 @@ export const ChatsListScreen: React.FC = () => {
     </TouchableOpacity>
   );
 
-  const renderChat = ({ item, index }: { item: Conversation; index: number }) => {
-    const project = item.projectId
-      ? projects.find(candidate => candidate.id === item.projectId)
-      : null;
-    // The preview line comes from the shared rule, so this list and the Mac's read the same.
-    const preview = previewLine(item.messages);
+  const renderChat = ({
+    item,
+    index,
+  }: {
+    item: ConversationRecord;
+    index: number;
+  }) => {
+    const project = item.projectId ? projectsById.get(item.projectId) : null;
+    const lastMessage = lastMessageByConversation.get(item.id);
+    const preview = chatListPreviewLine(
+      lastMessage?.portable.role,
+      portableMessageText(lastMessage?.portable.content),
+    );
 
     return (
       <Swipeable
@@ -174,7 +234,8 @@ export const ChatsListScreen: React.FC = () => {
     );
   };
 
-  const sortedConversations = byRecentActivity(conversations);
+  // Shared owns the canonical recent-activity order, including the stable ID tie-breaker.
+  const sortedConversations = conversations;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -210,7 +271,14 @@ export const ChatsListScreen: React.FC = () => {
             </Text>
           </AnimatedEntry>
           {hasModels && (
-            <AnimatedListItem index={3} staggerMs={60} trigger={focusTrigger} hapticType="impactLight" style={styles.emptyButton} onPress={handleNewChat}>
+            <AnimatedListItem
+              index={3}
+              staggerMs={60}
+              trigger={focusTrigger}
+              hapticType="impactLight"
+              style={styles.emptyButton}
+              onPress={handleNewChat}
+            >
               <Icon name="plus" size={18} color={colors.primary} />
               <Text style={styles.emptyButtonText}>New Chat</Text>
             </AnimatedListItem>
@@ -220,7 +288,7 @@ export const ChatsListScreen: React.FC = () => {
         <FlatList
           data={sortedConversations}
           renderItem={renderChat}
-          keyExtractor={(item) => item.id}
+          keyExtractor={item => item.id}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           removeClippedSubviews={Platform.OS !== 'android'}
@@ -245,7 +313,7 @@ export const ChatsListScreen: React.FC = () => {
           setShowModelSelector(false);
           navigation.navigate('RemoteServers');
         }}
-        onBrowseModels={(tab) => {
+        onBrowseModels={tab => {
           setShowModelSelector(false);
           navigation.navigate('ModelsTab', { initialTab: tab });
         }}

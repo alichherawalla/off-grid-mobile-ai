@@ -1,4 +1,5 @@
 import { imageGenerationService } from '../imageGenerationService';
+import type { NativeImageDeleteOutcome } from '../image/nativeImageDeleteOutcome';
 import { localDreamGeneratorService } from '../localDreamGenerator';
 import { contextCompactionService } from '../contextCompaction';
 
@@ -9,8 +10,13 @@ export const mobileImageChatGeneration = {
   lastError: () => imageGenerationService.getState().error,
   cancel: imageGenerationService.cancelGeneration.bind(imageGenerationService),
   isGenerating: () => imageGenerationService.getState().isGenerating,
-  deleteArtifact: (id: string) => localDreamGeneratorService.deleteGeneratedImage(id),
-  clearConversationSummary: (conversationId: string) => {
-    contextCompactionService.clearSummary(conversationId);
-  },
+  /**
+   * Release one generated image's bytes, returning the typed native outcome. `already_missing` is
+   * a success - deletion is idempotent - and only `failure` means bytes may still be on disk.
+   */
+  deleteArtifact: (path: string): Promise<NativeImageDeleteOutcome> =>
+    localDreamGeneratorService.deleteGeneratedImage(path),
+  /** Returns the clear so the caller can sequence deletion behind the settled durable write. */
+  clearConversationSummary: (conversationId: string): Promise<void> =>
+    contextCompactionService.clearSummary(conversationId),
 };

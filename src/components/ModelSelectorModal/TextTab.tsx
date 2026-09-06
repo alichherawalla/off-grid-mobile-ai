@@ -3,15 +3,19 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { useTheme, useThemedStyles } from '../../theme';
 import { LoadingDots } from '../LoadingDots';
-import { DownloadedModel, RemoteModel } from '../../types';
+import {
+  DownloadedModel,
+  RemoteModel,
+  INFERENCE_BACKENDS,
+} from '../../types';
 import { hardwareService } from '../../services';
 import { textOverheadMultiplier } from '../../services/modelServices/modelStateTypes';
-import { useAppStore } from '../../stores';
 import { ModelRow } from '../ModelRow';
 import { createAllStyles } from './styles';
 import { predictGgufCapabilities } from '../../utils/ggufCapabilities';
 import { fileExceedsBudget } from '../../services/memoryBudget';
 import { useResidentRows } from '../models/useResidentRows';
+import { useModelsProjection } from '../../hooks/useApplicationProjection';
 
 export interface TextTabProps {
   downloadedModels: DownloadedModel[];
@@ -57,9 +61,12 @@ export const TextTab: React.FC<TextTabProps> = ({
   // shared residency uses to register the resident's sizeMB, so this label and the residency
   // chip on the manager sheet agree for the identical loaded model (they diverged: fixed 1.5×
   // here vs 2.2× on a GPU/NPU backend there — device 2026-07-14).
-  const ramMultiplier = textOverheadMultiplier(
-    useAppStore(s => s.settings?.inferenceBackend),
+  const projectedInferenceBackend =
+    useModelsProjection().settings.inferenceBackend;
+  const inferenceBackend = Object.values(INFERENCE_BACKENDS).find(
+    backend => backend === projectedInferenceBackend,
   );
+  const ramMultiplier = textOverheadMultiplier(inferenceBackend);
   const textResident = useResidentRows(true).text;
   // "Loaded" drives the Currently-Loaded + Unload section (only meaningful once a model
   // is actually in memory). "Active" also counts the selected-but-not-yet-loaded model

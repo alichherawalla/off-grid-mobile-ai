@@ -19,5 +19,6 @@ export const contextCompactionService = {
   /** Compact the exact prompt that overflowed; the previous summary comes from the conversation. */
   compactChat: (context: ChatCompactionContext): Promise<GenerationMessage[]> =>
     sharedCompaction().compactChat(context, mobileCompactionOptions(context)),
-  clearSummary: (conversationId: string) => sharedCompaction().clear(conversationId),
+  /** Resolves once the cleared compaction state is durable; callers must await it. */
+  clearSummary: (conversationId: string): Promise<void> => sharedCompaction().clear(conversationId),
 };

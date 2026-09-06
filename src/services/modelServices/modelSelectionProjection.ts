@@ -201,8 +201,19 @@ function legacyTranscriptionEntry(stores: LegacyStores): PersistedSelectionEntry
   return legacyEntryOf(localRouteId, legacyRemoteMediaRoute(stores, 'transcription'));
 }
 
+/**
+ * Read-only upgrade seam. `settings.classifierModelId` was retired from `AppSettings`, but a device
+ * upgrading from an older build still has the key inside its persisted settings blob. It is read
+ * exactly once, here, to seed the canonical classifier entry. Nothing writes it, and this accessor
+ * may be deleted once no supported upgrade path can still carry the key.
+ */
+function legacyPersistedClassifierModelId(stores: LegacyStores): string | null {
+  const value = (stores.app.settings as { classifierModelId?: unknown }).classifierModelId;
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
 function legacyClassifierEntry(stores: LegacyStores): PersistedSelectionEntry | null {
-  const classifierId = stores.app.settings.classifierModelId;
+  const classifierId = legacyPersistedClassifierModelId(stores);
   const localRouteId = classifierId
     ? localTextCandidateFor(classifierId, 'classifier')?.routeId ?? null
     : null;
@@ -265,6 +276,11 @@ function readMobileSelectionProjection(modality: ModelModality): PersistedSelect
   return projection;
 }
 
+function explicitLocalModelIdOf(entry: PersistedSelectionEntry | null | undefined): string | null {
+  const route = entry?.localRouteId ? decodeModelRouteId(entry.localRouteId) : null;
+  return route && !route.serverId ? route.modelId : null;
+}
+
 /** The last explicitly selected LOCAL text model, kept for restoration after eviction. */
 export function rememberedLocalTextModelId(): string | null {
   const routeId = entryFor('text')?.rememberedLocalRouteId;
@@ -287,6 +303,21 @@ export function selectedLocalModelId(modality: ModelModality): string | null {
   return route && !route.serverId ? route.modelId : null;
 }
 
+/**
+ * The model the user EXPLICITLY picked for a modality, as a local model id. Distinct from
+ * `selectedLocalModelId`, which also resolves the reconciled fallbacks: a classifier with no
+ * explicit pick reads as `null` here and as the active text model there. Surfaces that must know
+ * whether a DEDICATED model was chosen read this.
+ */
+export function explicitLocalModelId(modality: ModelModality): string | null {
+  return explicitLocalModelIdOf(entryFor(modality));
+}
+
+/** Reactive form of {@link explicitLocalModelId} for UI surfaces. */
+export function useExplicitLocalModelId(modality: ModelModality): string | null {
+  return useModelSelectionStore(state => explicitLocalModelIdOf(state.entries[modality] ?? null));
+}
+
 /** True when the selected route for a modality points at a remote server. */
 export function selectedRouteIsRemote(modality: ModelModality): boolean {
   return Boolean(selectedRoute(modality)?.serverId);
@@ -304,14 +335,15 @@ function rawRoute(routeId: string | null | undefined) {
 }
 
 /**
- * Mechanical persistence: the entry is written to the one selection store. The two native runtimes
- * that read their own selected model (whisper.rn, the TTS engine) get their projection here too.
+ * Mechanical persistence: the entry is written to the one selection store, which is the sole
+ * durable home of a model selection. The TTS engine, the one native runtime that holds its own
+ * copy of what it must speak with, is projected from that same write.
  */
 async function writeMobileSelectionProjection(
   modality: ModelModality,
   projection: SelectionProjectionWrite,
 ): Promise<void> {
-  const local = rawRoute(projection.localRouteId);
+  rawRoute(projection.localRouteId);
   rawRoute(projection.remoteRouteId);
   const previous = useModelSelectionStore.getState().entries[modality];
   useModelSelectionStore.getState().setEntry(modality, {
@@ -324,18 +356,10 @@ async function writeMobileSelectionProjection(
         ? { rememberedLocalRouteId: previous.rememberedLocalRouteId }
         : {}),
   });
-  switch (modality) {
-    case 'voice':
-      await selectMobileLocalVoiceRoute(projection.localRouteId);
-      break;
-    case 'classifier':
-      useAppStore.setState(state => ({
-        settings: { ...state.settings, classifierModelId: local?.modelId ?? null },
-      }));
-      break;
-    default:
-      break;
-  }
+  // The TTS engine is the one runtime that keeps its own copy of the selected voice, so it is
+  // projected here. Every other modality - the classifier included - is read back from the entry
+  // above, so there is no second place a selection can live.
+  if (modality === 'voice') await selectMobileLocalVoiceRoute(projection.localRouteId);
 }
 
 export const mobileModelSelectionProjection: ModelSelectionProjectionPort = {

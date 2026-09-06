@@ -12,9 +12,10 @@ import {
   ImageGenerationState,
 } from '../../services';
 import { generationSession } from '../../services/generationSession';
-import { useChatStore } from '../../stores';
 import type { RootStackParamList } from '../../navigation/types';
 import { mobileChatSession } from './mobileChatSession';
+import { requireWorkspaceConversationMessages } from '../../hooks/useApplicationProjection';
+import { toWorkspaceMessage } from './types';
 
 /** A missing stream never belongs to a missing conversation. */
 export function isStreamingActiveConversation(
@@ -88,8 +89,8 @@ export function useChatRuntimeSubscriptions(
       const queued = projection.entries.filter(entry => entry.status === 'queued');
       setQueueCount(queued.length);
       setQueuedTexts(queued.map(entry => {
-        const message = useChatStore.getState()
-          .getConversationMessages(entry.conversationId)
+        const message = requireWorkspaceConversationMessages(entry.conversationId)
+          .map(toWorkspaceMessage)
           .find(candidate => candidate.id === entry.turnId);
         return message?.content ?? '';
       }));

@@ -184,12 +184,11 @@ export function startMobileModelServices(): () => void {
     // whole-store listeners, so typing one character into any settings field - or a transfer
     // progress tick, or a health poll - relisted every inventory adapter, reconciled four adapter
     // sets, and republished the snapshot. Now each store is watched for only the facts the
-    // inventory is actually BUILT from, compared by identity, which is the revision - a settings
-    // object that changed for an unrelated key does not move `settings.classifierModelId`.
+    // inventory is actually BUILT from, compared by identity, which is the revision. The classifier
+    // pick is no longer among them: it lives in the selection store, watched just below.
     cleanups.push(whenChanged(useAppStore, refresh, [
       state => state.downloadedModels,
       state => state.downloadedImageModels,
-      state => state.settings.classifierModelId,
     ]));
     cleanups.push(whenChanged(useRemoteServerStore, refresh, [
       state => state.servers,
@@ -236,6 +235,9 @@ export function mobileTextModelRecord(
 export { mobileRouteId } from './mobileRoute';
 export {
   clearMobileModel,
+  ModelSelectionFailedError,
+  modelSelectionFailureMessage,
   selectMobileModel,
   selectRemoteMobileModel,
 } from './selectionCommands';
+export type { ModelSelectionFailure } from './selectionCommands';

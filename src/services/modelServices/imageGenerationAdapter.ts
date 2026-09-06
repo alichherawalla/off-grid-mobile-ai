@@ -9,10 +9,10 @@ import {
   type GenerationChunk,
   type GenerationRequest,
 } from '@offgrid/models';
-import { useAppStore } from '../../stores/appStore';
 import { useRemoteServerStore } from '../../stores/remoteServerStore';
 import { localDreamGeneratorService } from '../localDreamGenerator';
 import { remoteMediaRuntime } from '../adapters/remote/mediaRuntime';
+import { applicationFacade } from '../applicationFacade';
 import logger from '../../utils/logger';
 
 export class ImageGenerationCancelError extends GenerationCancellationFailedError {
@@ -75,6 +75,11 @@ function localArtifact(result: {
 /** Convert native progress callbacks into the shared typed image stream. */
 async function* localImageChunks(request: GenerationRequest): AsyncIterable<GenerationChunk> {
   const operation = imageOperation(request);
+  const committedUseOpenCL =
+    applicationFacade().models.snapshot().settings.imageUseOpenCL;
+  if (typeof committedUseOpenCL !== 'boolean') {
+    throw new Error('The committed image acceleration setting is unavailable.');
+  }
   const pending: PendingChunk[] = [];
   let wake: (() => void) | null = null;
   const push = (item: PendingChunk) => {
@@ -103,7 +108,7 @@ async function* localImageChunks(request: GenerationRequest): AsyncIterable<Gene
       guidanceScale: operation.guidanceScale,
       seed: operation.seed,
       previewInterval: operation.previewInterval,
-      useOpenCL: useAppStore.getState().settings.imageUseOpenCL ?? true,
+      useOpenCL: committedUseOpenCL,
     },
     progress => push({
       value: { progress: { completed: progress.step, total: progress.totalSteps } },

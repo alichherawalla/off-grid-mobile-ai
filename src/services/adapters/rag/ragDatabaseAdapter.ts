@@ -354,19 +354,30 @@ class RagDatabase {
     return (result.rows ?? []) as unknown as RagSearchResult[];
   }
 
-  deleteDocumentsByProject(projectId: string): void {
+  deleteDocumentsByProject(
+    projectId: string,
+    commitFence?: () => boolean,
+  ): void | 'fenced' {
     const db = this.getDb();
-    db.executeSync(
-      'DELETE FROM rag_embeddings WHERE doc_id IN (SELECT id FROM rag_documents WHERE project_id = ?)',
-      [projectId],
-    );
-    db.executeSync(
-      'DELETE FROM rag_chunks WHERE doc_id IN (SELECT id FROM rag_documents WHERE project_id = ?)',
-      [projectId],
-    );
-    db.executeSync('DELETE FROM rag_documents WHERE project_id = ?', [
-      projectId,
-    ]);
+    // All statements after this exact winner check are one synchronous transaction. No newer JS
+    // operation can enter between the fence and COMMIT.
+    if (commitFence && !commitFence()) return 'fenced';
+    db.executeSync('BEGIN IMMEDIATE');
+    try {
+      db.executeSync(
+        'DELETE FROM rag_embeddings WHERE doc_id IN (SELECT id FROM rag_documents WHERE project_id = ?)',
+        [projectId],
+      );
+      db.executeSync(
+        'DELETE FROM rag_chunks WHERE doc_id IN (SELECT id FROM rag_documents WHERE project_id = ?)',
+        [projectId],
+      );
+      db.executeSync('DELETE FROM rag_documents WHERE project_id = ?', [projectId]);
+      db.executeSync('COMMIT');
+    } catch (cause) {
+      db.executeSync('ROLLBACK');
+      throw cause;
+    }
   }
 }
 

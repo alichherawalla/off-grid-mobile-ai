@@ -1,21 +1,34 @@
-import React, { useState } from 'react';
-import { isFastClassifierModel } from '@offgrid/application';
+import React, { useCallback, useState } from 'react';
+import {
+  isFastClassifierModel,
+} from '@offgrid/application';
 import { View, Text, TouchableOpacity } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { AdvancedToggle } from '../AdvancedToggle';
 import { useTheme, useThemedStyles } from '../../theme';
 import { useAppStore } from '../../stores';
 import { useActiveMobileModel } from '../../hooks/useActiveMobileModel';
+import { useModelsProjection } from '../../hooks/useApplicationProjection';
 import {
   clearMobileModel,
   hardwareService,
   selectMobileModel,
 } from '../../services';
+import { useExplicitLocalModelId } from '../../services/modelServices/modelSelectionProjection';
 import { createStyles } from './styles';
+import {
+  SelectionAttemptNotice,
+  useSelectionAttempt,
+} from './useSelectionAttempt';
 import {
   ImageQualityBasicSliders,
   ImageQualityAdvancedSliders,
 } from './ImageQualitySliders';
+import {
+  ImageSettingsSaveNoticeText,
+  type ImageSettingsSaveState,
+  useImageSettingsSave,
+} from './useImageSettingsSave';
 
 // ─── Image Model Picker ───────────────────────────────────────────────────────
 
@@ -24,6 +37,9 @@ const ImageModelPicker: React.FC = () => {
   const styles = useThemedStyles(createStyles);
   const downloadedImageModels = useAppStore(s => s.downloadedImageModels);
   const [showPicker, setShowPicker] = useState(false);
+  const closePicker = useCallback(() => setShowPicker(false), []);
+  const { attempt, run, retry, canRetry } = useSelectionAttempt(closePicker);
+  const busy = attempt.status === 'pending';
   // One answer to "which image model": the shared active route, local or a paired Mac's.
   const activeRoute = useActiveMobileModel('image').model;
   const activeImageModelId = activeRoute?.source === 'local' ? activeRoute.id : null;
@@ -31,10 +47,7 @@ const ImageModelPicker: React.FC = () => {
     ? { name: activeRoute.source === 'remote' ? `${activeRoute.name} (remote)` : activeRoute.name }
     : undefined;
 
-  const handleSelectNone = () => {
-    clearMobileModel('image').catch(() => undefined);
-    setShowPicker(false);
-  };
+  const handleSelectNone = () => run(() => clearMobileModel('image'));
 
   return (
     <>
@@ -69,6 +82,7 @@ const ImageModelPicker: React.FC = () => {
                   !activeRoute && styles.modelPickerItemActive,
                 ]}
                 onPress={handleSelectNone}
+                disabled={busy}
               >
                 <Text style={styles.modelPickerItemText}>
                   None (disable image gen)
@@ -79,15 +93,15 @@ const ImageModelPicker: React.FC = () => {
               </TouchableOpacity>
               {downloadedImageModels.map(model => {
                 const isActive = activeImageModelId === model.id;
-                const handleSelect = () => {
-                  selectMobileModel({
-                    source: 'local',
-                    hostId: model.backend ?? 'image-runtime',
-                    modality: 'image',
-                    modelId: model.id,
-                  }).catch(() => undefined);
-                  setShowPicker(false);
-                };
+                const handleSelect = () =>
+                  run(() =>
+                    selectMobileModel({
+                      source: 'local',
+                      hostId: model.backend ?? 'image-runtime',
+                      modality: 'image',
+                      modelId: model.id,
+                    }),
+                  );
                 return (
                   <TouchableOpacity
                     key={model.id}
@@ -96,6 +110,7 @@ const ImageModelPicker: React.FC = () => {
                       isActive && styles.modelPickerItemActive,
                     ]}
                     onPress={handleSelect}
+                    disabled={busy}
                   >
                     <View>
                       <Text style={styles.modelPickerItemText}>
@@ -113,6 +128,12 @@ const ImageModelPicker: React.FC = () => {
               })}
             </>
           )}
+          <SelectionAttemptNotice
+            attempt={attempt}
+            canRetry={canRetry}
+            onRetry={retry}
+            testIDPrefix="image-model"
+          />
         </View>
       )}
     </>
@@ -121,34 +142,38 @@ const ImageModelPicker: React.FC = () => {
 
 // ─── Auto-Detect Method Toggle ────────────────────────────────────────────────
 
-const AutoDetectMethodToggle: React.FC = () => {
+const AutoDetectMethodToggle: React.FC<ImageSettingsSaveState> = ({ save, pending }) => {
   const styles = useThemedStyles(createStyles);
-  const autoDetectMethod = useAppStore(s => s.settings.autoDetectMethod);
-  const updateSettings = useAppStore(s => s.updateSettings);
+  const autoDetectMethod = useModelsProjection().settings.autoDetectMethod;
+  const isPattern = autoDetectMethod === 'pattern';
+  const isLlm = autoDetectMethod === 'llm';
 
   return (
     <View style={styles.modeToggleContainer}>
       <View style={styles.modeToggleInfo}>
         <Text style={styles.modeToggleLabel}>Detection Method</Text>
         <Text style={styles.modeToggleDesc}>
-          {autoDetectMethod === 'pattern'
+          {isPattern
             ? 'Fast keyword matching ("draw", "create image", etc.)'
-            : 'Uses current text model for uncertain cases (slower)'}
+            : isLlm
+              ? 'Uses current text model for uncertain cases (slower)'
+              : 'Detection method is unavailable'}
         </Text>
       </View>
       <View style={styles.modeToggleButtons}>
         <TouchableOpacity
           style={[
             styles.modeButton,
-            autoDetectMethod === 'pattern' && styles.modeButtonActive,
+            isPattern && styles.modeButtonActive,
           ]}
-          onPress={() => updateSettings({ autoDetectMethod: 'pattern' })}
+          onPress={() => save({ autoDetectMethod: 'pattern' })}
+          disabled={pending}
           testID="auto-detect-method-pattern"
         >
           <Text
             style={[
               styles.modeButtonText,
-              autoDetectMethod === 'pattern' &&
+              isPattern &&
                 styles.modeButtonTextActive,
             ]}
           >
@@ -158,15 +183,16 @@ const AutoDetectMethodToggle: React.FC = () => {
         <TouchableOpacity
           style={[
             styles.modeButton,
-            autoDetectMethod === 'llm' && styles.modeButtonActive,
+            isLlm && styles.modeButtonActive,
           ]}
-          onPress={() => updateSettings({ autoDetectMethod: 'llm' })}
+          onPress={() => save({ autoDetectMethod: 'llm' })}
+          disabled={pending}
           testID="auto-detect-method-llm"
         >
           <Text
             style={[
               styles.modeButtonText,
-              autoDetectMethod === 'llm' &&
+              isLlm &&
                 styles.modeButtonTextActive,
             ]}
           >
@@ -184,16 +210,18 @@ const ClassifierModelPicker: React.FC = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const downloadedModels = useAppStore(s => s.downloadedModels);
-  const classifierModelId = useAppStore(s => s.settings.classifierModelId);
+  // The canonical explicit classifier pick. "Use current model" is the absence of a pick, so this
+  // surface must read the explicit selection, not the reconciled route with its text fallback.
+  const classifierModelId = useExplicitLocalModelId('classifier');
   const [showPicker, setShowPicker] = useState(false);
+  const closePicker = useCallback(() => setShowPicker(false), []);
+  const { attempt, run, retry, canRetry } = useSelectionAttempt(closePicker);
+  const busy = attempt.status === 'pending';
   const classifierModel = downloadedModels.find(
     m => m.id === classifierModelId,
   );
 
-  const handleSelectNone = () => {
-    clearMobileModel('classifier').catch(() => undefined);
-    setShowPicker(false);
-  };
+  const handleSelectNone = () => run(() => clearMobileModel('classifier'));
 
   return (
     <>
@@ -222,6 +250,8 @@ const ClassifierModelPicker: React.FC = () => {
               !classifierModelId && styles.modelPickerItemActive,
             ]}
             onPress={handleSelectNone}
+            disabled={busy}
+            testID="classifier-model-none"
           >
             <View>
               <Text style={styles.modelPickerItemText}>Use current model</Text>
@@ -235,15 +265,15 @@ const ClassifierModelPicker: React.FC = () => {
           </TouchableOpacity>
           {downloadedModels.map(model => {
             const isActive = classifierModelId === model.id;
-            const handleSelect = () => {
-              selectMobileModel({
-                source: 'local',
-                hostId: model.engine,
-                modality: 'classifier',
-                modelId: model.id,
-              }).catch(() => undefined);
-              setShowPicker(false);
-            };
+            const handleSelect = () =>
+              run(() =>
+                selectMobileModel({
+                  source: 'local',
+                  hostId: model.engine,
+                  modality: 'classifier',
+                  modelId: model.id,
+                }),
+              );
             const isFast = isFastClassifierModel(model.id);
             return (
               <TouchableOpacity
@@ -253,6 +283,8 @@ const ClassifierModelPicker: React.FC = () => {
                   isActive && styles.modelPickerItemActive,
                 ]}
                 onPress={handleSelect}
+                disabled={busy}
+                testID={`classifier-model-${model.id}`}
               >
                 <View style={styles.flex1}>
                   <Text style={styles.modelPickerItemText}>{model.name}</Text>
@@ -267,6 +299,12 @@ const ClassifierModelPicker: React.FC = () => {
               </TouchableOpacity>
             );
           })}
+          <SelectionAttemptNotice
+            attempt={attempt}
+            canRetry={canRetry}
+            onRetry={retry}
+            testIDPrefix="classifier-model"
+          />
         </View>
       )}
       <Text style={styles.classifierNote}>
@@ -278,16 +316,17 @@ const ClassifierModelPicker: React.FC = () => {
 
 // ─── Advanced Section ────────────────────────────────────────────────────────
 
-const ImageAdvancedSection: React.FC = () => {
-  const imageGenerationMode = useAppStore(s => s.settings.imageGenerationMode);
-  const autoDetectMethod = useAppStore(s => s.settings.autoDetectMethod);
+const ImageAdvancedSection: React.FC<ImageSettingsSaveState> = saveState => {
+  const settings = useModelsProjection().settings;
+  const imageGenerationMode = settings.imageGenerationMode;
+  const autoDetectMethod = settings.autoDetectMethod;
   const isAutoMode = imageGenerationMode === 'auto';
   const isLlmDetect = autoDetectMethod === 'llm';
 
   return (
     <>
       <ImageQualityAdvancedSliders />
-      {isAutoMode && <AutoDetectMethodToggle />}
+      {isAutoMode && <AutoDetectMethodToggle {...saveState} />}
       {isAutoMode && isLlmDetect && <ClassifierModelPicker />}
     </>
   );
@@ -296,10 +335,10 @@ const ImageAdvancedSection: React.FC = () => {
 // ─── Prompt enhancement ──────────────────────────────────
 
 /** A first-level choice, not an advanced one: it decides whether a text model runs before every image. */
-const ImagePromptEnhancementToggle: React.FC = () => {
+const ImagePromptEnhancementToggle: React.FC<ImageSettingsSaveState> = ({ save, pending }) => {
   const styles = useThemedStyles(createStyles);
-  const enhanceImagePrompts = useAppStore(s => s.settings.enhanceImagePrompts);
-  const updateSettings = useAppStore(s => s.updateSettings);
+  const enhanceImagePrompts =
+    useModelsProjection().settings.enhanceImagePrompts === true;
   // Prompt enhancement runs a text model, so it needs one available. Only the COUNT matters here,
   // and it is compared in the selector, so adding a model wakes this row only when it crosses zero.
   const hasTextModel = useAppStore(s => s.downloadedModels.length > 0);
@@ -323,7 +362,8 @@ const ImagePromptEnhancementToggle: React.FC = () => {
         <View style={styles.modeToggleButtons}>
           <TouchableOpacity
             style={[styles.modeButton, !enhanceOn && styles.modeButtonActive]}
-            onPress={() => updateSettings({ enhanceImagePrompts: false })}
+            onPress={() => save({ enhanceImagePrompts: false })}
+            disabled={pending}
             testID="image-enhance-off"
           >
             <Text
@@ -337,8 +377,8 @@ const ImagePromptEnhancementToggle: React.FC = () => {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.modeButton, enhanceOn && styles.modeButtonActive]}
-            disabled={!hasTextModel}
-            onPress={() => updateSettings({ enhanceImagePrompts: true })}
+            disabled={!hasTextModel || pending}
+            onPress={() => save({ enhanceImagePrompts: true })}
             testID="image-enhance-on"
           >
             <Text
@@ -360,15 +400,23 @@ const ImagePromptEnhancementToggle: React.FC = () => {
 
 export const ImageGenerationSection: React.FC = () => {
   const styles = useThemedStyles(createStyles);
-  const updateSettings = useAppStore(s => s.updateSettings);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const isAutoMode = useAppStore(
-    s => s.settings.imageGenerationMode === 'auto',
-  );
+  const saveState = useImageSettingsSave();
+  const imageGenerationMode =
+    useModelsProjection().settings.imageGenerationMode;
+  const isAutoMode = imageGenerationMode === 'auto';
+  const isManualMode = imageGenerationMode === 'manual';
 
   return (
     <View style={styles.sectionCard}>
       <ImageModelPicker />
+
+      <ImageSettingsSaveNoticeText
+        pending={saveState.pending}
+        notice={saveState.notice}
+        warningStyle={styles.settingWarning}
+        errorStyle={styles.actionTextError}
+      />
 
       {/* Image Generation Mode Toggle */}
       <View style={styles.modeToggleContainer}>
@@ -377,13 +425,16 @@ export const ImageGenerationSection: React.FC = () => {
           <Text style={styles.modeToggleDesc}>
             {isAutoMode
               ? 'Detects when you want to generate an image'
-              : 'Use image button to manually trigger image generation'}
+              : isManualMode
+                ? 'Use image button to manually trigger image generation'
+                : 'Image generation mode is unavailable'}
           </Text>
         </View>
         <View style={styles.modeToggleButtons}>
           <TouchableOpacity
             style={[styles.modeButton, isAutoMode && styles.modeButtonActive]}
-            onPress={() => updateSettings({ imageGenerationMode: 'auto' })}
+            onPress={() => saveState.save({ imageGenerationMode: 'auto' })}
+            disabled={saveState.pending}
             testID="image-gen-mode-auto"
           >
             <Text
@@ -396,14 +447,18 @@ export const ImageGenerationSection: React.FC = () => {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.modeButton, !isAutoMode && styles.modeButtonActive]}
-            onPress={() => updateSettings({ imageGenerationMode: 'manual' })}
+            style={[
+              styles.modeButton,
+              isManualMode && styles.modeButtonActive,
+            ]}
+            onPress={() => saveState.save({ imageGenerationMode: 'manual' })}
+            disabled={saveState.pending}
             testID="image-gen-mode-manual"
           >
             <Text
               style={[
                 styles.modeButtonText,
-                !isAutoMode && styles.modeButtonTextActive,
+                isManualMode && styles.modeButtonTextActive,
               ]}
             >
               Manual
@@ -413,7 +468,7 @@ export const ImageGenerationSection: React.FC = () => {
       </View>
 
       <ImageQualityBasicSliders />
-      <ImagePromptEnhancementToggle />
+      <ImagePromptEnhancementToggle {...saveState} />
 
       <AdvancedToggle
         isExpanded={showAdvanced}
@@ -421,7 +476,7 @@ export const ImageGenerationSection: React.FC = () => {
         testID="modal-image-advanced-toggle"
       />
 
-      {showAdvanced && <ImageAdvancedSection />}
+      {showAdvanced && <ImageAdvancedSection {...saveState} />}
     </View>
   );
 };

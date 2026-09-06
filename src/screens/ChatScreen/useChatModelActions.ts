@@ -1,4 +1,5 @@
 import { Dispatch, SetStateAction, useEffect } from 'react';
+import type { ModelSettingsRecord } from '@offgrid/application';
 import { AlertState, showAlert } from '../../components';
 import { modelLibrary } from '../../services';
 import {
@@ -6,13 +7,19 @@ import {
   unloadAndClearModel,
 } from '../../services/modelServices/modelFacadeCommands';
 import { mobileTextEngineControl } from '../../services/modelServices/textEngineControl';
-import { useAppStore, useChatStore } from '../../stores';
+import { useAppStore } from '../../stores';
 import { activeLocalModelId } from '../../services/modelServices/activeRoute';
-import { DownloadedModel, RemoteModel, ONNXImageModel } from '../../types';
+import {
+  Conversation,
+  DownloadedModel,
+  RemoteModel,
+  ONNXImageModel,
+} from '../../types';
 import { ModelReadyOutcome } from './modelReadiness';
 import { mobileChatModelReadiness } from '../../services/modelServices/chatModelReadinessPort';
 import { activeMobileRoute } from '../../services/modelServices/mobileLLMService';
 import { mobileChatSession } from './mobileChatSession';
+import { appendWorkspaceAssistantMessage } from './useChatGenerationActions';
 import logger from '../../utils/logger';
 
 type SetState<T> = Dispatch<SetStateAction<T>>;
@@ -30,15 +37,11 @@ type ModelActionDeps = {
   activeModelInfo?: ActiveModelInfo;
   hasActiveModel?: boolean;
   activeConversationId: string | null | undefined;
+  /** Canonical Workspace Content projection - the only source for the fallback-notice dedupe check. */
+  activeConversation?: Conversation;
   isStreaming: boolean;
-  settings: { showGenerationDetails: boolean };
+  settings: ModelSettingsRecord;
   clearStreamingMessage: () => void;
-  createConversation: (
-    modelId: string,
-    title?: string,
-    projectId?: string,
-  ) => string;
-  addMessage: (convId: string, msg: any) => void;
   setIsModelLoading: (loading: boolean) => void;
   setLoadingModel: (model: DownloadedModel | null) => void;
   setShowModelSelector: SetState<boolean>;
@@ -56,19 +59,17 @@ function waitForRenderFrame(): Promise<void> {
 }
 
 function addSystemMsg(
-  deps: Pick<
-    ModelActionDeps,
-    'activeConversationId' | 'settings' | 'addMessage'
-  >,
+  deps: Pick<ModelActionDeps, 'activeConversationId' | 'settings'>,
   content: string,
 ) {
-  if (!deps.activeConversationId || !deps.settings.showGenerationDetails)
+  if (
+    !deps.activeConversationId ||
+    deps.settings.showGenerationDetails !== true
+  )
     return;
-  deps.addMessage(deps.activeConversationId, {
-    role: 'assistant',
-    content: `_${content}_`,
-    isSystemInfo: true,
-  });
+  appendWorkspaceAssistantMessage(deps.activeConversationId, `_${content}_`, {
+    notice: true,
+  }).catch(() => undefined);
 }
 
 /**
@@ -80,7 +81,7 @@ function addSystemMsg(
 function addBackendFallbackMsg(
   deps: Pick<
     ModelActionDeps,
-    'activeModel' | 'activeConversationId' | 'addMessage'
+    'activeModel' | 'activeConversationId' | 'activeConversation'
   >,
 ) {
   const notice = mobileTextEngineControl.backendFallbackNotice(
@@ -88,16 +89,16 @@ function addBackendFallbackMsg(
   );
   if (!notice || !deps.activeConversationId) return;
   logger.warn('[TextEngine] GPU fallback:', notice);
-  const alreadyVisible = useChatStore
-    .getState()
-    .getConversationMessages(deps.activeConversationId)
-    .some(message => message.isSystemInfo && message.content.includes(notice));
+  // Read from the canonical Workspace Content projection - the legacy Zustand mirror never sees a
+  // message written through Workspace Content, so a dedupe check against it would always miss and
+  // this notice would be appended again on every reload.
+  const alreadyVisible = (deps.activeConversation?.messages ?? []).some(
+    message => message.isSystemInfo && message.content.includes(notice),
+  );
   if (alreadyVisible) return;
-  deps.addMessage(deps.activeConversationId, {
-    role: 'assistant',
-    content: `_${notice}_`,
-    isSystemInfo: true,
-  });
+  appendWorkspaceAssistantMessage(deps.activeConversationId, `_${notice}_`, {
+    notice: true,
+  }).catch(() => undefined);
 }
 
 export async function initiateModelLoad(
@@ -133,7 +134,7 @@ export async function initiateModelLoad(
     if (
       started &&
       deps.modelLoadStartTimeRef.current &&
-      deps.settings.showGenerationDetails
+      deps.settings.showGenerationDetails === true
     ) {
       const loadTime = (
         (Date.now() - deps.modelLoadStartTimeRef.current) /
@@ -220,7 +221,10 @@ export async function handleModelSelectFn(
   model: DownloadedModel,
 ): Promise<void> {
   await selectModelRoute({
-    source: 'local', hostId: model.engine, modality: 'text', modelId: model.id,
+    source: 'local',
+    hostId: model.engine,
+    modality: 'text',
+    modelId: model.id,
   });
   deps.setShowModelSelector(false);
 }
@@ -240,7 +244,7 @@ export async function handleUnloadModelFn(
   deps.setLoadingModel(activeModel ?? null);
   try {
     await unloadAndClearModel('text');
-    if (deps.settings.showGenerationDetails && modelName) {
+    if (deps.settings.showGenerationDetails === true && modelName) {
       addSystemMsg(deps, `Model unloaded: ${modelName}`);
     }
   } catch (error) {

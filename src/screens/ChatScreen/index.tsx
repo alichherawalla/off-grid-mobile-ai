@@ -5,6 +5,7 @@ import { FlatList, Keyboard, Platform } from 'react-native';
 // this one reconciles the keyboard frame against the navigation-bar inset.
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useUiModeStore } from '../../stores/uiModeStore';
+import { useSpeechProjection } from '../../hooks/useApplicationProjection';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -93,14 +94,14 @@ export const ChatScreen: React.FC = () => {
         'Eject All Models',
         'Unload all active models to free up memory?',
         [
-      { text: 'Cancel', style: 'cancel' },
-      {
+          { text: 'Cancel', style: 'cancel' },
+          {
             text: 'Eject',
             style: 'destructive',
-        onPress: async () => {
-          chat.setAlertState(hideAlert());
-          try {
-            const count = await ejectAll();
+            onPress: async () => {
+              chat.setAlertState(hideAlert());
+              try {
+                const count = await ejectAll();
                 if (count > 0)
                   chat.setAlertState(
                     showAlert(
@@ -108,13 +109,13 @@ export const ChatScreen: React.FC = () => {
                       `Unloaded ${count} model${count > 1 ? 's' : ''}`,
                     ),
                   );
-          } catch {
+              } catch {
                 chat.setAlertState(
                   showAlert('Error', 'Failed to unload models'),
                 );
-          }
-        },
-      },
+              }
+            },
+          },
         ],
       ),
     );
@@ -146,9 +147,9 @@ export const ChatScreen: React.FC = () => {
   useEffect(
     () =>
       subscribeProPrompt(() => {
-    if (proAhaShownThisSession.current) return;
-    proAhaShownThisSession.current = true;
-    setProAhaVisible(true);
+        if (proAhaShownThisSession.current) return;
+        proAhaShownThisSession.current = true;
+        setProAhaVisible(true);
       }),
     [],
   );
@@ -172,11 +173,11 @@ export const ChatScreen: React.FC = () => {
   }, []);
 
   // Reset scroll when switching between chat/audio interface modes
-  const interfaceMode = useUiModeStore(s => s.interfaceMode);
-  const prevModeRef = React.useRef(interfaceMode);
+  const voiceMode = useSpeechProjection().preferences.voiceMode;
+  const prevModeRef = React.useRef(voiceMode);
   React.useEffect(() => {
-    if (prevModeRef.current !== interfaceMode) {
-      prevModeRef.current = interfaceMode;
+    if (prevModeRef.current !== voiceMode) {
+      prevModeRef.current = voiceMode;
       isNearBottomRef.current = true;
       chat.setShowScrollToBottom(false);
       // FlatList re-renders via extraData; onContentSizeChange fires and scrolls.
@@ -185,8 +186,8 @@ export const ChatScreen: React.FC = () => {
         flatListRef.current?.scrollToEnd({ animated: false });
       }, 300);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [interfaceMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceMode]);
 
   // Both stable, and both declared BEFORE the no-model early return so the hook order never varies.
   const handleScroll = useChatScrollTracker(

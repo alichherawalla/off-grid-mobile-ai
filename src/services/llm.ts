@@ -36,6 +36,26 @@ import { resolveSpeculative } from './mtpDetection';
 import type { CompleteCallback, StreamCallback } from './llmStreamTypes';
 const resolveGpuBackend = (enabled: boolean, devices: string[]): string =>
   !enabled ? 'CPU' : (Platform.OS === 'ios' ? 'Metal' : (devices.join(', ') || 'OpenCL'));
+
+const canonicalNativeSettings = () => {
+  const settings = applicationFacade().models.snapshot().settings;
+  const read = <T extends number | boolean | string>(key: string, kind: 'number' | 'boolean' | 'string'): T | undefined => {
+    const value = settings[key];
+    return typeof value === kind ? value as T : undefined;
+  };
+
+  return {
+    nThreads: read<number>('nThreads', 'number'), nBatch: read<number>('nBatch', 'number'),
+    contextLength: read<number>('contextLength', 'number'), gpuLayers: read<number>('gpuLayers', 'number'),
+    maxTokens: read<number>('maxTokens', 'number'), temperature: read<number>('temperature', 'number'),
+    topP: read<number>('topP', 'number'), repeatPenalty: read<number>('repeatPenalty', 'number'),
+    reasoningBudget: read<number>('reasoningBudget', 'number'),
+    flashAttn: read<boolean>('flashAttn', 'boolean'), enableGpu: read<boolean>('enableGpu', 'boolean'),
+    speculativeDecoding: read<boolean>('speculativeDecoding', 'boolean'), thinkingEnabled: read<boolean>('thinkingEnabled', 'boolean'),
+    cacheType: read<string>('cacheType', 'string'), inferenceBackend: read<string>('inferenceBackend', 'string'),
+  };
+};
+
 class LLMService {
   private context: LlamaContext | null = null;
   private currentModelPath: string | null = null;
@@ -70,7 +90,7 @@ class LLMService {
   private getSessionPath(promptHash: string): string { return getSessionPath(this.sessionCacheDir, promptHash); }
   private async validateAndPrepareModel(modelPath: string, override: boolean = false): Promise<{ fileSize: number; memCheck: { safe: boolean; estimatedMB: number; availableMB: number }; params: ReturnType<typeof buildModelParams> }> {
     logger.log(`[LLM] validateAndPrepareModel: ${modelPath}`);
-    const settings = useAppStore.getState().settings;
+    const settings = canonicalNativeSettings();
     logger.log(`[LLM] User settings: threads=${settings.nThreads}, batch=${settings.nBatch}, ctx=${settings.contextLength}, gpu=${settings.enableGpu}, flashAttn=${settings.flashAttn}, cache=${settings.cacheType}`);
     const recommendedThreads = await hardwareService.getRecommendedThreadCount();
     const effectiveNThreads = settings.nThreads === 0 ? recommendedThreads : settings.nThreads;
@@ -149,7 +169,7 @@ class LLMService {
   }
   private async initConfiguredContext(params: { baseParams: object; ctxLen: number; nGpuLayers: number; fileSize: number }): Promise<{ context: LlamaContext; gpuAttemptFailed: boolean; actualLength: number; attemptedGpuLayers: number }> {
     const deviceInfo = await hardwareService.getDeviceInfo();
-    const settings = useAppStore.getState().settings;
+    const settings = canonicalNativeSettings();
     const selected = settings?.inferenceBackend ??
       (Platform.OS === 'ios' ? INFERENCE_BACKENDS.METAL : INFERENCE_BACKENDS.CPU);
     const openClCapability = Platform.OS === 'android' && selected === INFERENCE_BACKENDS.OPENCL
@@ -215,7 +235,7 @@ class LLMService {
   supportsToolCalling(): boolean { return this.toolCallingSupported; }
   supportsThinking(): boolean { return this.thinkingSupported; }
   getReasoningMetadata() { return llamaReasoningMetadata(this.context); }
-  isThinkingEnabled(): boolean { return this.thinkingSupported && useAppStore.getState().settings.thinkingEnabled; }
+  isThinkingEnabled(): boolean { return this.thinkingSupported && canonicalNativeSettings().thinkingEnabled === true; }
   isGemma4Model(): boolean {
     return this.getReasoningMetadata()?.reasoningFormat === 'auto';
   }
@@ -277,13 +297,14 @@ class LLMService {
       if (hasImages && !this.multimodalInitialized) logger.warn('[LLM] Images attached but multimodal not initialized - falling back to text-only');
       logger.log('[LLM] Generation mode:', this.hasVisionInputs(usable) ? 'VISION' : 'TEXT-ONLY');
       const oaiMessages = this.convertToOAIMessages(usable);
-      const { settings } = useAppStore.getState();
+      const settings = canonicalNativeSettings();
       const startTime = Date.now();
       let firstTokenMs = 0, tokenCount = 0, firstReceived = false;
       let fullContent = '', fullReasoningContent = '', streamedContentSoFar = '', streamedReasoningSoFar = '';
       const __wire: Array<Record<string, unknown>> = []; // [WIRE] capture raw per-token shape from-device
       // Utility callers can still force thinking off; shared chat callers supply reasoningWire.
-      const thinkingOn = this.isThinkingEnabled() && !opts?.disableThinking;
+      const thinkingEnabled = this.thinkingSupported && settings.thinkingEnabled === true;
+      const thinkingOn = thinkingEnabled && !opts?.disableThinking;
       const fallbackWire = reasoningWireFragment(resolveReasoningPlan(
         { enabled: thinkingOn, budgetTokens: settings.reasoningBudget }, this.getReasoningMetadata()));
       const completionParams = {
@@ -292,7 +313,7 @@ class LLMService {
         ...(opts.reasoningWire ?? fallbackWire),
         ...(opts.tools?.length ? { tools: opts.tools } : {}),
       };
-      logger.log(`[LLM][THINKING] thinkingSupported=${this.thinkingSupported}, thinkingEnabled=${useAppStore.getState().settings.thinkingEnabled}, isThinkingEnabled=${this.isThinkingEnabled()}, enable_thinking=${(completionParams as any).enable_thinking}, reasoning_format=${(completionParams as any).reasoning_format}`);
+      logger.log(`[LLM][THINKING] thinkingSupported=${this.thinkingSupported}, thinkingEnabled=${settings.thinkingEnabled === true}, isThinkingEnabled=${thinkingEnabled}, enable_thinking=${(completionParams as any).enable_thinking}, reasoning_format=${(completionParams as any).reasoning_format}`);
       logger.log(`[WIRE-LLAMA-PARAMS] ${JSON.stringify({ model: this.currentModelPath, params: { ...completionParams, messages: undefined } })}`); // [WIRE] settings→native params (temp/thinking/etc), messages elided
       const completionResult = await safeCompletion(ctx, () => ctx.completion(completionParams, (data: any) => {
         if (__wire.length < 500) __wire.push({ token: data.token, content: data.content, reasoning_content: data.reasoning_content, tool_calls: data.tool_calls }); // [WIRE]
@@ -380,7 +401,7 @@ class LLMService {
     const oaiMessages = this.convertToOAIMessages(
       await this.dropMissingImageAttachments(messages),
     );
-    const { settings } = useAppStore.getState();
+    const settings = canonicalNativeSettings();
     let fullResponse = '';
     const ctx = this.context;
     const completionWork = safeCompletion(ctx, () => ctx.completion(

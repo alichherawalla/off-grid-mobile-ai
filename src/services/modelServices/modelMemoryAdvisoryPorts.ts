@@ -5,6 +5,7 @@ import type {
 } from '@offgrid/models';
 import { INFERENCE_BACKENDS } from '../../types';
 import { useAppStore } from '../../stores/appStore';
+import { applicationFacade } from '../applicationFacade';
 import { hardwareService } from '../hardware';
 import type { ModelType } from './modelStateTypes';
 
@@ -16,7 +17,11 @@ function observedArtifact(
   if (type === 'text') {
     const model = state.downloadedModels.find(candidate => candidate.id === modelId);
     if (!model) return undefined;
-    const backend = state.settings.inferenceBackend;
+    const configuredBackend =
+      applicationFacade().models.snapshot().settings.inferenceBackend;
+    const backend = Object.values(INFERENCE_BACKENDS).find(
+      candidate => candidate === configuredBackend,
+    );
     return {
       id: model.id,
       name: model.name,

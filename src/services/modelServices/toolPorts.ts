@@ -1,16 +1,17 @@
 import {
   type GenerationToolDefinition,
+  MOBILE_TEXT_SETTINGS_DEFAULTS,
   openAIToolToDefinition,
   toolSchemaTokenBudget,
 } from '@offgrid/models';
 import type { ToolRoutingService } from '@offgrid/models';
 import { toolRouting } from '../composition/tools';
-import { useAppStore } from '../../stores/appStore';
 import logger from '../../utils/logger';
 import { getToolsAsOpenAISchema } from '../tools';
 import { getToolExtensions } from '../tools/extensions';
 import { mobileTextEngineControl } from './textEngineControl';
 import { isMcpEnabled } from '../mcpContextBoost';
+import { applicationFacade } from '../applicationFacade';
 
 const toolRoutingService = (): ToolRoutingService => toolRouting();
 
@@ -30,7 +31,14 @@ export async function mobileToolDefinitions(
       const definition = openAIToolToDefinition(schema);
       return definition ? [definition] : [];
     });
-  const settings = useAppStore.getState().settings;
+  const contextLengthValue =
+    applicationFacade().models.settings.current().contextLength;
+  const contextLength =
+    typeof contextLengthValue === 'number' &&
+    Number.isFinite(contextLengthValue) &&
+    contextLengthValue > 0
+      ? contextLengthValue
+      : MOBILE_TEXT_SETTINGS_DEFAULTS.contextLength;
   const result = await toolRoutingService().select({
     messages: messages.map(message => ({
       role: message.role,
@@ -41,11 +49,10 @@ export async function mobileToolDefinitions(
     remoteModel: mobileTextEngineControl.isRemoteActive(),
     embeddingRouting: isMcpEnabled(),
     modelRouting: true,
-    schemaTokenLimit: toolSchemaTokenBudget(settings.contextLength),
+    schemaTokenLimit: toolSchemaTokenBudget(contextLength),
   });
   if (result.fallbackReason) {
     logger.warn(`[SharedTools] ${result.strategy} selection failed (${result.fallbackReason}); using all tools`);
   }
   return result.tools;
 }
-

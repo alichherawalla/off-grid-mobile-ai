@@ -1,12 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import {
-  View,
-  FlatList,
-  Text,
-  Keyboard,
-  Platform,
-} from 'react-native';
-import { useUiModeStore } from '../../stores/uiModeStore';
+import { View, FlatList, Text, Keyboard, Platform } from 'react-native';
+import { useSpeechProjection } from '../../hooks/useApplicationProjection';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardVisible } from '../../hooks/useKeyboardVisible';
 import Icon from 'react-native-vector-icons/Feather';
@@ -169,11 +163,11 @@ export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
   renderItem,
 }) => {
   const hasScrolledRef = React.useRef(false);
-  const interfaceMode = useUiModeStore(s => s.interfaceMode);
+  const voiceMode = useSpeechProjection().preferences.voiceMode;
   // Switching to voice loads the voice model (about 15 s on a phone). The list must not go quiet
   // for that long: say what is happening, above whatever is already on screen.
   const voiceBusy = useModelResidencyBusy('voice');
-  const preparingVoice = interfaceMode === 'audio' && voiceBusy;
+  const preparingVoice = voiceMode && voiceBusy;
   const tabNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const toolCountHintDismissed = useAppStore(s => s.toolCountHintDismissed);
   // Subscribe to Pro activation so this re-renders the moment a license is
@@ -276,7 +270,7 @@ export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
         // builds / chat mode fall back to the standard empty chat.
         (() => {
           const AudioEmpty = getSlot(SLOTS.chatEmptyAudio);
-          return AudioEmpty && interfaceMode === 'audio' ? (
+          return AudioEmpty && voiceMode ? (
             <AudioEmpty />
           ) : (
             <EmptyChat
@@ -296,7 +290,7 @@ export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
           data={chat.displayMessages}
           renderItem={renderItem}
           keyExtractor={keyExtractor}
-          extraData={interfaceMode}
+          extraData={voiceMode}
           contentContainerStyle={styles.messageList}
           onScroll={handleScroll}
           onContentSizeChange={handleContentSizeChange}
@@ -360,8 +354,8 @@ export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
       {/* GPU-path (no-NPU) image tips — shown in chat (not buried in settings) so a user
           hitting slow/garbled generations sees the fix. Self-hides at good settings. */}
       <ImageGenAdviceCard />
-      {/* Reload through the SAME seam the reload banner uses — one owner of "reload the text model". */}
-      <MtpAdviceCard onEnable={chat.handleReloadTextModel} />
+      {/* The settings facade owns the setting commit and any required model restart. */}
+      <MtpAdviceCard />
       {/* A vision model missing its projector: repairable from here, because this is where the
           user finds out they cannot attach a photo. */}
       <VisionRepairAdviceCard onRepaired={chat.handleReloadTextModel} />

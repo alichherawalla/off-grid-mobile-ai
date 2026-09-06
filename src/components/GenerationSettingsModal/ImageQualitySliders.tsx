@@ -2,15 +2,14 @@ import React from 'react';
 import { View, Text, Switch, Platform, TouchableOpacity } from 'react-native';
 import { SliderSetting } from '../SliderSetting';
 import { useTheme, useThemedStyles } from '../../theme';
-import { useAppStore } from '../../stores';
+import { useResolvedImageGenerationSettings } from '../../hooks/useApplicationProjection';
 import { useClearGpuCache } from '../../hooks/useImageGenerationSettings';
-import {
-  DEFAULT_IMAGE_GUIDANCE,
-  defaultImageSteps,
-  MAX_IMAGE_STEPS,
-  SWEET_SPOT_SIZE,
-} from '../../utils/imageGenAdvice';
+import { mobileImageQualityLimits } from '../../services/modelServices/imageGenerationApplication';
 import { createStyles } from './styles';
+import {
+  ImageSettingsSaveNoticeText,
+  useImageSettingsSave,
+} from './useImageSettingsSave';
 
 const ClearGPUCacheButton: React.FC = () => {
   const { colors } = useTheme();
@@ -19,7 +18,11 @@ const ClearGPUCacheButton: React.FC = () => {
 
   return (
     <TouchableOpacity
-      style={[styles.settingHeader, styles.clearCacheButton, { backgroundColor: colors.surfaceLight }]}
+      style={[
+        styles.settingHeader,
+        styles.clearCacheButton,
+        { backgroundColor: colors.surfaceLight },
+      ]}
       onPress={handleClearCache}
       disabled={clearing}
     >
@@ -34,29 +37,41 @@ const ClearGPUCacheButton: React.FC = () => {
 export const ImageQualityBasicSliders: React.FC = () => {
   // Two sliders, two fields. A whole-store read meant every step of the steps slider re-rendered
   // the size slider beside it, and every unrelated app write re-rendered both.
-  const imageSteps = useAppStore(s => s.settings.imageSteps);
-  const imageWidth = useAppStore(s => s.settings.imageWidth);
-  const updateSettings = useAppStore(s => s.updateSettings);
+  const imageSettings = useResolvedImageGenerationSettings();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { pending, notice, save } = useImageSettingsSave();
 
   return (
     <>
+      <ImageSettingsSaveNoticeText
+        pending={pending}
+        notice={notice}
+        warningStyle={styles.settingWarning}
+        errorStyle={[styles.settingWarning, { color: colors.error }]}
+      />
+
       <SliderSetting
         testID="image-steps"
         label="Image Steps"
         description="4-8 steps for speed, 20-50 for quality"
-        value={imageSteps || defaultImageSteps(Platform.OS)}
-        min={4} max={MAX_IMAGE_STEPS} step={1}
-        onChange={(value) => updateSettings({ imageSteps: value })}
+        value={imageSettings.steps}
+        min={4}
+        max={mobileImageQualityLimits.maximumSteps}
+        step={1}
+        onChange={value => save({ imageSteps: value })}
       />
 
       <SliderSetting
         testID="image-size"
         label="Image Size"
         description="Output resolution. 256 is fastest with coherent results; 512 is most detailed but slow on GPU-only devices."
-        value={Math.max(SWEET_SPOT_SIZE, imageWidth ?? SWEET_SPOT_SIZE)}
-        min={SWEET_SPOT_SIZE} max={512} step={64}
-        formatValue={(v) => `${v}x${v}`}
-        onChange={(value) => updateSettings({ imageWidth: value, imageHeight: value })}
+        value={imageSettings.width}
+        min={mobileImageQualityLimits.minimumSize}
+        max={512}
+        step={64}
+        formatValue={v => `${v}x${v}`}
+        onChange={value => save({ imageWidth: value, imageHeight: value })}
       />
     </>
   );
@@ -66,29 +81,39 @@ export const ImageQualityBasicSliders: React.FC = () => {
 export const ImageQualityAdvancedSliders: React.FC = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const imageGuidanceScale = useAppStore(s => s.settings.imageGuidanceScale);
-  const imageThreads = useAppStore(s => s.settings.imageThreads);
-  const imageUseOpenCL = useAppStore(s => s.settings.imageUseOpenCL);
-  const updateSettings = useAppStore(s => s.updateSettings);
+  const imageSettings = useResolvedImageGenerationSettings();
+  const { pending, notice, save } = useImageSettingsSave();
 
   return (
     <>
+      <ImageSettingsSaveNoticeText
+        pending={pending}
+        notice={notice}
+        warningStyle={styles.settingWarning}
+        errorStyle={[styles.settingWarning, { color: colors.error }]}
+      />
+
       <SliderSetting
         testID="guidance-scale"
         label="Guidance Scale"
         description="Higher = follows prompt more strictly (5-15 range)"
-        value={imageGuidanceScale || DEFAULT_IMAGE_GUIDANCE}
-        min={1} max={20} step={0.5} decimals={1}
-        onChange={(value) => updateSettings({ imageGuidanceScale: value })}
+        value={imageSettings.guidanceScale}
+        min={1}
+        max={20}
+        step={0.5}
+        decimals={1}
+        onChange={value => save({ imageGuidanceScale: value })}
       />
 
       <SliderSetting
         testID="image-threads"
         label="Image Threads"
         description="CPU threads used for image generation. Takes effect next time the image model loads."
-        value={imageThreads ?? 4}
-        min={1} max={8} step={1}
-        onChange={(value) => updateSettings({ imageThreads: value })}
+        value={imageSettings.threads}
+        min={1}
+        max={8}
+        step={1}
+        onChange={value => save({ imageThreads: value })}
       />
 
       {Platform.OS === 'android' && (
@@ -98,18 +123,20 @@ export const ImageQualityAdvancedSliders: React.FC = () => {
             <Switch
               testID="image-gpu-acceleration"
               accessibilityLabel={`GPU Acceleration, ${
-                (imageUseOpenCL ?? true) ? 'ON' : 'OFF'
+                imageSettings.useOpenCL ? 'ON' : 'OFF'
               }`}
-              value={imageUseOpenCL ?? true}
-              onValueChange={(value) => updateSettings({ imageUseOpenCL: value })}
+              value={imageSettings.useOpenCL}
+              disabled={pending}
+              onValueChange={value => save({ imageUseOpenCL: value })}
               trackColor={{ false: colors.surfaceLight, true: colors.primary }}
               thumbColor={colors.surface}
             />
           </View>
           <Text style={styles.settingDescription}>
-            Use GPU for faster image generation. First run may be slower while optimizing for your device.
+            Use GPU for faster image generation. First run may be slower while
+            optimizing for your device.
           </Text>
-          {(imageUseOpenCL ?? true) && <ClearGPUCacheButton />}
+          {imageSettings.useOpenCL && <ClearGPUCacheButton />}
         </View>
       )}
     </>

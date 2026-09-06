@@ -12,8 +12,9 @@ import { Card } from '../components';
 import { CustomAlert, showAlert, hideAlert, AlertState, initialAlertState } from '../components/CustomAlert';
 import { useTheme, useThemedStyles } from '../theme';
 import { SPACING } from '../constants';
-import { useAppStore, useChatStore } from '../stores';
+import { useAppStore } from '../stores';
 import { useDownloadStore } from '../stores/downloadStore';
+import { useWorkspaceContentProjection } from '../hooks/useApplicationProjection';
 import { hardwareService, modelLibrary } from '../services';
 import { OrphanedFilesSection } from './OrphanedFilesSection';
 import { imageBackendLabel } from '../utils/imageBackend';
@@ -31,9 +32,13 @@ export const StorageSettingsScreen: React.FC = () => {
   const downloadedImageModels = useAppStore(
     state => state.downloadedImageModels,
   );
-  // The screen shows only the count, so it subscribes to the count. A number compares equal across a
-  // streamed reply, so a token appended to a conversation does not redraw this screen.
-  const conversationCount = useChatStore(state => state.conversations.length);
+  const workspaceContent = useWorkspaceContentProjection();
+  const conversationCount = workspaceContent.status === 'ready'
+    ? workspaceContent.conversations.length
+    : null;
+  const conversationCountLabel = conversationCount ?? (
+    workspaceContent.status === 'stopped' ? 'Unavailable' : 'Loading…'
+  );
   const downloads = useDownloadStore(s => s.downloads);
   const removeFromStore = useDownloadStore(s => s.remove);
 
@@ -153,7 +158,7 @@ export const StorageSettingsScreen: React.FC = () => {
               <Icon name="message-circle" size={18} color={colors.primary} />
               <Text style={styles.infoLabel}>Conversations</Text>
             </View>
-            <Text style={styles.infoValue}>{conversationCount}</Text>
+            <Text style={styles.infoValue}>{conversationCountLabel}</Text>
           </View>
         </Card>
 

@@ -5,11 +5,9 @@
  * selector, KV-cache toggle, etc.) which drifted in copy, labels, and spacing.
  *
  * Presentation: the pill-button design (segmented control). Data + behavior come
- * from the single useTextGenerationAdvanced hook + useAppStore, so the values and
- * the residency/cache logic are already single-source; this collapses the VIEW to
- * match. Adding a new backend or setting means editing ONE place.
+ * from the Shared models projection and the single useTextGenerationAdvanced hook.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, View, Text } from 'react-native';
 import { SliderSetting } from '../SliderSetting';
 import { useThemedStyles } from '../../theme';
@@ -20,18 +18,81 @@ import {
   CACHE_TYPE_DESCRIPTIONS,
   GPU_LAYERS_MAX,
   CACHE_TYPE_OPTIONS,
+  type TextGenerationAdvancedSettingsSaveOutcome,
 } from '../../hooks/useTextGenerationAdvanced';
 import { hardwareService } from '../../services/hardware';
 import {
+  modelsFailureMessage,
   REASONING_BUDGET_AUTO,
   REASONING_BUDGET_OPTIONS,
   reasoningBudgetLabel,
+  type SaveModelSettingsCommand,
 } from '@offgrid/application';
 import { HTP_ENABLED as HTP_UI_ENABLED } from '../../config/featureFlags';
+import { applicationFacade } from '../../services/applicationFacade';
+import { useModelsProjection } from '../../hooks/useApplicationProjection';
 import { createTextGenAdvancedStyles } from './textGenAdvancedStyles';
 import { SegmentedRow, BOOL_OPTIONS, type PillOption } from './segmentedRow';
 
 const isAndroid = Platform.OS === 'android';
+
+type ModelSettingsPatch = SaveModelSettingsCommand['patch'];
+type ModelSettingsSaveOperation = () =>
+  | Promise<TextGenerationAdvancedSettingsSaveOutcome>
+  | undefined;
+
+function useModelSettingsSave(): {
+  save: (patch: ModelSettingsPatch) => Promise<void>;
+  runSave: (operation: ModelSettingsSaveOperation) => Promise<void>;
+  saveMessage: string | null;
+} {
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const latestOperation = useRef(0);
+
+  const runSave = useCallback(async (
+    saveOperation: ModelSettingsSaveOperation,
+  ): Promise<void> => {
+    const operation = ++latestOperation.current;
+    setSaveMessage(null);
+    try {
+      const pendingOutcome = saveOperation();
+      if (!pendingOutcome) return;
+      const outcome = await pendingOutcome;
+      if (operation !== latestOperation.current) return;
+      if (!outcome.ok) {
+        setSaveMessage(modelsFailureMessage(outcome.failure));
+        return;
+      }
+      if (outcome.value.syncFailure) {
+        setSaveMessage(
+          `Saved on this device. ${modelsFailureMessage(outcome.value.syncFailure)}`,
+        );
+      }
+    } catch (error: unknown) {
+      if (operation === latestOperation.current) {
+        setSaveMessage(error instanceof Error ? error.message : String(error));
+      }
+    }
+  }, []);
+
+  const save = useCallback((patch: ModelSettingsPatch): Promise<void> => (
+    runSave(() => applicationFacade().models.settings.save({
+      origin: 'local',
+      patch,
+    }))
+  ), [runSave]);
+
+  return { save, runSave, saveMessage };
+}
+
+const SettingsSaveMessage: React.FC<{ message: string | null }> = ({ message }) => {
+  const styles = useThemedStyles(createTextGenAdvancedStyles);
+  return message ? (
+    <Text style={styles.warning} accessibilityLiveRegion="polite">
+      {message}
+    </Text>
+  ) : null;
+};
 
 // ─── Inference Backend ─────────────────────────────────────────────────────────
 
@@ -58,8 +119,8 @@ export const BackendSelector: React.FC = () => {
   const styles = useThemedStyles(createTextGenAdvancedStyles);
   // One field per row. A whole-store read meant dragging the GPU-layers slider re-rendered every
   // other advanced row, and any unrelated app write re-rendered all of them.
-  const inferenceBackend = useAppStore(s => s.settings.inferenceBackend);
-  const updateSettings = useAppStore(s => s.updateSettings);
+  const inferenceBackend = useModelsProjection().settings.inferenceBackend;
+  const { save, saveMessage } = useModelSettingsSave();
   const { gpuLayersEffective } = useTextGenerationAdvanced();
   const [hasNPU, setHasNPU] = useState(false);
 
@@ -85,10 +146,10 @@ export const BackendSelector: React.FC = () => {
       description={backends.find(b => b.id === current)?.desc ?? ''}
       options={backends}
       current={current}
-      onSelect={(id) => updateSettings({ inferenceBackend: id })}
+      onSelect={(id) => save({ inferenceBackend: id })}
       testIdFor={(id) => `backend-${id}-button`}
     >
-      {showLayers && (
+      {showLayers ? (
         <View style={styles.layersInline}>
           <SliderSetting
             testID="gpu-layers-stepper"
@@ -96,10 +157,11 @@ export const BackendSelector: React.FC = () => {
             description="Layers offloaded to GPU. Higher = faster but may crash on low-VRAM devices. Requires model reload."
             value={gpuLayersEffective}
             min={1} max={GPU_LAYERS_MAX} step={1}
-            onChange={(value) => updateSettings({ gpuLayers: value })}
+            onChange={(value) => save({ gpuLayers: value })}
           />
         </View>
-      )}
+      ) : null}
+      <SettingsSaveMessage message={saveMessage} />
     </SegmentedRow>
   );
 };
@@ -112,8 +174,8 @@ const LITERT_BACKENDS: { id: LiteRTBackend; label: string; desc: string }[] = [
 ];
 
 export const LiteRTBackendSelector: React.FC = () => {
-  const liteRTBackend = useAppStore(s => s.settings.liteRTBackend);
-  const updateSettings = useAppStore(s => s.updateSettings);
+  const liteRTBackend = useModelsProjection().settings.liteRTBackend;
+  const { save, saveMessage } = useModelSettingsSave();
   const current = liteRTBackend ?? 'gpu';
   return (
     <SegmentedRow<LiteRTBackend>
@@ -121,9 +183,11 @@ export const LiteRTBackendSelector: React.FC = () => {
       description={LITERT_BACKENDS.find(b => b.id === current)?.desc ?? ''}
       options={LITERT_BACKENDS}
       current={current}
-      onSelect={(id) => updateSettings({ liteRTBackend: id })}
+      onSelect={(id) => save({ liteRTBackend: id })}
       testIdFor={(id) => `litert-backend-${id}-button`}
-    />
+    >
+      <SettingsSaveMessage message={saveMessage} />
+    </SegmentedRow>
   );
 };
 
@@ -134,7 +198,7 @@ export const LiteRTBackendSelector: React.FC = () => {
 export { SpeculativeDecodingToggle } from './SpeculativeDecodingToggle';
 
 export const FlashAttentionToggle: React.FC = () => {
-  const updateSettings = useAppStore(s => s.updateSettings);
+  const { save, runSave, saveMessage } = useModelSettingsSave();
   const { isFlashAttnOn, handleFlashAttnToggle } = useTextGenerationAdvanced();
   return (
     <SegmentedRow<'off' | 'on'>
@@ -142,9 +206,15 @@ export const FlashAttentionToggle: React.FC = () => {
       description="Faster inference and lower memory. Required for quantized KV cache (q8_0/q4_0). Requires model reload."
       options={BOOL_OPTIONS}
       current={isFlashAttnOn ? 'on' : 'off'}
-      onSelect={(id) => (id === 'on' ? updateSettings({ flashAttn: true }) : handleFlashAttnToggle(false))}
+      onSelect={(id) => (
+        id === 'on'
+          ? save({ flashAttn: true })
+          : runSave(() => handleFlashAttnToggle(false))
+      )}
       testIdFor={(id) => `flash-attn-${id}-button`}
-    />
+    >
+      <SettingsSaveMessage message={saveMessage} />
+    </SegmentedRow>
   );
 };
 
@@ -152,6 +222,7 @@ export const FlashAttentionToggle: React.FC = () => {
 
 export const KvCacheTypeToggle: React.FC = () => {
   const styles = useThemedStyles(createTextGenAdvancedStyles);
+  const { runSave, saveMessage } = useModelSettingsSave();
   const { isFlashAttnOn, cacheDisabled, displayCacheType, handleCacheTypeChange } = useTextGenerationAdvanced();
   return (
     <SegmentedRow<CacheType>
@@ -159,7 +230,7 @@ export const KvCacheTypeToggle: React.FC = () => {
       description={CACHE_TYPE_DESCRIPTIONS[displayCacheType]}
       options={CACHE_TYPE_OPTIONS.map((ct: CacheType) => ({ id: ct, label: ct }))}
       current={displayCacheType}
-      onSelect={handleCacheTypeChange}
+      onSelect={(cacheType) => runSave(() => handleCacheTypeChange(cacheType))}
       testIdFor={(ct) => `cache-type-${ct}-button`}
       isDisabled={(ct) => cacheDisabled && ct !== 'f16'}
     >
@@ -168,6 +239,7 @@ export const KvCacheTypeToggle: React.FC = () => {
           Quantized cache (q8_0/q4_0) will auto-enable flash attention.
         </Text>
       )}
+      <SettingsSaveMessage message={saveMessage} />
     </SegmentedRow>
   );
 };
@@ -189,11 +261,9 @@ const MODE_OPTIONS: PillOption<ModelLoadingMode>[] = [
 ];
 
 export const ModelLoadingModeSelector: React.FC = () => {
-  const modelLoadingMode = useAppStore(s => s.settings.modelLoadingMode);
-  const aggressiveModelLoading = useAppStore(
-    s => s.settings.aggressiveModelLoading,
-  );
-  const updateSettings = useAppStore(s => s.updateSettings);
+  const settings = useModelsProjection().settings;
+  const { modelLoadingMode, aggressiveModelLoading } = settings;
+  const { save, saveMessage } = useModelSettingsSave();
   // Single source of truth: the 3-mode setting, falling back to the legacy boolean.
   const current: ModelLoadingMode =
     modelLoadingMode ?? (aggressiveModelLoading ? 'aggressive' : 'balanced');
@@ -203,9 +273,11 @@ export const ModelLoadingModeSelector: React.FC = () => {
       description="Lean keeps ONE model in memory at a time. Balanced keeps models loaded together when they fit and swaps when they do not. Aggressive commits a larger share of RAM so bigger models load. You can always Load Anyway if a model is refused."
       options={MODE_OPTIONS}
       current={current}
-      onSelect={(id) => updateSettings({ modelLoadingMode: id })}
+      onSelect={(id) => save({ modelLoadingMode: id })}
       testIdFor={(id) => `model-loading-mode-${id}-button`}
-    />
+    >
+      <SettingsSaveMessage message={saveMessage} />
+    </SegmentedRow>
   );
 };
 
@@ -228,29 +300,32 @@ function thinkingBudgetSliderLabel(index: number): string {
 /** llama.rn path only: the cap rides the completion request as thinking_budget_tokens
  *  (shared rule: @offgrid/models thinkingBudgetPayload). LiteRT has no thinking channel. */
 export const ThinkingBudgetSelector: React.FC = () => {
-  const reasoningBudget = useAppStore(s => s.settings.reasoningBudget);
-  const updateSettings = useAppStore(s => s.updateSettings);
+  const reasoningBudget = useModelsProjection().settings.reasoningBudget;
+  const { save, saveMessage } = useModelSettingsSave();
   const current = reasoningBudget ?? REASONING_BUDGET_AUTO;
   const selectedIndex = Math.max(
     0,
     THINKING_BUDGET_VALUES.findIndex(value => value === current),
   );
   return (
-    <SliderSetting
-      testID="thinking-budget"
-      label="Thinking Budget"
-      description="Auto lets the model think for as long as it needs. A cap ends the thinking at that many tokens so the answer arrives sooner. Applies when Thinking is on."
-      value={selectedIndex}
-      min={0}
-      max={THINKING_BUDGET_VALUES.length - 1}
-      step={1}
-      editableValue={false}
-      formatValue={thinkingBudgetSliderLabel}
-      onChange={(index) => {
-        const value = THINKING_BUDGET_VALUES[Math.round(index)] ?? REASONING_BUDGET_AUTO;
-        updateSettings({ reasoningBudget: value });
-      }}
-    />
+    <>
+      <SliderSetting
+        testID="thinking-budget"
+        label="Thinking Budget"
+        description="Auto lets the model think for as long as it needs. A cap ends the thinking at that many tokens so the answer arrives sooner. Applies when Thinking is on."
+        value={selectedIndex}
+        min={0}
+        max={THINKING_BUDGET_VALUES.length - 1}
+        step={1}
+        editableValue={false}
+        formatValue={thinkingBudgetSliderLabel}
+        onChange={(index) => {
+          const value = THINKING_BUDGET_VALUES[Math.round(index)] ?? REASONING_BUDGET_AUTO;
+          save({ reasoningBudget: value });
+        }}
+      />
+      <SettingsSaveMessage message={saveMessage} />
+    </>
   );
 };
 
@@ -278,7 +353,7 @@ export const ShowGenerationDetailsToggle: React.FC = () => {
 
 export const CpuThreadsSlider: React.FC = () => {
   const styles = useThemedStyles(createTextGenAdvancedStyles);
-  const updateSettings = useAppStore(s => s.updateSettings);
+  const { save, saveMessage } = useModelSettingsSave();
   const { cpuThreadsSliderValue, cpuThreadsDisplayValue } = useTextGenerationAdvanced();
   return (
     <View style={styles.container}>
@@ -291,16 +366,17 @@ export const CpuThreadsSlider: React.FC = () => {
         // engine was running the hardware-recommended count. Show what will actually be used.
         formatValue={() => cpuThreadsDisplayValue}
         min={1} max={12} step={1}
-        onChange={(v) => updateSettings({ nThreads: v })}
+        onChange={(v) => save({ nThreads: v })}
       />
+      <SettingsSaveMessage message={saveMessage} />
     </View>
   );
 };
 
 export const BatchSizeSlider: React.FC = () => {
   const styles = useThemedStyles(createTextGenAdvancedStyles);
-  const nBatch = useAppStore(s => s.settings.nBatch);
-  const updateSettings = useAppStore(s => s.updateSettings);
+  const nBatch = useModelsProjection().settings.nBatch;
+  const { save, saveMessage } = useModelSettingsSave();
   return (
     <View style={styles.container}>
       <SliderSetting
@@ -309,8 +385,9 @@ export const BatchSizeSlider: React.FC = () => {
         description="Tokens processed per batch"
         value={nBatch ?? 512}
         min={32} max={512} step={32}
-        onChange={(v) => updateSettings({ nBatch: v })}
+        onChange={(v) => save({ nBatch: v })}
       />
+      <SettingsSaveMessage message={saveMessage} />
     </View>
   );
 };

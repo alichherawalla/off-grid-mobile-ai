@@ -7,23 +7,22 @@ import {
   parseToolCallsFromText,
   type GenerationAdapter,
   type GenerationChunk,
-  type GenerationContentPart,
-  type GenerationMessage,
   type GenerationRequest,
   type LiveGenerationContext,
   type ReasoningWireFragment,
   type RuntimeModel,
   classifyRuntimeError,
 } from '@offgrid/models';
-import type { GenerationMeta, MediaAttachment, Message } from '../../types';
+import type { GenerationMeta, Message } from '../../types';
 import { nativeModelLifecycle } from '../adapters/native/modelLifecycle';
 import { remoteTextTransportRegistry } from '../adapters/providers';
-import type { GenerationOptions, TextStreamTransport } from '../adapters/providers/types';
+import type { TextStreamTransport } from '../adapters/providers/types';
 import { liteRTService } from '../litert';
 import { llmService } from '../llm';
 import { modelInputAudioUris, modelInputImageUris } from '../modelMedia';
 import { getToolExtensions } from '../tools/extensions';
 import { mobileExecutionAdapterId } from './mobileRoute';
+import { mobileMessages, providerOptions } from './generationAdapterRequest';
 import { mobileImageGenerationAdapter } from './imageGenerationAdapter';
 import { mobileTextEngineControl } from './textEngineControl';
 import logger from '../../utils/logger';
@@ -31,11 +30,11 @@ import logger from '../../utils/logger';
 export class TextGenerationStopError extends GenerationCancellationFailedError {
   readonly code = 'text-generation-stop-failed' as const;
 
-  constructor(
-    readonly engineId: string,
-    readonly cause: unknown,
-  ) {
-    super(`The ${engineId} runtime did not confirm that generation stopped.`, cause);
+  constructor(readonly engineId: string, readonly cause: unknown) {
+    super(
+      `The ${engineId} runtime did not confirm that generation stopped.`,
+      cause,
+    );
     this.name = 'TextGenerationStopError';
   }
 }
@@ -54,74 +53,19 @@ export async function stopTextGenerationAtBoundary(
   }
 }
 
-function textAndAttachments(
-  content: GenerationMessage['content'],
-): { text: string; attachments?: MediaAttachment[] } {
-  if (typeof content === 'string') return { text: content };
-  const text = content
-    .filter((part): part is Extract<GenerationContentPart, { type: 'text' }> => part.type === 'text')
-    .map(part => part.text)
-    .join('\n');
-  const attachments = content.flatMap((part, index): MediaAttachment[] => {
-    if (part.type === 'text' || !part.uri) return [];
-    return [{
-      id: `shared-part-${index}`,
-      type: part.type === 'file' ? 'document' : part.type,
-      uri: part.uri,
-      mimeType: part.mimeType,
-      fileName: part.type === 'file' ? part.name : undefined,
-    }];
-  });
-  return { text, attachments: attachments.length ? attachments : undefined };
-}
-
-function mobileMessages(messages: GenerationMessage[]): Message[] {
-  return messages.map((message, index) => {
-    const content = textAndAttachments(message.content);
-    return {
-      id: `shared-generation-${index}`,
-      role: message.role,
-      content: content.text,
-      attachments: content.attachments,
-      timestamp: 0,
-      toolCallId: message.toolCallId,
-      toolName: message.name,
-      toolCalls: message.toolCalls,
-      reasoningContent: message.reasoning,
-    };
-  });
-}
-
-function providerOptions(
-  request: GenerationRequest,
-  reasoningWire: ReasoningWireFragment,
-): GenerationOptions {
-  return {
-    temperature: request.sampling?.temperature,
-    topP: request.sampling?.topP,
-    topK: request.sampling?.topK,
-    repeatPenalty: request.sampling?.repetitionPenalty,
-    seed: request.sampling?.seed,
-    stopSequences: request.sampling?.stop,
-    maxTokens: request.maxTokens,
-    enableThinking: request.reasoning?.enabled,
-    reasoningWire,
-    tools: request.tools?.map(tool => ({
-      type: 'function' as const,
-      function: {
-        name: tool.name,
-        description: tool.description ?? '',
-        parameters: tool.inputSchema,
-      },
-    })),
-  };
-}
-
-type PendingChunk = { value?: GenerationChunk; error?: unknown; done?: boolean };
+type PendingChunk = {
+  value?: GenerationChunk;
+  error?: unknown;
+  done?: boolean;
+};
 
 function resolvedToolCalls(
   content: string,
-  nativeCalls: Array<{ id?: string; name: string; arguments: Record<string, unknown> }>,
+  nativeCalls: Array<{
+    id?: string;
+    name: string;
+    arguments: Record<string, unknown>;
+  }>,
 ) {
   const calls = nativeCalls.length
     ? [...nativeCalls]
@@ -136,12 +80,14 @@ function resolvedToolCalls(
   return calls;
 }
 
-function providerToolArguments(value: string | Record<string, unknown>): Record<string, unknown> {
+function providerToolArguments(
+  value: string | Record<string, unknown>,
+): Record<string, unknown> {
   if (typeof value !== 'string') return value;
   try {
     const parsed: unknown = JSON.parse(value);
     return parsed && !Array.isArray(parsed) && typeof parsed === 'object'
-      ? parsed as Record<string, unknown>
+      ? (parsed as Record<string, unknown>)
       : {};
   } catch {
     return {};
@@ -167,52 +113,65 @@ async function* providerChunks(
   if (request.signal?.aborted) throw new GenerationAbortedError();
   const cancellation = bindGenerationCancellation(
     request.signal,
-    () => stopTextGenerationAtBoundary(transport.id, () => transport.stopGeneration()),
+    () =>
+      stopTextGenerationAtBoundary(transport.id, () =>
+        transport.stopGeneration(),
+      ),
     error => push({ error }),
   );
-  const unregisterCancellation = request.cancellation?.register(
-    () => cancellation.cancel(),
+  const unregisterCancellation = request.cancellation?.register(() =>
+    cancellation.cancel(),
   );
-  const operation = transport.generate(
-    modelId,
-    mobileMessages(request.messages ?? []),
-    providerOptions(request, reasoningWire),
-    {
-      onToken: content => push({ value: { content } }),
-      onReasoning: reasoning => push({ value: { reasoning } }),
-      onComplete: result => {
-        const nativeCalls = result.toolCalls?.map(call => ({
-          id: call.id,
-          name: call.name,
-          arguments: providerToolArguments(call.arguments),
-        })) ?? [];
-        // Keep Mobile's compatibility parser at the provider boundary. Some local
-        // templates emit valid tool markup as text instead of native tool-call deltas.
-        const resolved = resolvedToolCalls(result.content, nativeCalls);
-        resolved.forEach((call, index) => push({
-          value: {
-            toolCallDeltas: [{
-              index,
-              id: call.id ?? `provider-tool-${index}`,
+  const operation = transport
+    .generate(
+      modelId,
+      mobileMessages(request.messages ?? []),
+      providerOptions(request, reasoningWire),
+      {
+        onToken: content => push({ value: { content } }),
+        onReasoning: reasoning => push({ value: { reasoning } }),
+        onComplete: result => {
+          const nativeCalls =
+            result.toolCalls?.map(call => ({
+              id: call.id,
               name: call.name,
-              argumentsDelta: JSON.stringify(call.arguments),
-            }],
-          },
-        }));
-        push({
-          value: {
-            finishReason: resolved.length ? 'tool_calls' : 'stop',
-          },
-        });
-        push({ done: true });
+              arguments: providerToolArguments(call.arguments),
+            })) ?? [];
+          // Keep Mobile's compatibility parser at the provider boundary. Some local
+          // templates emit valid tool markup as text instead of native tool-call deltas.
+          const resolved = resolvedToolCalls(result.content, nativeCalls);
+          resolved.forEach((call, index) =>
+            push({
+              value: {
+                toolCallDeltas: [
+                  {
+                    index,
+                    id: call.id ?? `provider-tool-${index}`,
+                    name: call.name,
+                    argumentsDelta: JSON.stringify(call.arguments),
+                  },
+                ],
+              },
+            }),
+          );
+          push({
+            value: {
+              finishReason: resolved.length ? 'tool_calls' : 'stop',
+            },
+          });
+          push({ done: true });
+        },
+        onError: error => push({ error }),
       },
-      onError: error => push({ error }),
-    },
-  ).catch(error => push({ error }));
+    )
+    .catch(error => push({ error }));
 
   try {
     for (;;) {
-      if (!pending.length) await new Promise<void>(resolve => { wake = resolve; });
+      if (!pending.length)
+        await new Promise<void>(resolve => {
+          wake = resolve;
+        });
       const item = pending.shift();
       if (!item) continue;
       if (item.error) throw item.error;
@@ -227,9 +186,13 @@ async function* providerChunks(
   }
 }
 
-function toolResultText(content: Awaited<ReturnType<LiveGenerationContext['executeTool']>>['content']): string {
+function toolResultText(
+  content: Awaited<ReturnType<LiveGenerationContext['executeTool']>>['content'],
+): string {
   if (typeof content === 'string') return content;
-  return content.map(part => part.type === 'text' ? part.text : `[${part.type} result]`).join('\n');
+  return content
+    .map(part => (part.type === 'text' ? part.text : `[${part.type} result]`))
+    .join('\n');
 }
 
 async function* liteRTChunks(
@@ -238,7 +201,8 @@ async function* liteRTChunks(
   reasoningWire: ReasoningWireFragment,
 ): AsyncIterable<GenerationChunk> {
   const messages = mobileMessages(request.messages ?? []);
-  const systemPrompt = messages.find(message => message.role === 'system')?.content ?? '';
+  const systemPrompt =
+    messages.find(message => message.role === 'system')?.content ?? '';
   let lastUserIndex = -1;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     if (messages[index].role !== 'user') continue;
@@ -248,8 +212,11 @@ async function* liteRTChunks(
   const current = lastUserIndex >= 0 ? messages[lastUserIndex] : null;
   const history = messages
     .slice(0, Math.max(0, lastUserIndex))
-    .filter((message): message is Message & { role: 'user' | 'assistant' } =>
-      (message.role === 'user' || message.role === 'assistant') && !!message.content.trim())
+    .filter(
+      (message): message is Message & { role: 'user' | 'assistant' } =>
+        (message.role === 'user' || message.role === 'assistant') &&
+        !!message.content.trim(),
+    )
     .map(message => ({ role: message.role, content: message.content }));
   const tools = providerOptions(request, reasoningWire).tools ?? [];
   await liteRTService.prepareConversation(
@@ -269,6 +236,7 @@ async function* liteRTChunks(
   const pending: PendingChunk[] = [];
   let wake: (() => void) | null = null;
   let toolIndex = 0;
+  let streamedContent = '';
   const push = (item: PendingChunk) => {
     pending.push(item);
     const listener = wake;
@@ -278,41 +246,57 @@ async function* liteRTChunks(
   if (request.signal?.aborted) throw new GenerationAbortedError();
   const cancellation = bindGenerationCancellation(
     request.signal,
-    () => stopTextGenerationAtBoundary('litert', () => liteRTService.stopGeneration()),
+    () =>
+      stopTextGenerationAtBoundary('litert', () =>
+        liteRTService.stopGeneration(),
+      ),
     error => push({ error }),
   );
-  const unregisterCancellation = request.cancellation?.register(
-    () => cancellation.cancel(),
+  const unregisterCancellation = request.cancellation?.register(() =>
+    cancellation.cancel(),
   );
-  const operation = liteRTService.generateRaw(
-    mobileTextEngineControl.preparePrompt(
-      current?.content ?? '',
-      request.reasoning?.enabled === true,
-    ),
-    {
-      imageUris: modelInputImageUris(current?.attachments),
-      audioUris: modelInputAudioUris(current?.attachments),
-    },
-    {
-      onToken: content => push({ value: { content } }),
-      onReasoning: reasoning => push({ value: { reasoning } }),
-      onToolCall: async (name, args) => {
-        const result = await context.executeTool({
-          id: `${request.identity?.turnId ?? 'turn'}-native-${toolIndex++}`,
-          name,
-          arguments: JSON.stringify(args),
-        });
-        return toolResultText(result.content);
+  const operation = liteRTService
+    .generateRaw(
+      mobileTextEngineControl.preparePrompt(
+        current?.content ?? '',
+        request.reasoning?.enabled === true,
+      ),
+      {
+        imageUris: modelInputImageUris(current?.attachments),
+        audioUris: modelInputAudioUris(current?.attachments),
       },
-    },
-  ).then(() => {
-    push({ value: { finishReason: 'stop' } });
-    push({ done: true });
-  }).catch(error => push({ error }));
+      {
+        onToken: content => {
+          streamedContent += content;
+          push({ value: { content } });
+        },
+        onReasoning: reasoning => push({ value: { reasoning } }),
+        onToolCall: async (name, args) => {
+          const result = await context.executeTool({
+            id: `${request.identity?.turnId ?? 'turn'}-native-${toolIndex++}`,
+            name,
+            arguments: JSON.stringify(args),
+          });
+          return toolResultText(result.content);
+        },
+      },
+    )
+    .then(content => {
+      // LiteRT also returns the complete native response. Keep streaming as the
+      // primary path, but use that authoritative completion when the native token
+      // callback was absent so a successful reply cannot become an empty turn.
+      if (!streamedContent && content) push({ value: { content } });
+      push({ value: { finishReason: 'stop' } });
+      push({ done: true });
+    })
+    .catch(error => push({ error }));
 
   try {
     for (;;) {
-      if (!pending.length) await new Promise<void>(resolve => { wake = resolve; });
+      if (!pending.length)
+        await new Promise<void>(resolve => {
+          wake = resolve;
+        });
       const item = pending.shift();
       if (!item) continue;
       if (item.error) throw item.error;
@@ -379,8 +363,13 @@ const llamaTextTransport: TextStreamTransport = {
 };
 
 function remoteTransportFor(model: RuntimeModel): TextStreamTransport {
-  const transport = model.serverId ? remoteTextTransportRegistry.get(model.serverId) : undefined;
-  if (!transport) throw new Error(`Generation transport is unavailable: ${model.serverId ?? model.id}`);
+  const transport = model.serverId
+    ? remoteTextTransportRegistry.get(model.serverId)
+    : undefined;
+  if (!transport)
+    throw new Error(
+      `Generation transport is unavailable: ${model.serverId ?? model.id}`,
+    );
   return transport;
 }
 
@@ -392,29 +381,50 @@ function adapter(id: string): GenerationAdapter {
       await nativeModelLifecycle.loadTextModel(model.id);
     },
     async unload(model) {
-      if (model.source === 'local') await nativeModelLifecycle.unloadTextModel(true);
+      if (model.source === 'local')
+        await nativeModelLifecycle.unloadTextModel(true);
     },
     async *generate(model, request, context) {
       // This is the single policy-to-wire translation for every Mobile text route.
       // Read llama.rn metadata after residency has loaded the native template, including on turn one.
       const localRuntime = localTextRuntime(model);
-      const reasoningModel = localRuntime === 'llama-rn'
-        ? { reasoning: llmService.getReasoningMetadata() }
-        : model;
+      const reasoningModel =
+        localRuntime === 'llama-rn'
+          ? { reasoning: llmService.getReasoningMetadata() }
+          : model;
       const reasoningWire = reasoningWireForGeneration(request, reasoningModel);
-      logger.log(`[WIRE-REASONING] ${JSON.stringify({ routeId: request.routeId, reasoning: request.reasoning, control: reasoningModel.reasoning?.control, wire: reasoningWire })}`); // [WIRE] policy→wire per turn
+      logger.log(
+        `[WIRE-REASONING] ${JSON.stringify({
+          routeId: request.routeId,
+          reasoning: request.reasoning,
+          control: reasoningModel.reasoning?.control,
+          wire: reasoningWire,
+        })}`,
+      ); // [WIRE] policy→wire per turn
       if (localRuntime === 'litert') {
         yield* liteRTChunks(request, context, reasoningWire);
         return;
       }
       if (localRuntime === 'llama-rn') {
         if (request.identity?.conversationId) {
-          await mobileTextEngineControl.prepareActiveConversation(request.identity.conversationId);
+          await mobileTextEngineControl.prepareActiveConversation(
+            request.identity.conversationId,
+          );
         }
-        yield* providerChunks(llamaTextTransport, model.id, request, reasoningWire);
+        yield* providerChunks(
+          llamaTextTransport,
+          model.id,
+          request,
+          reasoningWire,
+        );
         return;
       }
-      yield* providerChunks(remoteTransportFor(model), model.id, request, reasoningWire);
+      yield* providerChunks(
+        remoteTransportFor(model),
+        model.id,
+        request,
+        reasoningWire,
+      );
     },
     classifyError: classifyRuntimeError,
   };
@@ -434,9 +444,11 @@ export function reconcileMobileGenerationAdapters(
     [mobileExecutionAdapterId('local', 'llama', 'text'), 'text'],
     [mobileExecutionAdapterId('local', 'litert', 'text'), 'text'],
     ...inventory
-      .filter(model =>
-        (model.source === 'remote' && model.modality === 'text')
-        || model.modality === 'image')
+      .filter(
+        model =>
+          (model.source === 'remote' && model.modality === 'text') ||
+          model.modality === 'image',
+      )
       .map(model => [model.adapterId, model.modality] as const),
   ]);
   for (const [id, unregister] of registrations) {

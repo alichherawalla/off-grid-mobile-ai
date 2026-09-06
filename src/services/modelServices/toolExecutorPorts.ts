@@ -1,13 +1,10 @@
 import type {
   ConversationPort,
-  GenerationContentPart,
-  GenerationMessage,
   GenerationToolCall,
   ToolExecutionContext,
   ToolExecutionResult,
   ToolExecutorPort,
 } from '@offgrid/models';
-import { useChatStore } from '../../stores/chatStore';
 import { executeToolCall } from '../tools';
 import { getToolExtensions } from '../tools/extensions';
 import type { ToolCall } from '../tools/types';
@@ -33,7 +30,9 @@ function toolCall(
 export const mobileToolExecutor: ToolExecutorPort = {
   async execute(call, context): Promise<ToolExecutionResult> {
     const mobileCall = toolCall(call, context);
-    const extension = getToolExtensions().find(item => item.canHandle(mobileCall.name));
+    const extension = getToolExtensions().find(item =>
+      item.canHandle(mobileCall.name),
+    );
     const result = extension
       ? await extension.execute(mobileCall)
       : await executeToolCall(mobileCall);
@@ -46,22 +45,10 @@ export const mobileToolExecutor: ToolExecutorPort = {
   },
 };
 
-function contentText(content: string | GenerationContentPart[]): string {
-  if (typeof content === 'string') return content;
-  return content.map(part => part.type === 'text' ? part.text : `[${part.type} result]`).join('\n');
-}
-
-/** Persist shared tool-loop context without duplicating the final streamed assistant reply. */
+/**
+ * The generation loop already reports every tool-call/result message to ChatSession. This port has
+ * no persistence side effect: ChatSession commits the captured response list and owns its IDs once.
+ */
 export const mobileConversationPort: ConversationPort = {
-  async append(identity, message: GenerationMessage): Promise<void> {
-    if (message.role === 'assistant' && !message.toolCalls?.length) return;
-    useChatStore.getState().addMessage(identity.conversationId, {
-      role: message.role,
-      content: contentText(message.content),
-      reasoningContent: message.reasoning,
-      toolCallId: message.toolCallId,
-      toolName: message.name,
-      toolCalls: message.toolCalls,
-    });
-  },
+  append: () => Promise.resolve(),
 };

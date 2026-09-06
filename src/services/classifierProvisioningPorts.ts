@@ -8,6 +8,7 @@ import { useAppStore } from '../stores';
 import { nativeDownloadTransferAdapter } from './adapters/downloads/nativeDownloadTransferAdapter';
 import { huggingFaceService } from './huggingface';
 import { selectMobileModel } from './modelServices/selectionCommands';
+import { explicitLocalModelId } from './modelServices/modelSelectionProjection';
 import { applicationFacade } from './applicationFacade';
 import { makeModelKey } from '../utils/modelKey';
 
@@ -19,7 +20,7 @@ export function mobileClassifierProvisioningPorts(): ConstructorParameters<typeo
   snapshot: () => {
     const state = useAppStore.getState();
     return {
-      selectedModelId: state.settings.classifierModelId,
+      selectedModelId: explicitLocalModelId('classifier'),
       downloadedModels: state.downloadedModels.map(model => ({
         ...model,
         hostId: model.engine,

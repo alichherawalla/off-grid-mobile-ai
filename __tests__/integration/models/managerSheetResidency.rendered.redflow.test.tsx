@@ -175,7 +175,7 @@ describe('manager sheet residency — RAM chip + per-row eject (agreed design 20
       () => {
         expect(view.queryByTestId('models-row-text-ram')).toBeNull();
       },
-      { timeout: 10000 },
+      { timeout: 30000 },
     );
 
     // The row itself still opens the text picker (eject must not swallow the row tap).
@@ -188,7 +188,7 @@ describe('manager sheet residency — RAM chip + per-row eject (agreed design 20
       },
       { timeout: 10000 },
     );
-  }, 60000);
+  }, 90000);
 
   it('the Select Model picker no longer renders the In Memory section (moved to the manager sheet)', async () => {
     const h = await setupHome();

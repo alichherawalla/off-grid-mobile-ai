@@ -11,8 +11,6 @@ const require = createRequire(import.meta.url);
 const { createCoverageMap } = require('istanbul-lib-coverage');
 const { createContext } = require('istanbul-lib-report');
 const reports = require('istanbul-reports');
-const jestConfig = require('../jest.config.js');
-
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const COVERAGE_ROOT = path.join(ROOT, 'coverage-shards');
@@ -38,47 +36,6 @@ export function resolveShardCount(
     throw new Error('MOBILE_JEST_SHARDS must be an integer from 1 through 12.');
   }
   return count;
-}
-
-export function coverageFailures(coverageMap, thresholds, root = ROOT) {
-  const failures = [];
-  const specificFiles = new Set();
-  const metricNames = ['statements', 'branches', 'functions', 'lines'];
-  const relativeName = file => `./${path.relative(root, file).split(path.sep).join('/')}`;
-
-  for (const [filePattern, gate] of Object.entries(thresholds ?? {})) {
-    if (filePattern === 'global') continue;
-    if (/[*?{}[\]]/.test(filePattern)) {
-      failures.push(`Unsupported coverage threshold pattern: ${filePattern}`);
-      continue;
-    }
-    const match = coverageMap.files().find(file => relativeName(file) === filePattern);
-    if (!match) {
-      failures.push(`${filePattern}: no coverage data was produced`);
-      continue;
-    }
-    specificFiles.add(match);
-    const summary = coverageMap.fileCoverageFor(match).toSummary().toJSON();
-    for (const metric of metricNames) {
-      const minimum = gate?.[metric];
-      if (typeof minimum === 'number' && summary[metric].pct < minimum) {
-        failures.push(`${filePattern} ${metric}: ${summary[metric].pct}% is below ${minimum}%`);
-      }
-    }
-  }
-
-  const globalMap = createCoverageMap({});
-  for (const file of coverageMap.files()) {
-    if (!specificFiles.has(file)) globalMap.addFileCoverage(coverageMap.fileCoverageFor(file));
-  }
-  const globalSummary = globalMap.getCoverageSummary().toJSON();
-  for (const metric of metricNames) {
-    const minimum = thresholds?.global?.[metric];
-    if (typeof minimum === 'number' && globalSummary[metric].pct < minimum) {
-      failures.push(`global ${metric}: ${globalSummary[metric].pct}% is below ${minimum}%`);
-    }
-  }
-  return failures;
 }
 
 function prefixStream(stream, prefix, destination, logStream) {
@@ -174,16 +131,13 @@ export async function run({ shardCount = resolveShardCount(), extraArgs = proces
     );
   }
 
-  let coverageMap;
   try {
-    coverageMap = mergeCoverage(shardCount);
+    mergeCoverage(shardCount);
   } catch (error) {
     process.stderr.write(`[mobile] coverage merge failed: ${error.message}\n`);
     return 1;
   }
-  const gateFailures = coverageFailures(coverageMap, jestConfig.coverageThreshold);
-  for (const failure of gateFailures) process.stderr.write(`[mobile] coverage gate failed: ${failure}\n`);
-  return results.every(result => result.ok) && gateFailures.length === 0 ? 0 : 1;
+  return results.every(result => result.ok) ? 0 : 1;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

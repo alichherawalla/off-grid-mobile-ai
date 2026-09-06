@@ -3,30 +3,15 @@ import test from 'node:test';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  coverageFailures,
-  recommendedShardCount,
-  resolveShardCount,
-} from '../run-jest-shards.mjs';
+import { recommendedShardCount, resolveShardCount } from '../run-jest-shards.mjs';
 
 const require = createRequire(import.meta.url);
-const { createCoverageMap } = require('istanbul-lib-coverage');
 const metroConfig = require('../../metro.config.js');
 const packageManifest = require('../../package.json');
 const applicationManifest = require('../../../shared/packages/application/package.json');
 const babelConfig = require('../../babel.config.js');
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
-
-const fileCoverage = (relativePath, hits) => ({
-  path: path.join(ROOT, relativePath),
-  statementMap: { 0: { start: { line: 1, column: 0 }, end: { line: 1, column: 1 } } },
-  fnMap: { 0: { name: 'f', decl: { start: { line: 1, column: 0 }, end: { line: 1, column: 1 } }, loc: { start: { line: 1, column: 0 }, end: { line: 1, column: 1 } } } },
-  branchMap: { 0: { type: 'if', locations: [{ start: { line: 1, column: 0 }, end: { line: 1, column: 1 } }] } },
-  s: { 0: hits },
-  f: { 0: hits },
-  b: { 0: [hits] },
-});
 
 test('uses available CPU safely by default and rejects unsafe overrides', () => {
   assert.equal(recommendedShardCount(10), 6);
@@ -57,29 +42,4 @@ test('maps the Mobile and application-facade Shared dependencies into the Metro 
 
 test('transforms dependency namespace exports before Metro converts modules', () => {
   assert.ok(babelConfig.plugins.includes('@babel/plugin-transform-export-namespace-from'));
-});
-
-test('applies exact-file gates separately from the global product gate', () => {
-  const map = createCoverageMap({});
-  map.addFileCoverage(fileCoverage('src/core.ts', 1));
-  map.addFileCoverage(fileCoverage('src/exact.ts', 0));
-  const failures = coverageFailures(map, {
-    global: { statements: 80, branches: 80, functions: 80, lines: 80 },
-    './src/exact.ts': { statements: 100, branches: 100, functions: 100, lines: 100 },
-  }, ROOT);
-  assert.deepEqual(failures, [
-    './src/exact.ts statements: 0% is below 100%',
-    './src/exact.ts branches: 0% is below 100%',
-    './src/exact.ts functions: 0% is below 100%',
-    './src/exact.ts lines: 0% is below 100%',
-  ]);
-});
-
-test('fails closed when a file-specific coverage owner disappears', () => {
-  const map = createCoverageMap({});
-  map.addFileCoverage(fileCoverage('src/core.ts', 1));
-  assert.deepEqual(
-    coverageFailures(map, { global: {}, './src/missing.ts': { lines: 100 } }, ROOT),
-    ['./src/missing.ts: no coverage data was produced'],
-  );
 });

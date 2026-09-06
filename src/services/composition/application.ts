@@ -128,24 +128,6 @@ function getLocalResourcePrivacyWorkflow() {
   return localResourcePrivacyWorkflow;
 }
 
-/** Supply platform-owned Images/All directory cleanup without moving file policy into the workflow. */
-export function registerMobileOwnedDirectoryPrivacyPort(
-  port: MobileOwnedDirectoryPrivacyPort,
-): () => void {
-  if (
-    localResourcePrivacyDirectories &&
-    localResourcePrivacyDirectories !== port
-  )
-    throw new Error(
-      'Mobile owned-directory privacy cleanup is already registered.',
-    );
-  localResourcePrivacyDirectories = port;
-  return () => {
-    if (localResourcePrivacyDirectories === port)
-      localResourcePrivacyDirectories = null;
-  };
-}
-
 /** Read or command the one reactive Mobile local-resource privacy owner. */
 export const mobileLocalResourcePrivacy = {
   getSnapshot: () => getLocalResourcePrivacyWorkflow().getSnapshot(),
@@ -170,6 +152,7 @@ function getGeneratedImageGalleryRepository(): MobileGeneratedImageGalleryReposi
   return generatedImageGalleryRepository;
 }
 
+/** @runtime Loaded after Pro composition to avoid a core-to-Pro import cycle. */
 export function removeReceivedGalleryHolder(
   imageId: string,
   deletionOperationId: string,
@@ -180,6 +163,7 @@ export function removeReceivedGalleryHolder(
   });
 }
 
+/** @runtime Loaded after Pro composition to avoid a core-to-Pro import cycle. */
 export async function removeReceivedMessageHolder(input: {
   readonly messageId: string;
   readonly deletionOperationId: string;
@@ -208,7 +192,7 @@ export async function removeReceivedMessageHolder(input: {
  * path and its provenance on disk for the next attempt, and the failure travels up to the Shared
  * deletion workflow's media phase.
  */
-export async function settleGeneratedImageRelease(
+async function settleGeneratedImageRelease(
   intent: GeneratedImageReleaseIntent,
   commitFence?: DeletionCleanupContinuation,
 ): Promise<void | 'fenced'> {
@@ -354,7 +338,7 @@ async function drainGeneratedImageBytesForScope(
   );
 }
 
-export class MobileGeneratedImageRemovalError extends Error {
+class MobileGeneratedImageRemovalError extends Error {
   constructor(readonly failure: GeneratedImageGalleryFailure) {
     super(failure.message);
     this.name = 'MobileGeneratedImageRemovalError';
@@ -636,16 +620,6 @@ export async function stopMobileApplication(): Promise<void> {
     // module invariant: the memo either holds a live application or holds nothing.
     application = null;
   }
-}
-
-/** Pause post-commit local byte release while Images/All privacy owns the filesystem. */
-export function suspendWorkspaceContentLocalResourceReleases(): Promise<void> {
-  return getMobileWorkspaceContentRepository().localResourceReleases.suspend();
-}
-
-/** Return local byte release ownership after Images/All privacy settles. */
-export function resumeWorkspaceContentLocalResourceReleases(): void {
-  getMobileWorkspaceContentRepository().localResourceReleases.resume();
 }
 
 /**

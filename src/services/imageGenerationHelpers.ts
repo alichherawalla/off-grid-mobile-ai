@@ -1,9 +1,5 @@
-import { Platform } from 'react-native';
 import type { PortableMessageState } from '@offgrid/application';
 import {
-  buildImageEnhancementMessages,
-  cleanImageEnhancement,
-  describeImageBackend,
   selectImageEnhancementContext,
 } from '@offgrid/models';
 import {
@@ -11,7 +7,7 @@ import {
   PROMPT_ENHANCEMENT_REASONING_LABEL,
 } from '@offgrid/sync';
 import { useAppStore } from '../stores';
-import { GeneratedImage, GenerationMeta, Message } from '../types';
+import { Message } from '../types';
 import { parseModelOutput } from '../utils/messageContent';
 import { maybeScheduleSharePrompt } from '../utils/sharePrompt';
 import { applicationFacade } from './applicationFacade';
@@ -49,38 +45,6 @@ export function scheduleImageSharePrompt(): void {
     delayMs,
   });
   checkProPromptForImage(delayMs);
-}
-
-interface ActiveImageModel {
-  id: string;
-  name: string;
-  modelPath: string;
-  backend?: string;
-}
-
-export function buildEnhancementMessages(
-  prompt: string,
-  contextMessages: Message[],
-): Message[] {
-  const portableContext = contextMessages
-    .filter(message => message.role === 'user' || message.role === 'assistant')
-    .map(message => ({ role: message.role as 'user' | 'assistant', content: message.content }));
-  const shared = buildImageEnhancementMessages(prompt, portableContext);
-  return [
-    {
-      id: 'system-enhance',
-      role: 'system',
-      content: shared[0].content,
-      timestamp: Date.now(),
-    },
-    ...contextMessages,
-    {
-      id: 'user-enhance',
-      role: 'user',
-      content: shared[shared.length - 1]!.content,
-      timestamp: Date.now(),
-    },
-  ];
 }
 
 /**
@@ -135,13 +99,6 @@ export function getConversationContext(conversationId: string): Message[] {
   })) as Message[];
 }
 
-export function cleanEnhancedPrompt(raw: string): string {
-  const clean = cleanImageEnhancement(raw);
-  return isRuntimeOnlyMessage({ role: 'assistant', content: clean })
-    ? ''
-    : clean;
-}
-
 /** THE one writer of the "Enhanced prompt" card's message content — partial (streaming) and final
  *  both go through it, so the two can never disagree.
  *
@@ -155,27 +112,4 @@ export function buildEnhancementCardContent(raw: string): string {
   const { reasoning, answer } = parseModelOutput(raw);
   const body = (answer || reasoning || '').trim();
   return `<think>__LABEL:${PROMPT_ENHANCEMENT_REASONING_LABEL}__\n${body}</think>`;
-}
-
-export function buildImageGenMeta(
-  model: ActiveImageModel,
-  opts: {
-    steps: number;
-    guidanceScale: number;
-    result: GeneratedImage;
-    useOpenCL: boolean;
-  },
-): GenerationMeta {
-  const backend = describeImageBackend(
-    Platform.OS,
-    model.backend,
-    opts.useOpenCL,
-  );
-  return {
-    ...backend,
-    modelName: model.name,
-    steps: opts.steps,
-    guidanceScale: opts.guidanceScale,
-    resolution: `${opts.result.width}x${opts.result.height}`,
-  };
 }

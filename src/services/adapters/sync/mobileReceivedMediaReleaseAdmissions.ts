@@ -13,7 +13,7 @@ import type {
  */
 const DATABASE_NAME = 'offgrid-received-media-release.sqlite';
 
-export function ensureReceivedMediaReleaseAdmissionSchema(db: DB): void {
+function ensureReceivedMediaReleaseAdmissionSchema(db: DB): void {
   db.executeSync(
     `CREATE TABLE IF NOT EXISTS received_media_release_admissions (
       id TEXT PRIMARY KEY NOT NULL, local_path TEXT NOT NULL,

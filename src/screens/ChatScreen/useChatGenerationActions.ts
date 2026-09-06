@@ -226,7 +226,7 @@ function presentGenerationError(
   );
 }
 
-export type StartGenerationCall = {
+type StartGenerationCall = {
   setDebugInfo: SetState<any>;
   targetConversationId: string;
   /** The durable turn identity, already committed through Workspace Content's `append_message`. */
@@ -244,7 +244,7 @@ function requireChatTurn(outcome: Outcome<ChatTurn, ModelsFailure>): ChatTurn {
 }
 
 /** Runs an already-persisted Workspace Content turn without a legacy-store dependency. */
-export async function runPersistedChatTurnFn(
+async function runPersistedChatTurnFn(
   deps: GenerationDeps,
   call: StartGenerationCall,
 ): Promise<void> {

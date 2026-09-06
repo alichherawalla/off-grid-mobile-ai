@@ -15,7 +15,7 @@ type ModelSelectionOutcome = Awaited<
 >;
 
 /** The canonical typed refusal a selection command rejects with. */
-export type ModelSelectionFailure = Extract<
+type ModelSelectionFailure = Extract<
   ModelSelectionOutcome,
   { ok: false }
 >['failure'];
@@ -24,7 +24,7 @@ export type ModelSelectionFailure = Extract<
  * A rejected selection carries the owner's typed failure, so a surface can render the canonical
  * message and offer a retry instead of inventing its own error text.
  */
-export class ModelSelectionFailedError extends Error {
+class ModelSelectionFailedError extends Error {
   readonly failure: ModelSelectionFailure;
 
   constructor(failure: ModelSelectionFailure) {

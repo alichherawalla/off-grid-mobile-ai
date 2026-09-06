@@ -15,7 +15,7 @@ type OpRow = {
 };
 
 /** Read-only validation against the durable Mobile Sync op log. */
-export function mobilePersistedWinningOperationStatus(input: {
+function mobilePersistedWinningOperationStatus(input: {
   entity: 'project' | 'conversation';
   entityId: string;
   operationId: string;

@@ -10,6 +10,7 @@
     "src/**/*.{ts,tsx}",
     "pro/**/*.{ts,tsx}"
   ],
+  "tags": ["-runtime"],
   "ignoreBinaries": [
     "swiftlint",
     "xcrun"

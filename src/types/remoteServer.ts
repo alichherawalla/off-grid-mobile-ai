@@ -5,7 +5,6 @@
  * that expose OpenAI-compatible or Anthropic-compatible APIs.
  */
 import {
-  remoteServerCapabilities as sharedRemoteServerCapabilities,
   type ModelReasoningMetadata,
   type RemoteModelCapabilities as SharedRemoteModelCapabilities,
   type RemoteModelCatalog as SharedRemoteModelCatalog,
@@ -26,12 +25,6 @@ export type RemoteModelOption = SharedRemoteModelOption;
 /** Models grouped by the OpenAI-compatible work they can perform. */
 export type RemoteModelCatalog = SharedRemoteModelCatalog;
 
-export interface RemoteServerCapabilities {
-  imageGeneration: boolean;
-  transcription: boolean;
-  voice: boolean;
-}
-
 /** Remote server configuration */
 export interface RemoteServer extends RemoteServerRecord {
   /** API key for authentication (optional, stored securely) */
@@ -40,13 +33,6 @@ export interface RemoteServer extends RemoteServerRecord {
   createdAt: string;
   /** User-defined notes or description */
   notes?: string;
-}
-
-/** Model presence is the one source of truth for available remote media work. */
-export function remoteServerCapabilities(
-  server: Pick<RemoteServer, 'selections'>,
-): RemoteServerCapabilities {
-  return sharedRemoteServerCapabilities({ selections: server.selections });
 }
 
 /** Model discovered from a remote server */

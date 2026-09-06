@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generateId } from '../utils/generateId';
-import type { Conversation, Message } from '../types';
+import type { Conversation } from '../types';
 import { changedSliceStorage } from './persistence/changedSliceStorage';
 
 export const CHAT_STORAGE_VERSION = 2;
@@ -21,13 +21,6 @@ export const chatPersistStorage = changedSliceStorage<PersistedChatSlice>(
     previous.conversations === next.conversations &&
     previous.activeConversationId === next.activeConversationId,
 );
-
-export function createPersistedMessage(
-  data: Omit<Message, 'id' | 'timestamp'>,
-): Message {
-  const id = generateId();
-  return { id, ...data, uuid: data.uuid ?? id, timestamp: Date.now() };
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;

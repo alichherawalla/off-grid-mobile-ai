@@ -22,7 +22,7 @@ import { audioRecorderService } from './audioRecorderService';
 import * as whisperModelFiles from './whisperModelFiles';
 import { RealtimeStartBarrier } from './realtimeStartBarrier';
 
-export interface RealtimeTranscriptionResult {
+interface RealtimeTranscriptionResult {
   text: string;
   isCapturing: boolean;
   processTime: number;

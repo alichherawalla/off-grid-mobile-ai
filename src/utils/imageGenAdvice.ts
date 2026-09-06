@@ -1,5 +1,4 @@
 import {
-  DEFAULT_IMAGE_GUIDANCE,
   IMAGE_MINIMUM_SIZE,
   IMAGE_QUALITY_STEP_FLOOR,
   MAX_IMAGE_STEPS,
@@ -12,7 +11,7 @@ import {
 export type ImageGenAdvice = ImageGenerationAdvice;
 export const QUALITY_STEP_FLOOR = IMAGE_QUALITY_STEP_FLOOR;
 export const SWEET_SPOT_SIZE = IMAGE_MINIMUM_SIZE;
-export { DEFAULT_IMAGE_GUIDANCE, MAX_IMAGE_STEPS, defaultImageSteps };
+export {  MAX_IMAGE_STEPS, defaultImageSteps };
 
 export function getImageGenAdvice(opts: {
   backend?: string | null;

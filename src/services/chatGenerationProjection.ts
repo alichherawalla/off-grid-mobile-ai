@@ -15,9 +15,9 @@ import { appendWorkspaceContentMessage } from './workspaceContentMessages';
 
 const SHARE_PROMPT_DELAY_MS = 1500;
 /** Compaction is silent otherwise; the row below says the model made room and that nothing here was removed. */
-export const COMPACTION_TOOL_NAME = 'context_compaction';
+const COMPACTION_TOOL_NAME = 'context_compaction';
 /** A fallback changes who answers; the row below names the model that failed and the one that took over. */
-export const MODEL_FALLBACK_TOOL_NAME = 'model_fallback';
+const MODEL_FALLBACK_TOOL_NAME = 'model_fallback';
 
 interface GenerationState {
   isGenerating: boolean;

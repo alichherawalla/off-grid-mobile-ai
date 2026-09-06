@@ -2,7 +2,6 @@ export { hardwareService } from './hardware';
 export { huggingFaceService } from './huggingface';
 export { modelLibrary } from './modelServices/bootstrap/modelLibraryBootstrap';
 export { llmService } from './llm';
-export { localDreamGeneratorService as onnxImageGeneratorService } from './localDreamGenerator';
 export { authService } from './authService';
 export {
   getResourceUsage,

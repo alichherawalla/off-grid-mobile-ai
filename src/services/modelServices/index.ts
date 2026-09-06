@@ -232,12 +232,9 @@ export function mobileTextModelRecord(
     : null;
 }
 
-export { mobileRouteId } from './mobileRoute';
 export {
   clearMobileModel,
-  ModelSelectionFailedError,
   modelSelectionFailureMessage,
   selectMobileModel,
   selectRemoteMobileModel,
 } from './selectionCommands';
-export type { ModelSelectionFailure } from './selectionCommands';

@@ -50,11 +50,6 @@ export async function unloadAndClearModel(modality: ModelModality): Promise<void
   requireModelOutcome(await models.select({ modality, modelId: null }));
 }
 
-/** Release native memory while preserving the user's selection. */
-export async function releaseModel(modality: ModelModality): Promise<void> {
-  requireModelOutcome(await applicationFacade().models.unload({ modality, keepSelection: true }));
-}
-
 export async function reloadLocalTextModel(modelId: string): Promise<void> {
   const models = applicationFacade().models;
   requireModelOutcome(await models.unload({ modality: 'text', keepSelection: true }));

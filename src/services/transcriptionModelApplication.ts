@@ -32,7 +32,7 @@ export function selectTranscriptionModel(modelId: string) {
   });
 }
 
-/** Acquire the selected transcription model through the shared residency owner. */
+/** @runtime Loaded after the rendered test fixture installs the native boundary. */
 export function loadTranscriptionModel(modelId?: string) {
   return applicationFacade().models.load({
     modality: 'transcription',

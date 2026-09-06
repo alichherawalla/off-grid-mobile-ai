@@ -1,4 +1,4 @@
-export type ContentMigrationMarker = 'none' | 'partial' | 'complete';
+type ContentMigrationMarker = 'none' | 'partial' | 'complete';
 
 export interface ContentRecordCounts {
   projects: number;

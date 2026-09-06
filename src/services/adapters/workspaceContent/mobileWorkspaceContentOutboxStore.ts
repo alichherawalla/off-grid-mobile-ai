@@ -8,7 +8,7 @@ import type {
 } from '@offgrid/application';
 import type { DB, Scalar } from '@op-engineering/op-sqlite';
 
-export type OutboxRow = {
+type OutboxRow = {
   id: string;
   sync_operation_id: string;
   transaction_id: string;

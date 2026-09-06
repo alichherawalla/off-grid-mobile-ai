@@ -22,7 +22,7 @@ import {
 } from './legacyContentSource';
 
 export { legacyContentSource } from './legacyContentSource';
-export type { LegacyContentSnapshot } from './legacyContentSource';
+;
 
 // Upgrade-migration readers only. The legacy Zustand project and chat stores that wrote these two
 // AsyncStorage keys are retired; Workspace Content owns projects, conversations, and messages. These

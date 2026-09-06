@@ -15,7 +15,7 @@ export function committedModelSettings(): ModelSettingsRecord {
   return applicationFacade().models.settings.current();
 }
 
-export function stringSetting(
+function stringSetting(
   record: ModelSettingsRecord,
   key: string,
   fallback: string,
@@ -24,7 +24,7 @@ export function stringSetting(
   return typeof value === 'string' ? value : fallback;
 }
 
-export function numberSetting(
+function numberSetting(
   record: ModelSettingsRecord,
   key: string,
   fallback: number,
@@ -33,7 +33,7 @@ export function numberSetting(
   return typeof value === 'number' ? value : fallback;
 }
 
-export function booleanSetting(
+function booleanSetting(
   record: ModelSettingsRecord,
   key: string,
   fallback: boolean,

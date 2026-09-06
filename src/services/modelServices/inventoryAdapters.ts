@@ -128,7 +128,7 @@ function localTextRuntime(model: DownloadedModel): RuntimeModel {
   });
 }
 
-export const localLlamaInventoryAdapter: ModelInventoryAdapter = {
+const localLlamaInventoryAdapter: ModelInventoryAdapter = {
   id: 'mobile-local-llama-inventory',
   async listModels() {
     return useAppStore
@@ -144,7 +144,7 @@ export const localLlamaInventoryAdapter: ModelInventoryAdapter = {
   },
 };
 
-export const localLiteRTInventoryAdapter: ModelInventoryAdapter = {
+const localLiteRTInventoryAdapter: ModelInventoryAdapter = {
   id: 'mobile-local-litert-inventory',
   async listModels() {
     return useAppStore

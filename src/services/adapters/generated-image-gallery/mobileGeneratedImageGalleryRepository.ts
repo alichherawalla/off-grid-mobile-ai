@@ -9,7 +9,7 @@ import type {
 import { generateId } from '../../../utils/generateId';
 import { openWorkspaceContentDatabase } from '../workspaceContent/workspaceContentDatabase';
 /** Which owner is allowed to act on the bytes a removed gallery record left behind. */
-export type GeneratedImageReleaseOwner = 'local' | 'provenance';
+type GeneratedImageReleaseOwner = 'local' | 'provenance';
 
 function releaseOwner(value: unknown, id: string): GeneratedImageReleaseOwner {
   if (value === 'local' || value === 'provenance') return value;
@@ -35,7 +35,7 @@ export interface GeneratedImageReleaseIntent {
 }
 
 /** One intent the recovery pass attempted and could not settle, kept for the next drain. */
-export interface GeneratedImageReleaseRetention {
+interface GeneratedImageReleaseRetention {
   readonly id: string;
   readonly reason: string;
   readonly error: unknown;
@@ -129,7 +129,7 @@ function openDatabase(): DB {
   return ensureMobileGeneratedImageGallerySchema(open({ name: DATABASE_NAME }));
 }
 
-export function ensureMobileGeneratedImageGallerySchema(db: DB): DB {
+function ensureMobileGeneratedImageGallerySchema(db: DB): DB {
   db.executeSync(
     `CREATE TABLE IF NOT EXISTS generated_image_gallery (
       id TEXT PRIMARY KEY NOT NULL, record_json TEXT NOT NULL, release_scope TEXT)`,

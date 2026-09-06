@@ -2,7 +2,6 @@ import { callHook, HOOKS } from '../../bootstrap/hookRegistry';
 import {
   createKnowledgeDocumentStateFields,
   createSharedFileStateFields,
-  isRuntimeOnlyMessage,
   type SharedFileDescriptor,
   type CoreSyncEntity,
   type SyncMutation,
@@ -16,8 +15,6 @@ import {
   CORE_SYNC_ENTITIES,
   type KnowledgeDocumentSnapshot,
 } from '@offgrid/application';
-import type { Message } from '../../types';
-import { serializeMessageContext } from './messageContext';
 
 // The committed-mutation contract (entity table in wire order, mutation shape) is shared with
 // Off Grid Desktop through @offgrid/sync; this module keeps only the Mobile record builders.
@@ -44,39 +41,6 @@ export function mobileModelSettingPatch(
   fields: Record<string, unknown>,
 ): Record<string, unknown> | null {
   return decodeModelSettingPatch('mobile', wireKey, fields);
-}
-
-export function messagePutMutation(
-  conversationId: string,
-  message: Message,
-): SyncMutation | null {
-  if (
-    !message.uuid ||
-    // A thinking row is live UI state, not a completed chat turn. Image prompt enhancement creates
-    // one with "Enhancing your prompt..." and later either replaces it with the labelled,
-    // supporting-context message or deletes it. Publishing this intermediate row made peers render
-    // it as a normal assistant answer, complete with reply actions, until the later mutation arrived.
-    message.isThinking === true ||
-    isRuntimeOnlyMessage({
-      role: message.role,
-      content: message.content,
-      notice: message.isSystemInfo,
-    })
-  ) {
-    return null;
-  }
-  return {
-    entity: CORE_SYNC_ENTITIES.message,
-    entityId: message.uuid,
-    kind: 'put',
-    fields: {
-      conversation_id: conversationId,
-      role: message.role,
-      content: message.content,
-      context: serializeMessageContext(message),
-      created_at: new Date(message.timestamp).toISOString(),
-    },
-  };
 }
 
 export function knowledgeDocumentPutMutation(

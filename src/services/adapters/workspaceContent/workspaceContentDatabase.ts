@@ -22,7 +22,7 @@ export function decodeWorkspaceMessageContent(
     : content;
 }
 
-export const WORKSPACE_CONTENT_DATABASE_NAME =
+const WORKSPACE_CONTENT_DATABASE_NAME =
   'offgrid-workspace-content.sqlite';
 export const WORKSPACE_CONTENT_SCHEMA_VERSION = 1;
 

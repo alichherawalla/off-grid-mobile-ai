@@ -2,7 +2,6 @@ import { selectedModelId } from '@offgrid/models';
 import type { DownloadedModel } from '../../types';
 import { selectedTextModel } from '../composition/selected-text-model';
 import { useAppStore } from '../../stores/appStore';
-import { llmService } from '../llm';
 import { nativeModelLifecycle } from '../adapters/native/modelLifecycle';
 import { activeModelSnapshot } from './modelStateSnapshot';
 import type {
@@ -42,16 +41,8 @@ export function supportsAudioInput(): boolean {
   return nativeModelLifecycle.supportsAudioInput();
 }
 
-export function getPerformanceStats() {
-  return llmService.getPerformanceStats();
-}
-
 export async function getResourceUsage(): Promise<ResourceUsage> {
   return readResourceUsage();
-}
-
-export async function clearTextModelCache(): Promise<void> {
-  if (llmService.isModelLoaded()) await llmService.clearKVCache(false);
 }
 
 export function syncWithNativeState(): Promise<void> {

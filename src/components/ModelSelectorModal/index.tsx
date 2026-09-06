@@ -57,9 +57,9 @@ function evidenceBasedRemoteCapabilities(
 }
 
 /** A server's text rows are the store's derived read of its catalog. */
-export const savedTextModels = serverDiscoveredModels;
+const savedTextModels = serverDiscoveredModels;
 
-export function savedImageModels(server: RemoteServer): RemoteModel[] {
+function savedImageModels(server: RemoteServer): RemoteModel[] {
   return remoteServerModelOptions([server], 'image').map(option => ({
     id: option.id,
     name: option.name,

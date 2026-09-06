@@ -3,7 +3,7 @@ import {mkdtempSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:f
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {
-  conditionalQuarantinePath,
+  sharedFileQuarantinePath,
   observeConditionalReleaseBytes,
   validateConditionalReleaseBytes,
   type ConditionalReleaseByteIO,
@@ -20,7 +20,7 @@ const nodeIO: ConditionalReleaseByteIO = {
 it('accepts exact reopened bytes and rejects changed quarantine bytes', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'offgrid-release-bytes-'));
   const original = join(directory, 'image.png');
-  const quarantine = conditionalQuarantinePath(original, 'shared-delete-op');
+  const quarantine = sharedFileQuarantinePath(original, 'shared-delete-op');
   try {
     writeFileSync(quarantine, Buffer.from('kept bytes'));
     expect(quarantine).toContain('.offgrid-delete-shared-delete-op');

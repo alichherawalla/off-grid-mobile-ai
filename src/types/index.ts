@@ -451,4 +451,3 @@ export type {
   RemoteModelOption,
   RemoteModelCatalog,
 } from './remoteServer';
-export { remoteServerCapabilities } from './remoteServer';

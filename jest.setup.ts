@@ -627,19 +627,13 @@ jest.mock('react-native-haptic-feedback', () => ({
 
 
 
-// @op-engineering/op-sqlite mock
-jest.mock('@op-engineering/op-sqlite', () => {
-  const mockResults = { rows: [], insertId: 0, rowsAffected: 0 };
-  const mockDb = {
-    executeSync: jest.fn(() => mockResults),
-    execute: jest.fn(() => Promise.resolve(mockResults)),
-    close: jest.fn(),
-    delete: jest.fn(),
-  };
-  return {
-    open: jest.fn(() => mockDb),
-  };
-});
+// @op-engineering/op-sqlite is a native boundary, but application tests still need its real SQL
+// semantics. In particular, schema migrations inspect PRAGMA output and verify copied row counts
+// before any rendered screen can mount. Use Node's in-memory SQLite adapter by default so a product
+// module imported before a per-test fixture never captures the old empty-row stub.
+jest.mock('@op-engineering/op-sqlite', () =>
+  require('./__tests__/harness/sqliteFake').createRealSqliteModule(),
+);
 
 // react-native-zip-archive mock
 jest.mock('react-native-zip-archive', () => ({

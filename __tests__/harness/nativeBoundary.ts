@@ -765,10 +765,16 @@ export interface DiffusionFake {
   releaseUnload(): void;
   /** True while an unload is parked inside native unloadModel. */
   unloadHeld(): boolean;
+  /** Hold the next native generated-image byte deletion until releaseDelete(). One-shot. */
+  holdNextDelete(): void;
+  /** Release a deletion held via holdNextDelete(). No-op if nothing is held. */
+  releaseDelete(): void;
+  /** True while generated-image deletion is parked inside the native boundary. */
+  deleteHeld(): boolean;
 }
 
 function makeDiffusionFake(
-  seedFile?: (path: string, sizeBytes: number) => void,
+  fileSystem?: NativeFileSystemBoundary,
 ): DiffusionFake {
   const calls: DiffusionFake['calls'] = { generateImage: [] };
   let seedCounter = 0;
@@ -778,6 +784,9 @@ function makeDiffusionFake(
   let unloadHoldPending = false;
   let unloadHoldEngaged = false;
   let unloadHoldRelease: (() => void) | null = null;
+  let deleteHoldPending = false;
+  let deleteHoldEngaged = false;
+  let deleteHoldRelease: (() => void) | null = null;
   const module: Record<string, jest.Mock> = {
     isModelLoaded: jest.fn().mockResolvedValue(true),
     getLoadedModelPath: jest.fn().mockResolvedValue(null),
@@ -804,7 +813,21 @@ function makeDiffusionFake(
       return Promise.resolve(true);
     }),
     getGeneratedImages: jest.fn().mockResolvedValue([]),
-    deleteGeneratedImage: jest.fn().mockResolvedValue(true),
+    deleteGeneratedImage: jest.fn(async (path: string) => {
+      if (deleteHoldPending) {
+        deleteHoldPending = false;
+        deleteHoldEngaged = true;
+        await new Promise<void>(resolve => {
+          deleteHoldRelease = resolve;
+        });
+        deleteHoldEngaged = false;
+      }
+      if (!fileSystem || !(await fileSystem.exists(path))) {
+        return { status: 'already_missing' };
+      }
+      await fileSystem.module.unlink(path);
+      return { status: 'deleted' };
+    }),
     hasOpenCLCache: jest.fn().mockResolvedValue(true),
     clearOpenCLCache: jest.fn().mockResolvedValue(0),
     getConstants: jest.fn().mockReturnValue({
@@ -827,7 +850,7 @@ function makeDiffusionFake(
       const imagePath = `/generated/img-${seedCounter}.png`;
       // The real native module writes the rendered PNG to disk — mirror that so the app's
       // downstream file reads (save-to-gallery, thumbnails) find a real file.
-      seedFile?.(imagePath, 1024);
+      fileSystem?.seedFile(imagePath, 1024);
       // Native renders at exactly the requested size — echo it back so the meta reflects reality.
       return Promise.resolve({
         id: `img-${seedCounter}`,
@@ -861,6 +884,15 @@ function makeDiffusionFake(
       f?.();
     },
     unloadHeld: () => unloadHoldEngaged,
+    holdNextDelete: () => {
+      deleteHoldPending = true;
+    },
+    releaseDelete: () => {
+      const release = deleteHoldRelease;
+      deleteHoldRelease = null;
+      release?.();
+    },
+    deleteHeld: () => deleteHoldEngaged,
   };
 }
 
@@ -1273,7 +1305,7 @@ export function installNativeBoundary(opts: InstallOpts = {}): NativeBoundary {
   if (fsFake) jest.doMock('react-native-fs', () => fsFake.module);
 
   // Diffusion writes its rendered PNG to the (memfs) disk when fs is present, like the native module.
-  const diffusion = makeDiffusionFake(fsFake?.seedFile);
+  const diffusion = makeDiffusionFake(fsFake);
 
   // Scriptable llama.rn: override the global stub so completion output is under test control.
   const llamaFake = opts.llama

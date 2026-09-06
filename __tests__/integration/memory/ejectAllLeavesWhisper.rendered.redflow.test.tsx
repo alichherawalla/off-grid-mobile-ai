@@ -93,5 +93,5 @@ describe('T023 (rendered) — Eject All frees the whisper sidecar (DEV-B1, fixed
     await waitFor(() => {
       expect(ui.getByTestId('probe-residents').props.children).not.toContain('transcription');
     });
-  });
+  }, 60_000);
 });

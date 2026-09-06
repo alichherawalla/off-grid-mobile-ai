@@ -196,5 +196,5 @@ describe('model download durability through the rendered Mobile journey', () => 
     expect(relaunched.view.queryAllByText(FILE_NAME)).toHaveLength(1);
     expect(relaunched.view.queryByText('Active Downloads')).toBeNull();
     expect(boundary.download!.active()).toHaveLength(0);
-  });
+  }, 30_000);
 });

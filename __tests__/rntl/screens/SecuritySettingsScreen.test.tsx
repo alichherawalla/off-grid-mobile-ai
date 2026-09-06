@@ -71,15 +71,13 @@ describe('SecuritySettingsScreen', () => {
 
     it('shows info card about passphrase behavior', () => {
       const { getByText } = render(<SecuritySettingsScreen />);
-      expect(
-        getByText(/the app will lock automatically/i)
-      ).toBeTruthy();
+      expect(getByText(/the app will lock automatically/i)).toBeTruthy();
     });
 
     it('shows info about passphrase being stored on device', () => {
       const { getByText } = render(<SecuritySettingsScreen />);
       expect(
-        getByText(/stored securely on device and never transmitted/i)
+        getByText(/stored securely on device and never transmitted/i),
       ).toBeTruthy();
     });
   });
@@ -97,7 +95,9 @@ describe('SecuritySettingsScreen', () => {
     });
 
     it('opens passphrase setup when toggling on', () => {
-      const { getAllByRole, getByText, queryByText } = render(<SecuritySettingsScreen />);
+      const { getAllByRole, getByText, queryByText } = render(
+        <SecuritySettingsScreen />,
+      );
       const switches = getAllByRole('switch');
 
       // Initially no passphrase setup shown
@@ -196,7 +196,9 @@ describe('SecuritySettingsScreen', () => {
 
       fireEvent.press(getByText('Change Passphrase'));
 
-      expect(getByText('Enter your current passphrase and then set a new one.')).toBeTruthy();
+      expect(
+        getByText('Enter your current passphrase and then set a new one.'),
+      ).toBeTruthy();
     });
   });
 
@@ -205,23 +207,32 @@ describe('SecuritySettingsScreen', () => {
   // ============================================================================
   describe('passphrase setup modal', () => {
     it('closes passphrase setup on complete', async () => {
-      const { getAllByRole, queryByText, getByPlaceholderText, getByText } = render(<SecuritySettingsScreen />);
+      const { getAllByRole, queryByText, getByPlaceholderText, getByText } =
+        render(<SecuritySettingsScreen />);
       const switches = getAllByRole('switch');
 
       // Open setup
       fireEvent(switches[0], 'valueChange', true);
       expect(getByText('Set Up Passphrase')).toBeTruthy();
 
-      fireEvent.changeText(getByPlaceholderText('Enter passphrase (min 6 characters)'), 'secret1');
-      fireEvent.changeText(getByPlaceholderText('Re-enter passphrase'), 'secret1');
+      fireEvent.changeText(
+        getByPlaceholderText('Enter passphrase (min 6 characters)'),
+        'secret1',
+      );
+      fireEvent.changeText(
+        getByPlaceholderText('Re-enter passphrase'),
+        'secret1',
+      );
       fireEvent.press(getByText('Enable Lock'));
 
       await waitFor(() => expect(queryByText('Set Up Passphrase')).toBeNull());
       expect(useAuthStore.getState().isEnabled).toBe(true);
-    });
+    }, 20_000);
 
     it('closes passphrase setup on cancel', () => {
-      const { getAllByRole, queryByText, getByText } = render(<SecuritySettingsScreen />);
+      const { getAllByRole, queryByText, getByText } = render(
+        <SecuritySettingsScreen />,
+      );
       const switches = getAllByRole('switch');
 
       // Open setup

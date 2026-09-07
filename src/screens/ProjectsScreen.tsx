@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -16,12 +16,14 @@ import { Button } from '../components/Button';
 import { CustomAlert, showAlert, hideAlert, AlertState, initialAlertState } from '../components/CustomAlert';
 import { AnimatedEntry } from '../components/AnimatedEntry';
 import { AnimatedListItem } from '../components/AnimatedListItem';
+import { ScreenHeader } from '../components/ScreenHeader';
 import { useFocusTrigger } from '../hooks/useFocusTrigger';
 import { useTheme, useThemedStyles } from '../theme';
 import type { ThemeColors, ThemeShadows } from '../theme';
 import { TYPOGRAPHY, SPACING } from '../constants';
-import { useProjectStore, useChatStore } from '../stores';
-import { Project } from '../types';
+import { useWorkspaceContentProjection } from '../hooks/useApplicationProjection';
+import { workflowFailureMessage, type ProjectRecord } from '@offgrid/application';
+import { applicationFacade } from '../services/applicationFacade';
 import { RootStackParamList, MainTabParamList } from '../navigation/types';
 
 type NavigationProp = CompositeNavigationProp<
@@ -34,20 +36,23 @@ export const ProjectsScreen: React.FC = () => {
   const focusTrigger = useFocusTrigger();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const { projects, deleteProject } = useProjectStore();
-  const { conversations } = useChatStore();
+  const { projects, conversations } = useWorkspaceContentProjection();
   const [alertState, setAlertState] = useState<AlertState>(initialAlertState);
 
-  // Get chat count for a project
-  const getChatCount = (projectId: string) => {
-    return conversations.filter((c) => c.projectId === projectId).length;
-  };
+  const chatCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const conversation of conversations) {
+      if (conversation.projectId === null) continue;
+      counts[conversation.projectId] = (counts[conversation.projectId] ?? 0) + 1;
+    }
+    return counts;
+  }, [conversations]);
 
-  const handleProjectPress = (project: Project) => {
+  const handleProjectPress = (project: ProjectRecord) => {
     navigation.navigate('ProjectDetail', { projectId: project.id });
   };
 
-  const handleDeleteProject = (project: Project) => {
+  const handleDeleteProject = (project: ProjectRecord) => {
     setAlertState(showAlert(
       'Delete Project',
       `Delete "${project.name}"? This will not delete the chats associated with this project.`,
@@ -56,16 +61,33 @@ export const ProjectsScreen: React.FC = () => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             setAlertState(hideAlert());
-            deleteProject(project.id);
+            try {
+              const outcome = await applicationFacade().workflows.deleteProject(project.id);
+              if (!outcome.ok) {
+                setAlertState(
+                  showAlert('Project Not Deleted', workflowFailureMessage(outcome.failure)),
+                );
+                return;
+              }
+            } catch (error: unknown) {
+              setAlertState(
+                showAlert(
+                  'Project Not Deleted',
+                  error instanceof Error
+                    ? error.message
+                    : 'Failed to delete project',
+                ),
+              );
+            }
           },
         },
       ]
     ));
   };
 
-  const renderRightActions = (project: Project) => (
+  const renderRightActions = (project: ProjectRecord) => (
     <TouchableOpacity
       style={styles.deleteAction}
       onPress={() => handleDeleteProject(project)}
@@ -78,8 +100,8 @@ export const ProjectsScreen: React.FC = () => {
     navigation.navigate('ProjectEdit', {});
   };
 
-  const renderProject = ({ item, index }: { item: Project; index: number }) => {
-    const chatCount = getChatCount(item.id);
+  const renderProject = ({ item, index }: { item: ProjectRecord; index: number }) => {
+    const chatCount = chatCounts[item.id] ?? 0;
 
     return (
       <Swipeable
@@ -128,8 +150,10 @@ export const ProjectsScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']} testID="projects-screen">
-      <View style={styles.header}>
-        <Text style={styles.title}>Projects</Text>
+      <ScreenHeader
+        title="Projects"
+        variant="tab"
+        right={
           <Button
             title="New"
             variant="primary"
@@ -138,7 +162,8 @@ export const ProjectsScreen: React.FC = () => {
             icon={<Icon name="plus" size={16} color={colors.primary} />}
             testID="new-project-button"
           />
-      </View>
+        }
+      />
 
       <Text style={styles.subtitle}>
         Projects group related chats with shared context and instructions.
@@ -189,41 +214,25 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
   swipeableContainer: {
     overflow: 'visible' as const,
   },
-  header: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
-    ...shadows.small,
-    zIndex: 1,
-  },
-  title: {
-    ...TYPOGRAPHY.h2,
-    color: colors.text,
-  },
   subtitle: {
     ...TYPOGRAPHY.bodySmall,
     color: colors.textSecondary,
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.xs,
   },
   list: {
-    padding: SPACING.lg,
-    paddingTop: SPACING.lg,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
   },
   projectItem: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     backgroundColor: colors.surface,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm + 2,
+    paddingVertical: SPACING.sm,
     borderRadius: 10,
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
     ...shadows.small,
   },
   projectIcon: {
@@ -276,7 +285,7 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
     flex: 1,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
-    paddingHorizontal: SPACING.xxl,
+    paddingHorizontal: SPACING.md,
   },
   emptyIcon: {
     width: 48,
@@ -323,7 +332,7 @@ const createStyles = (colors: ThemeColors, shadows: ThemeShadows) => ({
     alignItems: 'center' as const,
     width: 50,
     borderRadius: 12,
-    marginBottom: 16,
+    marginBottom: SPACING.sm,
     marginLeft: 10,
   },
 });

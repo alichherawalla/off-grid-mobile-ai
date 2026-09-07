@@ -12,6 +12,7 @@ import {
   ModelLoadingModeSelector,
   ShowGenerationDetailsToggle,
   SpeculativeDecodingToggle,
+  ThinkingBudgetSelector,
 } from '../../components/settings/textGenAdvancedSections';
 import { useTextGenerationSettings } from '../../hooks/useTextGenerationSettings';
 import { useThemedStyles } from '../../theme';
@@ -20,7 +21,15 @@ import { createStyles } from './styles';
 export const TextGenerationSection: React.FC = () => {
   const styles = useThemedStyles(createStyles);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const { isLiteRT, llama, liteRT, toolCalls } = useTextGenerationSettings();
+  const {
+    isLiteRT,
+    llama,
+    liteRT,
+    toolCalls,
+    pending,
+    failure,
+    syncWarning,
+  } = useTextGenerationSettings();
 
   return (
     <Card style={styles.section}>
@@ -29,6 +38,19 @@ export const TextGenerationSection: React.FC = () => {
           ? 'Configure LiteRT model behavior.'
           : 'Configure LLM behavior for text responses.'}
       </Text>
+      {pending ? (
+        <Text style={styles.draftWarning} accessibilityLiveRegion="polite">
+          Saving settings...
+        </Text>
+      ) : failure ? (
+        <Text style={styles.draftError} accessibilityLiveRegion="polite">
+          {failure}
+        </Text>
+      ) : syncWarning ? (
+        <Text style={styles.draftWarning} accessibilityLiveRegion="polite">
+          {syncWarning}
+        </Text>
+      ) : null}
 
       {isLiteRT ? (
         <>
@@ -43,6 +65,7 @@ export const TextGenerationSection: React.FC = () => {
             testID="llama-context-length"
             {...llama.contextLength}
           />
+          <ThinkingBudgetSelector />
         </>
       )}
 

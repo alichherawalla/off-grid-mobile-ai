@@ -3,10 +3,18 @@ import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Feather';
 import { useNavigation } from '@react-navigation/native';
+import { modelsFailureMessage } from '@offgrid/application';
 import { Button } from '../../components';
-import { CustomAlert, showAlert, hideAlert, AlertState, initialAlertState } from '../../components/CustomAlert';
+import {
+  CustomAlert,
+  showAlert,
+  hideAlert,
+  AlertState,
+  initialAlertState,
+} from '../../components/CustomAlert';
 import { useTheme, useThemedStyles } from '../../theme';
-import { useAppStore } from '../../stores';
+import { DEFAULT_SETTINGS } from '../../stores/appStore';
+import { applicationFacade } from '../../services/applicationFacade';
 import { createStyles } from './styles';
 import { SystemPromptSection } from './SystemPromptSection';
 import { ImageGenerationSection } from './ImageGenerationSection';
@@ -23,7 +31,7 @@ export const ModelSettingsScreen: React.FC = () => {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const resetSettings = useAppStore((s) => s.resetSettings);
+  const [resetPending, setResetPending] = useState(false);
   const [alertState, setAlertState] = useState<AlertState>(initialAlertState);
 
   const [promptOpen, setPromptOpen] = useState(false);
@@ -35,22 +43,43 @@ export const ModelSettingsScreen: React.FC = () => {
   // TTS is a pro feature injected via a slot (same as the in-chat generation settings). Free builds have no
   // slot → the section is not shown at all.
   const TtsSection = getSlot(SLOTS.generationSettingsTts);
-  const { modelName: sttModelName } = useTranscriptionModelSetting();
-
+  const { modelName: sttModelName, isRemote: isRemoteTranscription } =
+    useTranscriptionModelSetting();
 
   const handleReset = () => {
-    setAlertState(showAlert(
-      'Reset All Settings',
-      'This will restore all model settings to their defaults. You may need to reload the model for changes to take effect.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: () => { resetSettings(); setAlertState(hideAlert()); },
-        },
-      ],
-    ));
+    setAlertState(
+      showAlert(
+        'Reset All Settings',
+        'This will restore all model settings to their defaults. You may need to reload the model for changes to take effect.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Reset',
+            style: 'destructive',
+            onPress: restoreDefaults,
+          },
+        ],
+      ),
+    );
+  };
+
+  const restoreDefaults = async (): Promise<void> => {
+    if (resetPending) return;
+    setResetPending(true);
+    setAlertState(hideAlert());
+    const outcome = await applicationFacade().models.settings.restoreDefaults(
+      DEFAULT_SETTINGS,
+    );
+    setResetPending(false);
+    const failure = outcome.ok ? outcome.value.syncFailure : outcome.failure;
+    if (!failure) return;
+    setAlertState(
+      showAlert(
+        outcome.ok ? 'Reset on this device' : 'Couldn’t reset settings',
+        modelsFailureMessage(failure),
+        [{ text: 'OK', onPress: () => setAlertState(hideAlert()) }],
+      ),
+    );
   };
 
   return (
@@ -66,20 +95,23 @@ export const ModelSettingsScreen: React.FC = () => {
         </TouchableOpacity>
         <Text style={styles.title}>Model Settings</Text>
       </View>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
-          <TouchableOpacity
-            style={styles.accordionHeader}
-            onPress={() => setPromptOpen(!promptOpen)}
-            activeOpacity={0.7}
-            testID="system-prompt-accordion"
-          >
-            <Text style={styles.accordionTitle}>Default System Prompt</Text>
-            <Icon
-              name={promptOpen ? 'chevron-up' : 'chevron-down'}
-              size={16}
-              color={colors.textMuted}
-            />
-          </TouchableOpacity>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+      >
+        <TouchableOpacity
+          style={styles.accordionHeader}
+          onPress={() => setPromptOpen(!promptOpen)}
+          activeOpacity={0.7}
+          testID="system-prompt-accordion"
+        >
+          <Text style={styles.accordionTitle}>Default System Prompt</Text>
+          <Icon
+            name={promptOpen ? 'chevron-up' : 'chevron-down'}
+            size={16}
+            color={colors.textMuted}
+          />
+        </TouchableOpacity>
         {promptOpen && <SystemPromptSection />}
 
         <TouchableOpacity
@@ -120,13 +152,21 @@ export const ModelSettingsScreen: React.FC = () => {
           activeOpacity={0.7}
           testID="transcription-accordion"
         >
-          <Text style={styles.accordionTitle}>Transcription (Speech to Text)</Text>
-          <Icon name={sttOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
+          <Text style={styles.accordionTitle}>
+            Transcription (Speech to Text)
+          </Text>
+          <Icon
+            name={sttOpen ? 'chevron-up' : 'chevron-down'}
+            size={16}
+            color={colors.textMuted}
+          />
         </TouchableOpacity>
         {sttOpen && (
           <View style={styles.settingSection}>
             <Text style={styles.settingDesc}>
-              The on-device model used to transcribe your voice for dictation and voice chat.
+              {isRemoteTranscription
+                ? 'Your active remote server transcribes dictation and voice chat.'
+                : 'The on-device model used to transcribe your voice for dictation and voice chat.'}
             </Text>
             <TouchableOpacity
               style={styles.toggleRow}
@@ -136,7 +176,9 @@ export const ModelSettingsScreen: React.FC = () => {
             >
               <View style={styles.toggleInfo}>
                 <Text style={styles.toggleLabel}>Transcription model</Text>
-                <Text style={styles.toggleDesc}>{sttModelName ?? NO_TRANSCRIPTION_MODEL_LABEL}</Text>
+                <Text style={styles.toggleDesc}>
+                  {sttModelName ?? NO_TRANSCRIPTION_MODEL_LABEL}
+                </Text>
               </View>
               <Icon name="chevron-right" size={18} color={colors.textMuted} />
             </TouchableOpacity>
@@ -155,7 +197,11 @@ export const ModelSettingsScreen: React.FC = () => {
               testID="tts-accordion"
             >
               <Text style={styles.accordionTitle}>Text to Speech</Text>
-              <Icon name={ttsOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
+              <Icon
+                name={ttsOpen ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={colors.textMuted}
+              />
             </TouchableOpacity>
             {ttsOpen && <TtsSection />}
           </>
@@ -166,6 +212,8 @@ export const ModelSettingsScreen: React.FC = () => {
           variant="ghost"
           size="small"
           onPress={handleReset}
+          disabled={resetPending}
+          loading={resetPending}
           testID="reset-settings-button"
           style={styles.resetButton}
         />

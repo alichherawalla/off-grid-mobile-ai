@@ -1,13 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import {
-  View,
-  FlatList,
-  Text,
-  Keyboard,
-  Platform,
-  StyleSheet,
-} from 'react-native';
-import { useUiModeStore } from '../../stores/uiModeStore';
+import { View, FlatList, Text, Keyboard, Platform } from 'react-native';
+import { useSpeechProjection } from '../../hooks/useApplicationProjection';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardVisible } from '../../hooks/useKeyboardVisible';
 import Icon from 'react-native-vector-icons/Feather';
@@ -21,7 +14,7 @@ import {
   VisionRepairAdviceCard,
 } from '../../components';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
-import { generationService } from '../../services';
+import { mobileChatSession } from './mobileChatSession';
 import { EmptyChat, ImageProgressIndicator } from './ChatScreenComponents';
 import { getPlaceholderText, useChatScreen } from './useChatScreen';
 import { createStyles } from './styles';
@@ -33,6 +26,7 @@ import { AVAILABLE_TOOLS } from '../../services/tools';
 import { useOpenProTools } from '../../hooks/useOpenProTools';
 import { useIsProActive } from '../../hooks/useIsProActive';
 import { getSlot, SLOTS } from '../../bootstrap/slotRegistry';
+import { useModelResidencyBusy } from '../../services/modelServices/useModelResidencyBusy';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
@@ -85,8 +79,10 @@ export const shouldShowEvictedBar = (
     return false;
   if (chat.isGeneratingImage) return false;
   if (!chat.activeModelId || chat.activeModelInfo?.isRemote) return false;
+  // A user turn the shared session recorded as an IMAGE turn (stopped or failed) is not waiting
+  // for a text reply either, so the text model's absence is not what the person needs told.
   const last = chat.displayMessages[chat.displayMessages.length - 1];
-  return last?.role === 'user';
+  return last?.role === 'user' && last.turnKind !== 'image';
 };
 
 // "Model unloaded to free memory — tap to continue": the active text model was evicted
@@ -147,6 +143,16 @@ const ModelStatusBar: React.FC<{
   return null;
 };
 
+// FlatList is a PureComponent: an inline literal or arrow here is a NEW prop on every render, so
+// it re-renders every mounted cell. These do not depend on render state, so they are declared once.
+const keyExtractor = (item: { id: string }) => item.id;
+const dismissKeyboard = () => Keyboard.dismiss();
+const MAINTAIN_VISIBLE_CONTENT_POSITION = {
+  minIndexForVisible: 0,
+  autoscrollToTopThreshold: 100,
+};
+const REMOVE_CLIPPED_SUBVIEWS = Platform.OS !== 'android';
+
 export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
   flatListRef,
   isNearBottomRef,
@@ -156,12 +162,14 @@ export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
   handleScroll,
   renderItem,
 }) => {
-  // Hide FlatList until initial layout + scroll is complete to prevent visible scroll jump
-  const [isListReady, setIsListReady] = useState(false);
   const hasScrolledRef = React.useRef(false);
-  const interfaceMode = useUiModeStore(s => s.interfaceMode);
+  const voiceMode = useSpeechProjection().preferences.voiceMode;
+  // Switching to voice loads the voice model (about 15 s on a phone). The list must not go quiet
+  // for that long: say what is happening, above whatever is already on screen.
+  const voiceBusy = useModelResidencyBusy('voice');
+  const preparingVoice = voiceMode && voiceBusy;
   const tabNav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { toolCountHintDismissed } = useAppStore();
+  const toolCountHintDismissed = useAppStore(s => s.toolCountHintDismissed);
   // Subscribe to Pro activation so this re-renders the moment a license is
   // activated. loadProFeatures() registers the tool extensions + the Pro Tools
   // screen in one pass; without this subscription the getToolExtensions() reads
@@ -219,18 +227,50 @@ export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
   const handleRepairVision = activeModelRepoId
     ? () => tabNav.navigate('DownloadManager')
     : undefined;
+  // Both depend only on refs, so they are created once and the list never sees a changed prop.
+  const handleContentSizeChange = React.useCallback(
+    (_width: number, height: number) => {
+      if (!hasScrolledRef.current && height > 0) {
+        // Initial layout: force scroll to bottom regardless of isNearBottom
+        flatListRef.current?.scrollToEnd({ animated: false });
+        hasScrolledRef.current = true;
+      } else if (isNearBottomRef.current) {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }
+    },
+    [flatListRef, isNearBottomRef],
+  );
+  const handleListLayout = React.useCallback(
+    (event: { nativeEvent: { layout: { height: number } } }) => {
+      const newHeight = event.nativeEvent.layout.height;
+      const prevHeight = flatListHeightRef.current;
+      flatListHeightRef.current = newHeight;
+      if (prevHeight > 0 && newHeight < prevHeight) {
+        setTimeout(
+          () => flatListRef.current?.scrollToEnd({ animated: true }),
+          50,
+        );
+      }
+    },
+    [flatListRef],
+  );
   const scrollToBottomStyle = useMemo(
     () => [styles.scrollToBottomContainer, { bottom: inputHeight + 8 }],
     [styles.scrollToBottomContainer, inputHeight],
   );
   return (
     <>
+      {preparingVoice ? (
+        <View testID="voice-preparing" style={styles.voicePreparingRow}>
+          <ThinkingIndicator text="Preparing voice…" />
+        </View>
+      ) : null}
       {chat.displayMessages.length === 0 ? (
         // Voice mode gets its own welcome hero (big "tap to speak" mic); free
         // builds / chat mode fall back to the standard empty chat.
         (() => {
           const AudioEmpty = getSlot(SLOTS.chatEmptyAudio);
-          return AudioEmpty && interfaceMode === 'audio' ? (
+          return AudioEmpty && voiceMode ? (
             <AudioEmpty />
           ) : (
             <EmptyChat
@@ -245,47 +285,22 @@ export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
         })()
       ) : (
         <FlatList
+          testID="chat-message-list"
           ref={flatListRef}
-          style={isListReady ? undefined : hiddenStyle.hidden}
           data={chat.displayMessages}
           renderItem={renderItem}
-          keyExtractor={item => item.id}
-          extraData={interfaceMode}
+          keyExtractor={keyExtractor}
+          extraData={voiceMode}
           contentContainerStyle={styles.messageList}
           onScroll={handleScroll}
-          onContentSizeChange={(_w, h) => {
-            if (!hasScrolledRef.current && h > 0) {
-              // Initial layout: force scroll to bottom regardless of isNearBottom
-              flatListRef.current?.scrollToEnd({ animated: false });
-              hasScrolledRef.current = true;
-              // Reveal after a frame so the scroll position settles
-              requestAnimationFrame(() => {
-                requestAnimationFrame(() => setIsListReady(true));
-              });
-            } else if (isNearBottomRef.current) {
-              flatListRef.current?.scrollToEnd({ animated: false });
-            }
-          }}
-          onLayout={e => {
-            const newHeight = e.nativeEvent.layout.height;
-            const prevHeight = flatListHeightRef.current;
-            flatListHeightRef.current = newHeight;
-            if (prevHeight > 0 && newHeight < prevHeight) {
-              setTimeout(
-                () => flatListRef.current?.scrollToEnd({ animated: true }),
-                50,
-              );
-            }
-          }}
+          onContentSizeChange={handleContentSizeChange}
+          onLayout={handleListLayout}
           scrollEventThrottle={16}
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
-          onTouchStart={() => Keyboard.dismiss()}
-          maintainVisibleContentPosition={{
-            minIndexForVisible: 0,
-            autoscrollToTopThreshold: 100,
-          }}
-          removeClippedSubviews={Platform.OS !== 'android'}
+          onTouchStart={dismissKeyboard}
+          maintainVisibleContentPosition={MAINTAIN_VISIBLE_CONTENT_POSITION}
+          removeClippedSubviews={REMOVE_CLIPPED_SUBVIEWS}
         />
       )}
       {chat.showScrollToBottom && chat.displayMessages.length > 0 && (
@@ -339,8 +354,8 @@ export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
       {/* GPU-path (no-NPU) image tips — shown in chat (not buried in settings) so a user
           hitting slow/garbled generations sees the fix. Self-hides at good settings. */}
       <ImageGenAdviceCard />
-      {/* Reload through the SAME seam the reload banner uses — one owner of "reload the text model". */}
-      <MtpAdviceCard onEnable={chat.handleReloadTextModel} />
+      {/* The settings facade owns the setting commit and any required model restart. */}
+      <MtpAdviceCard />
       {/* A vision model missing its projector: repairable from here, because this is where the
           user finds out they cannot attach a photo. */}
       <VisionRepairAdviceCard onRepaired={chat.handleReloadTextModel} />
@@ -389,7 +404,7 @@ export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
           onOpenSettings={() => chat.setShowSettingsPanel(true)}
           queueCount={chat.queueCount}
           queuedTexts={chat.queuedTexts}
-          onClearQueue={() => generationService.clearQueue()}
+          onClearQueue={() => mobileChatSession.clearQueued()}
           placeholder={getPlaceholderText({
             hasModel: chat.hasActiveModel,
             isModelLoading: chat.isModelLoading,
@@ -411,7 +426,3 @@ export const ChatMessageArea: React.FC<ChatMessageAreaProps> = ({
     </>
   );
 };
-
-const hiddenStyle = StyleSheet.create({
-  hidden: { opacity: 0 },
-});

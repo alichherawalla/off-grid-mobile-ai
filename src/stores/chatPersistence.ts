@@ -1,14 +1,26 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generateId } from '../utils/generateId';
-import type { Message } from '../types';
+import type { Conversation } from '../types';
+import { changedSliceStorage } from './persistence/changedSliceStorage';
 
 export const CHAT_STORAGE_VERSION = 2;
 
-export function createPersistedMessage(
-  data: Omit<Message, 'id' | 'timestamp'>,
-): Message {
-  const id = generateId();
-  return { id, ...data, uuid: data.uuid ?? id, timestamp: Date.now() };
+/** The durable slice of the chat store. Streaming and loading fields are ephemeral. */
+export interface PersistedChatSlice {
+  conversations: Conversation[];
+  activeConversationId: string | null;
 }
+
+/**
+ * Streaming a reply updates the chat store once per token. Only the persisted slice is durable,
+ * so the store writes when one of its fields moves - never per token.
+ */
+export const chatPersistStorage = changedSliceStorage<PersistedChatSlice>(
+  () => AsyncStorage,
+  (previous, next) =>
+    previous.conversations === next.conversations &&
+    previous.activeConversationId === next.activeConversationId,
+);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -45,6 +57,14 @@ function migrateMessage(message: unknown, version: number): unknown {
  * generated-image UUIDs that also key the gallery record and PNG.
  */
 export function migratePersistedChatState(
+  persistedState: unknown,
+  version: number,
+): PersistedChatSlice {
+  // The stored shape is what the store trusts after migration; zustand hands it over as such.
+  return migrateStoredChatState(persistedState, version) as PersistedChatSlice;
+}
+
+function migrateStoredChatState(
   persistedState: unknown,
   version: number,
 ): unknown {
